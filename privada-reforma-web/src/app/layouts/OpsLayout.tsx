@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { useNetworkStatus } from '../../shared/hooks/useNetworkStatus'
+import { useDemoData } from '../../shared/state/DemoDataContext'
 
 const opsNav = [
   { to: '/guard/scan', label: 'Escanear' },
@@ -9,7 +9,7 @@ const opsNav = [
 ]
 
 export function OpsLayout() {
-  const { isOnline } = useNetworkStatus()
+  const { isOnline, logout } = useDemoData()
   const navigate = useNavigate()
 
   return (
@@ -34,7 +34,10 @@ export function OpsLayout() {
             </span>
             <button
               className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-100"
-              onClick={() => navigate('/login')}
+              onClick={() => {
+                logout()
+                navigate('/login')
+              }}
               type="button"
             >
               Salir
