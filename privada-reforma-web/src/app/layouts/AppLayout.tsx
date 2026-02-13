@@ -1,4 +1,5 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { useDemoData } from '../../shared/state/DemoDataContext'
 
 type NavItem = {
   to: string
@@ -32,6 +33,7 @@ function resolveTitle(pathname: string): string {
 export function AppLayout() {
   const { pathname } = useLocation()
   const navigate = useNavigate()
+  const { logout } = useDemoData()
   const isAdmin = pathname.startsWith('/admin')
   const navItems = isAdmin ? adminNav : residentNav
 
@@ -49,7 +51,10 @@ export function AppLayout() {
           </div>
           <button
             className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-1.5 text-xs font-semibold text-[var(--color-text)]"
-            onClick={() => navigate('/login')}
+            onClick={() => {
+              logout()
+              navigate('/login')
+            }}
             type="button"
           >
             Salir
