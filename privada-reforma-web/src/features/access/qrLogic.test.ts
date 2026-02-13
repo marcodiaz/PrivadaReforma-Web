@@ -3,8 +3,10 @@ import {
   buildDepartmentDisplayCode,
   findPassesByDepartmentSequence,
   findPassesByLast4,
+  formatDepartmentCode,
   getLast4Code,
   getNextDepartmentSequence,
+  normalizeDepartmentCode,
   parseDepartmentDisplayCode,
 } from './qrLogic'
 import type { QrPass } from '../../shared/domain/demoData'
@@ -39,7 +41,7 @@ describe('qr last4', () => {
   })
 
   it('parsea display code por departamento', () => {
-    expect(parseDepartmentDisplayCode('1141-0001')).toEqual({
+    expect(parseDepartmentDisplayCode('11-41-0001')).toEqual({
       departmentCode: '1141',
       sequenceCode: '0001',
     })
@@ -47,16 +49,21 @@ describe('qr last4', () => {
 
   it('calcula secuencia autoincremental por departamento', () => {
     const passes: QrPass[] = [
-      { ...basePass, displayCode: '1141-0001' },
-      { ...basePass, id: 'b', displayCode: '1141-0003' },
-      { ...basePass, id: 'c', displayCode: '2201-0007' },
+      { ...basePass, displayCode: '11-41-0001' },
+      { ...basePass, id: 'b', displayCode: '11-41-0003' },
+      { ...basePass, id: 'c', displayCode: '22-01-0007' },
     ]
     expect(getNextDepartmentSequence(passes, '1141')).toBe(4)
-    expect(buildDepartmentDisplayCode('1141', 4)).toBe('1141-0004')
+    expect(buildDepartmentDisplayCode('1141', 4)).toBe('11-41-0004')
   })
 
   it('busca por departamento + numero', () => {
-    const passes: QrPass[] = [{ ...basePass, displayCode: '1141-0001' }]
-    expect(findPassesByDepartmentSequence(passes, '1141', '0001')).toHaveLength(1)
+    const passes: QrPass[] = [{ ...basePass, displayCode: '11-41-0001' }]
+    expect(findPassesByDepartmentSequence(passes, '11-41', '0001')).toHaveLength(1)
+  })
+
+  it('normaliza y formatea departamento', () => {
+    expect(normalizeDepartmentCode('11-41')).toBe('1141')
+    expect(formatDepartmentCode('1141')).toBe('11-41')
   })
 })

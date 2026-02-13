@@ -12,22 +12,39 @@ export function findPassesByLast4(qrPasses: QrPass[], code4: string) {
   return qrPasses.filter((pass) => getLast4Code(pass.displayCode) === normalized)
 }
 
+export function normalizeDepartmentCode(input: string) {
+  return input.replace(/[^0-9]/g, '')
+}
+
+export function formatDepartmentCode(input: string) {
+  const digits = normalizeDepartmentCode(input).slice(0, 4)
+  if (digits.length <= 2) {
+    return digits
+  }
+  return `${digits.slice(0, 2)}-${digits.slice(2)}`
+}
+
 export function parseDepartmentDisplayCode(displayCode: string): {
   departmentCode: string
   sequenceCode: string
 } | null {
-  const match = /^(\d{4})-(\d{4})$/.exec(displayCode.trim())
+  const match = /^(\d{2})-(\d{2})-(\d{4})$/.exec(displayCode.trim())
   if (!match) {
     return null
   }
-  return { departmentCode: match[1] ?? '', sequenceCode: match[2] ?? '' }
+  return {
+    departmentCode: `${match[1] ?? ''}${match[2] ?? ''}`,
+    sequenceCode: match[3] ?? '',
+  }
 }
 
 export function buildDepartmentDisplayCode(
   departmentCode: string,
   sequenceNumber: number,
 ) {
-  return `${departmentCode}-${sequenceNumber.toString().padStart(4, '0')}`
+  return `${formatDepartmentCode(departmentCode)}-${sequenceNumber
+    .toString()
+    .padStart(4, '0')}`
 }
 
 export function getNextDepartmentSequence(
@@ -54,11 +71,14 @@ export function findPassesByDepartmentSequence(
   departmentCode: string,
   sequenceCode: string,
 ) {
-  const normalizedDepartment = departmentCode.trim()
+  const normalizedDepartment = normalizeDepartmentCode(departmentCode)
   const normalizedSequence = sequenceCode.trim()
   if (!/^\d{4}$/.test(normalizedDepartment) || !/^\d{4}$/.test(normalizedSequence)) {
     return []
   }
-  const fullCode = `${normalizedDepartment}-${normalizedSequence}`
+  const fullCode = buildDepartmentDisplayCode(
+    normalizedDepartment,
+    Number.parseInt(normalizedSequence, 10),
+  )
   return qrPasses.filter((pass) => pass.displayCode === fullCode)
 }

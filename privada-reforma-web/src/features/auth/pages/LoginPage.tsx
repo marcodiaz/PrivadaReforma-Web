@@ -93,7 +93,7 @@ export function LoginPage() {
           Cuentas demo locales
         </p>
         <div className="grid grid-cols-1 gap-2">
-          {accounts.slice(0, 3).map((account) => (
+          {accounts.slice(0, 4).map((account) => (
             <button
               key={account.id}
               className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-left text-xs"

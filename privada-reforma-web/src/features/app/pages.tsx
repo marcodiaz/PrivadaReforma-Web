@@ -1,9 +1,14 @@
 import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { AppButton, AppCard, ModulePlaceholder } from '../../shared/ui'
 import { useDemoData } from '../../shared/state/DemoDataContext'
 import { sortIncidentsForGuard } from '../incidents/logic'
 import type { Incident, QrPass } from '../../shared/domain/demoData'
-import { getLast4Code } from '../access/qrLogic'
+import {
+  formatDepartmentCode,
+  getLast4Code,
+  normalizeDepartmentCode,
+} from '../access/qrLogic'
 
 function priorityBadge(priority: Incident['priority']) {
   if (priority === 'high') {
@@ -37,8 +42,12 @@ function formatValidity(pass: QrPass) {
 
 export function AppHomePage() {
   const { incidents, qrPasses, auditLog } = useDemoData()
+  const navigate = useNavigate()
   const activeAlerts = incidents.filter((incident) => incident.supportScore >= 3).length
   const activeQr = qrPasses.filter((pass) => pass.status === 'active').length
+  const mediumOrHighIncidents = incidents.filter(
+    (incident) => incident.priority === 'medium' || incident.priority === 'high',
+  )
 
   return (
     <div className="space-y-3">
@@ -48,19 +57,43 @@ export function AppHomePage() {
         description="Resumen operativo, accesos y actividad de seguridad."
       />
       <div className="grid grid-cols-3 gap-3">
-        <AppCard>
+        <button onClick={() => navigate('/app/visits')} type="button">
+          <AppCard className="text-left transition hover:border-[var(--color-brand)]/50">
           <p className="text-xs text-[var(--color-text-muted)]">QR activos</p>
           <p className="text-2xl font-semibold">{activeQr}</p>
-        </AppCard>
-        <AppCard>
+          </AppCard>
+        </button>
+        <button onClick={() => navigate('/app/announcements')} type="button">
+          <AppCard className="text-left transition hover:border-[var(--color-brand)]/50">
           <p className="text-xs text-[var(--color-text-muted)]">Alertas</p>
           <p className="text-2xl font-semibold">{activeAlerts}</p>
-        </AppCard>
+          </AppCard>
+        </button>
         <AppCard>
           <p className="text-xs text-[var(--color-text-muted)]">Auditoria</p>
           <p className="text-2xl font-semibold">{auditLog.length}</p>
         </AppCard>
       </div>
+      <AppCard className="space-y-2">
+        <p className="text-sm font-semibold">Incidencias relevantes (medium+)</p>
+        {mediumOrHighIncidents.length === 0 ? (
+          <p className="text-xs text-[var(--color-text-muted)]">
+            No hay incidencias medium/high.
+          </p>
+        ) : (
+          mediumOrHighIncidents.slice(0, 3).map((incident) => (
+            <div
+              className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2"
+              key={incident.id}
+            >
+              <p className="text-sm font-semibold">{incident.title}</p>
+              <p className="text-xs text-[var(--color-text-muted)]">
+                {incident.priority} - score +{incident.supportScore}
+              </p>
+            </div>
+          ))
+        )}
+      </AppCard>
     </div>
   )
 }
@@ -68,8 +101,8 @@ export function AppHomePage() {
 export function AppVisitsPage() {
   const { qrPasses, createQrPass, deleteQrPass, debtMode } = useDemoData()
   const [label, setLabel] = useState('Visita temporal: tecnico')
-  const [unitId, setUnitId] = useState('Casa 1141')
-  const [departmentCode, setDepartmentCode] = useState('1141')
+  const [unitId, setUnitId] = useState('11-41')
+  const [departmentCode, setDepartmentCode] = useState('11-41')
   const [accessType, setAccessType] = useState<'temporal' | 'time_limit'>('temporal')
   const [timeLimit, setTimeLimit] = useState<'week' | 'month' | 'permanent'>('week')
   const [visitorPhotoUrl, setVisitorPhotoUrl] = useState('')
@@ -118,11 +151,13 @@ export function AppVisitsPage() {
         />
         <input
           className="w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
-          maxLength={4}
+          inputMode="numeric"
+          maxLength={5}
           onChange={(event) =>
-            setDepartmentCode(event.target.value.replace(/[^0-9]/g, ''))
+            setDepartmentCode(formatDepartmentCode(event.target.value))
           }
-          placeholder="Departamento (4 digitos, ej. 1141)"
+          placeholder="Departamento (formato 11-41)"
+          type="tel"
           value={departmentCode}
         />
         <select
@@ -180,19 +215,24 @@ export function AppVisitsPage() {
                 <p className="text-xs text-[var(--color-text-muted)]">
                   Unidad: {pass.unitId} - Estado: {pass.status}
                 </p>
-                <p className="text-xs font-semibold text-[var(--color-text-muted)]">
-                  Ultimos 4: {getLast4Code(pass.displayCode)}
-                </p>
-              </div>
-            </AppCard>
+              <p className="text-xs font-semibold text-[var(--color-text-muted)]">
+                  Codigo: {pass.displayCode} (ultimos 4: {getLast4Code(pass.displayCode)})
+              </p>
+            </div>
+          </AppCard>
           </button>
         ))}
       </div>
       {selectedQr ? (
-        <AppCard className="space-y-2 border-[var(--color-brand)]/40">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/55 p-4 sm:items-center">
+          <div className="w-full max-w-sm rounded-2xl bg-white shadow-2xl">
+            <AppCard className="space-y-2 border-[var(--color-brand)]/40">
           <p className="text-sm font-semibold">Detalle QR (ideal para screenshot)</p>
           <p className="text-xs text-[var(--color-text-muted)]">Etiqueta: {selectedQr.label}</p>
           <p className="text-xs text-[var(--color-text-muted)]">Unidad: {selectedQr.unitId}</p>
+          <p className="text-xs text-[var(--color-text-muted)]">
+            Departamento: {formatDepartmentCode(normalizeDepartmentCode(selectedQr.unitId))}
+          </p>
           <p className="text-xs text-[var(--color-text-muted)]">
             Vigencia: {formatValidity(selectedQr)}
           </p>
@@ -221,7 +261,9 @@ export function AppVisitsPage() {
               Cerrar detalle
             </AppButton>
           </div>
-        </AppCard>
+            </AppCard>
+          </div>
+        </div>
       ) : null}
     </div>
   )

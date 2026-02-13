@@ -44,7 +44,9 @@ import { enqueueOfflineEvent, syncOfflineQueue } from '../../features/guard/offl
 import {
   buildDepartmentDisplayCode,
   findPassesByDepartmentSequence,
+  formatDepartmentCode,
   getNextDepartmentSequence,
+  normalizeDepartmentCode,
 } from '../../features/access/qrLogic'
 
 type CreateQrInput = {
@@ -416,9 +418,15 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     }
 
     const type = input.accessType === 'temporal' ? 'single_use' : 'time_window'
-    const normalizedDepartment = input.departmentCode.trim()
+    const normalizedDepartment = normalizeDepartmentCode(input.departmentCode)
     if (!/^\d{4}$/.test(normalizedDepartment)) {
       return { ok: false, error: 'Departamento debe tener 4 digitos (ej. 1141).' }
+    }
+    if (!/[12]$/.test(normalizedDepartment)) {
+      return {
+        ok: false,
+        error: 'El ultimo digito del departamento debe ser 1 o 2.',
+      }
     }
     if (!qrPassTypeSchema.safeParse(type).success) {
       return { ok: false, error: 'Tipo de QR invalido.' }
@@ -514,7 +522,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     note?: string
   }) {
     const actor = session?.userId ?? 'guard-unknown'
-    const normalizedDepartment = input.departmentCode.trim()
+    const normalizedDepartment = normalizeDepartmentCode(input.departmentCode)
     const normalizedSequence = input.sequenceCode.trim()
     if (!/^\d{4}$/.test(normalizedDepartment) || !/^\d{4}$/.test(normalizedSequence)) {
       return { ok: false, message: 'Departamento y numero deben tener 4 digitos.' }
@@ -530,7 +538,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       normalizedDepartment,
       normalizedSequence,
     )
-    const targetDisplayCode = `${normalizedDepartment}-${normalizedSequence}`
+    const targetDisplayCode = `${formatDepartmentCode(normalizedDepartment)}-${normalizedSequence}`
     if (matches.length === 0) {
       logAudit({
         actorUserId: actor,

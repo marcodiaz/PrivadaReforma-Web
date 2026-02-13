@@ -9,6 +9,7 @@ import {
   sortIncidentsForGuard,
 } from '../incidents/logic'
 import {
+  formatDepartmentCode,
   findPassesByDepartmentSequence,
   getLast4Code,
 } from '../access/qrLogic'
@@ -62,7 +63,7 @@ export function GuardScanPage() {
       <ModulePlaceholder
         role="Guardia"
         title="Escaneo de acceso"
-        description='Usa "Scanear" o entrada manual por ultimos 4 digitos.'
+        description='Usa "Scanear" o entrada manual por departamento y numero.'
       />
       <AppCard className="space-y-2 border-slate-700 bg-slate-900">
         <AppButton
@@ -89,10 +90,10 @@ export function GuardScanPage() {
               inputMode="numeric"
               maxLength={4}
               onChange={(event) =>
-                setDepartmentCode(event.target.value.replace(/[^0-9]/g, ''))
+                setDepartmentCode(formatDepartmentCode(event.target.value))
               }
               pattern="[0-9]*"
-              placeholder="Depto 1141"
+              placeholder="Depto 11-41"
               type="tel"
               value={departmentCode}
             />
@@ -378,10 +379,10 @@ export function GuardOfflinePage() {
           inputMode="numeric"
           maxLength={4}
           onChange={(event) =>
-            setDepartmentCode(event.target.value.replace(/[^0-9]/g, ''))
+            setDepartmentCode(formatDepartmentCode(event.target.value))
           }
           pattern="[0-9]*"
-          placeholder="Depto (4)"
+          placeholder="Depto (11-41)"
           type="tel"
           value={departmentCode}
         />
