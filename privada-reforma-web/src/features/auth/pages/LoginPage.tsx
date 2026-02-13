@@ -1,0 +1,89 @@
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import {
+  getRoleLandingPath,
+  loginDraftSchema,
+  userRoleSchema,
+  type UserRole,
+} from '../../../shared/domain/auth'
+import { AppButton, AppCard } from '../../../shared/ui'
+
+const roleLabels: Record<UserRole, string> = {
+  resident: 'Residente',
+  tenant: 'Inquilino',
+  guard: 'Guardia',
+  admin: 'Administrador',
+  board: 'Comite',
+}
+
+export function LoginPage() {
+  const navigate = useNavigate()
+  const [email, setEmail] = useState('demo@privadareforma.mx')
+  const [role, setRole] = useState<UserRole>('resident')
+  const [errorMessage, setErrorMessage] = useState('')
+
+  function handleLogin() {
+    const result = loginDraftSchema.safeParse({ email, role })
+    if (!result.success) {
+      setErrorMessage(result.error.issues[0]?.message ?? 'Revisa tus datos.')
+      return
+    }
+
+    setErrorMessage('')
+    navigate(getRoleLandingPath(result.data.role))
+  }
+
+  return (
+    <AppCard className="space-y-4">
+      <header className="space-y-1">
+        <p className="text-xs font-medium uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
+          Acceso seguro
+        </p>
+        <h1 className="text-xl font-semibold">Privada Reforma</h1>
+        <p className="text-sm text-[var(--color-text-muted)]">
+          Sprint 0.5: flujo de acceso y navegacion por rol.
+        </p>
+      </header>
+
+      <label className="block space-y-1">
+        <span className="text-sm font-medium">Correo</span>
+        <input
+          className="w-full rounded-xl border border-[var(--color-border)] bg-white px-3 py-3 text-sm outline-none ring-offset-2 focus:ring-2 focus:ring-[var(--color-brand)]"
+          type="email"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+        />
+      </label>
+
+      <label className="block space-y-1">
+        <span className="text-sm font-medium">Rol</span>
+        <select
+          className="w-full rounded-xl border border-[var(--color-border)] bg-white px-3 py-3 text-sm outline-none ring-offset-2 focus:ring-2 focus:ring-[var(--color-brand)]"
+          value={role}
+          onChange={(event) => {
+            const parsedRole = userRoleSchema.safeParse(event.target.value)
+            if (parsedRole.success) {
+              setRole(parsedRole.data)
+            }
+          }}
+        >
+          {userRoleSchema.options.map((roleOption) => (
+            <option key={roleOption} value={roleOption}>
+              {roleLabels[roleOption]}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {errorMessage ? (
+        <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+          {errorMessage}
+        </p>
+      ) : null}
+
+      <AppButton block onClick={handleLogin}>
+        Entrar
+      </AppButton>
+    </AppCard>
+  )
+}

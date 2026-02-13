@@ -1,0 +1,87 @@
+import { createBrowserRouter, Navigate } from 'react-router-dom'
+import { AppLayout } from './layouts/AppLayout'
+import { OpsLayout } from './layouts/OpsLayout'
+import { PublicLayout } from './layouts/PublicLayout'
+import { LoginPage } from '../features/auth/pages/LoginPage'
+import {
+  AppAnnouncementsPage,
+  AppFinancePage,
+  AppHomePage,
+  AppIncidentsPage,
+  AppPoolPage,
+  AppProfilePage,
+  AppVisitsPage,
+} from '../features/app/pages'
+import {
+  GuardIncidentsPage,
+  GuardLogbookPage,
+  GuardOfflinePage,
+  GuardScanPage,
+} from '../features/guard/pages'
+import {
+  AdminAnnouncementsPage,
+  AdminDashboardPage,
+  AdminDebtsPage,
+  AdminExportsPage,
+  AdminFinancePage,
+  AdminIncidentsPage,
+  AdminMaintenancePage,
+  AdminUsersPage,
+  AdminVisitsPage,
+} from '../features/admin/pages'
+
+export const router = createBrowserRouter([
+  {
+    path: '/',
+    element: <Navigate to="/login" replace />,
+  },
+  {
+    element: <PublicLayout />,
+    children: [{ path: '/login', element: <LoginPage /> }],
+  },
+  {
+    path: '/app',
+    element: <AppLayout />,
+    children: [
+      { index: true, element: <Navigate to="home" replace /> },
+      { path: 'home', element: <AppHomePage /> },
+      { path: 'visits', element: <AppVisitsPage /> },
+      { path: 'pool', element: <AppPoolPage /> },
+      { path: 'incidents', element: <AppIncidentsPage /> },
+      { path: 'announcements', element: <AppAnnouncementsPage /> },
+      { path: 'finance', element: <AppFinancePage /> },
+      { path: 'profile', element: <AppProfilePage /> },
+    ],
+  },
+  {
+    path: '/guard',
+    element: <OpsLayout />,
+    children: [
+      { index: true, element: <Navigate to="scan" replace /> },
+      { path: 'scan', element: <GuardScanPage /> },
+      { path: 'logbook', element: <GuardLogbookPage /> },
+      { path: 'incidents', element: <GuardIncidentsPage /> },
+      { path: 'offline', element: <GuardOfflinePage /> },
+    ],
+  },
+  {
+    path: '/admin',
+    element: <AppLayout />,
+    children: [
+      { index: true, element: <Navigate to="dashboard" replace /> },
+      { path: 'dashboard', element: <AdminDashboardPage /> },
+      { path: 'users', element: <AdminUsersPage /> },
+      { path: 'debts', element: <AdminDebtsPage /> },
+      { path: 'visits', element: <AdminVisitsPage /> },
+      { path: 'incidents', element: <AdminIncidentsPage /> },
+      { path: 'maintenance', element: <AdminMaintenancePage /> },
+      { path: 'announcements', element: <AdminAnnouncementsPage /> },
+      { path: 'finance', element: <AdminFinancePage /> },
+      { path: 'exports', element: <AdminExportsPage /> },
+    ],
+  },
+  {
+    path: '*',
+    element: <Navigate to="/login" replace />,
+  },
+])

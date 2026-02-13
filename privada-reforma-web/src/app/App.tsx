@@ -1,24 +1,12 @@
-import './App.css'
-
-const modules = [
-  'Auth y gestion de usuarios',
-  'Acceso por QR',
-  'Amenidades (alberca)',
-  'Incidencias',
-  'Finanzas y transparencia',
-]
+import { RouterProvider } from 'react-router-dom'
+import { AppProviders } from './providers/AppProviders'
+import { router } from './router'
 
 function App() {
   return (
-    <main className="app-shell">
-      <h1>Privada Reforma Web</h1>
-      <p>MVP inicial para control operativo residencial.</p>
-      <ul>
-        {modules.map((moduleName) => (
-          <li key={moduleName}>{moduleName}</li>
-        ))}
-      </ul>
-    </main>
+    <AppProviders>
+      <RouterProvider router={router} />
+    </AppProviders>
   )
 }
 
