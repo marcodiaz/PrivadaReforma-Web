@@ -68,7 +68,7 @@ Cuando una incidencia llega a `supportScore >= 3`:
 2. Seleccionar tipo:
 - `Temporal`
 - `Time limit`
-3. Capturar departamento con formato `11-41` (edificio-piso/depto).
+3. Capturar departamento con formato `1141` (4 digitos).
 4. Si eliges `Time limit`, solo hay 3 opciones:
 - `1 semana`
 - `1 mes`
@@ -83,7 +83,7 @@ Cuando una incidencia llega a `supportScore >= 3`:
 3. Usar `Manual entry` con dos campos:
 - `Departamento` (4 digitos)
 - `Numero` (4 digitos)
-4. Prueba demo: `11-41` + `0001`.
+4. Prueba demo: `1141` + `0001`.
 4. Ver tarjeta con:
 - unidad
 - vigencia

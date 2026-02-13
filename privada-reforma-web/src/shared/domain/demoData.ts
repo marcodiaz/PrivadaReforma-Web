@@ -107,14 +107,14 @@ export const LOCAL_ACCOUNTS: LocalAccount[] = [
     fullName: 'Ana Lopez',
     email: 'ana.lopez@privadareforma.mx',
     role: 'resident',
-    unitId: '11-41',
+    unitId: '1141',
   },
   {
     id: 'acc-tenant-1',
     fullName: 'Juan Perez',
     email: 'juan.perez@privadareforma.mx',
     role: 'tenant',
-    unitId: '11-41',
+    unitId: '1141',
   },
   {
     id: 'acc-guard-1',
@@ -128,7 +128,7 @@ export const LOCAL_ACCOUNTS: LocalAccount[] = [
     fullName: 'Marco Ortega',
     email: 'marco.ortega@privadareforma.mx',
     role: 'board',
-    unitId: '11-42',
+    unitId: '1142',
   },
 ]
 
@@ -136,26 +136,26 @@ export const LOCAL_QR_PASSES: QrPass[] = [
   {
     id: 'qr-single-1',
     label: 'Visita temporal: plomero',
-    unitId: '11-41',
+    unitId: '1141',
     createdByUserId: 'acc-resident-1',
     type: 'single_use',
     endAt: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(),
     status: 'active',
-    qrValue: 'PRIV-QR-11-41-0001',
-    displayCode: '11-41-0001',
+    qrValue: 'PRIV-QR-1141-0001',
+    displayCode: '1141-0001',
   },
   {
     id: 'qr-window-1',
     label: 'Persona de confianza: Maria (nana)',
-    unitId: '11-41',
+    unitId: '1141',
     createdByUserId: 'acc-resident-1',
     type: 'time_window',
     startAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
     endAt: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
     visitorPhotoUrl: 'https://example.com/maria-nana.jpg',
     status: 'active',
-    qrValue: 'PRIV-QR-11-41-0002',
-    displayCode: '11-41-0002',
+    qrValue: 'PRIV-QR-1141-0002',
+    displayCode: '1141-0002',
   },
 ]
 

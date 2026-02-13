@@ -9,7 +9,6 @@ import {
   sortIncidentsForGuard,
 } from '../incidents/logic'
 import {
-  formatDepartmentCode,
   findPassesByDepartmentSequence,
   getLast4Code,
 } from '../access/qrLogic'
@@ -90,10 +89,10 @@ export function GuardScanPage() {
               inputMode="numeric"
               maxLength={4}
               onChange={(event) =>
-                setDepartmentCode(formatDepartmentCode(event.target.value))
+                setDepartmentCode(event.target.value.replace(/[^0-9]/g, ''))
               }
               pattern="[0-9]*"
-              placeholder="Depto 11-41"
+              placeholder="Depto 1141"
               type="tel"
               value={departmentCode}
             />
@@ -379,10 +378,10 @@ export function GuardOfflinePage() {
           inputMode="numeric"
           maxLength={4}
           onChange={(event) =>
-            setDepartmentCode(formatDepartmentCode(event.target.value))
+            setDepartmentCode(event.target.value.replace(/[^0-9]/g, ''))
           }
           pattern="[0-9]*"
-          placeholder="Depto (11-41)"
+          placeholder="Depto (1141)"
           type="tel"
           value={departmentCode}
         />

@@ -5,7 +5,6 @@ import { useDemoData } from '../../shared/state/DemoDataContext'
 import { sortIncidentsForGuard } from '../incidents/logic'
 import type { Incident, QrPass } from '../../shared/domain/demoData'
 import {
-  formatDepartmentCode,
   getLast4Code,
   normalizeDepartmentCode,
 } from '../access/qrLogic'
@@ -101,8 +100,8 @@ export function AppHomePage() {
 export function AppVisitsPage() {
   const { qrPasses, createQrPass, deleteQrPass, debtMode } = useDemoData()
   const [label, setLabel] = useState('Visita temporal: tecnico')
-  const [unitId, setUnitId] = useState('11-41')
-  const [departmentCode, setDepartmentCode] = useState('11-41')
+  const [unitId, setUnitId] = useState('1141')
+  const [departmentCode, setDepartmentCode] = useState('1141')
   const [accessType, setAccessType] = useState<'temporal' | 'time_limit'>('temporal')
   const [timeLimit, setTimeLimit] = useState<'week' | 'month' | 'permanent'>('week')
   const [visitorPhotoUrl, setVisitorPhotoUrl] = useState('')
@@ -152,11 +151,11 @@ export function AppVisitsPage() {
         <input
           className="w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
           inputMode="numeric"
-          maxLength={5}
+          maxLength={4}
           onChange={(event) =>
-            setDepartmentCode(formatDepartmentCode(event.target.value))
+            setDepartmentCode(normalizeDepartmentCode(event.target.value).slice(0, 4))
           }
-          placeholder="Departamento (formato 11-41)"
+          placeholder="Departamento (formato 1141)"
           type="tel"
           value={departmentCode}
         />
@@ -231,7 +230,7 @@ export function AppVisitsPage() {
           <p className="text-xs text-[var(--color-text-muted)]">Etiqueta: {selectedQr.label}</p>
           <p className="text-xs text-[var(--color-text-muted)]">Unidad: {selectedQr.unitId}</p>
           <p className="text-xs text-[var(--color-text-muted)]">
-            Departamento: {formatDepartmentCode(normalizeDepartmentCode(selectedQr.unitId))}
+            Departamento: {normalizeDepartmentCode(selectedQr.unitId).slice(0, 4)}
           </p>
           <p className="text-xs text-[var(--color-text-muted)]">
             Vigencia: {formatValidity(selectedQr)}

@@ -1,4 +1,4 @@
-export const schemaVersion = 1
+export const schemaVersion = 2
 
 const VERSION_KEY = 'schemaVersion'
 

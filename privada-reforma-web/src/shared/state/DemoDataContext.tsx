@@ -44,7 +44,6 @@ import { enqueueOfflineEvent, syncOfflineQueue } from '../../features/guard/offl
 import {
   buildDepartmentDisplayCode,
   findPassesByDepartmentSequence,
-  formatDepartmentCode,
   getNextDepartmentSequence,
   normalizeDepartmentCode,
 } from '../../features/access/qrLogic'
@@ -538,7 +537,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       normalizedDepartment,
       normalizedSequence,
     )
-    const targetDisplayCode = `${formatDepartmentCode(normalizedDepartment)}-${normalizedSequence}`
+    const targetDisplayCode = `${normalizedDepartment}-${normalizedSequence}`
     if (matches.length === 0) {
       logAudit({
         actorUserId: actor,

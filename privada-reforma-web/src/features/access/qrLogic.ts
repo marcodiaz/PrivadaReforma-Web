@@ -17,24 +17,20 @@ export function normalizeDepartmentCode(input: string) {
 }
 
 export function formatDepartmentCode(input: string) {
-  const digits = normalizeDepartmentCode(input).slice(0, 4)
-  if (digits.length <= 2) {
-    return digits
-  }
-  return `${digits.slice(0, 2)}-${digits.slice(2)}`
+  return normalizeDepartmentCode(input).slice(0, 4)
 }
 
 export function parseDepartmentDisplayCode(displayCode: string): {
   departmentCode: string
   sequenceCode: string
 } | null {
-  const match = /^(\d{2})-(\d{2})-(\d{4})$/.exec(displayCode.trim())
+  const match = /^(\d{4})-(\d{4})$/.exec(displayCode.trim())
   if (!match) {
     return null
   }
   return {
-    departmentCode: `${match[1] ?? ''}${match[2] ?? ''}`,
-    sequenceCode: match[3] ?? '',
+    departmentCode: match[1] ?? '',
+    sequenceCode: match[2] ?? '',
   }
 }
 
@@ -42,7 +38,7 @@ export function buildDepartmentDisplayCode(
   departmentCode: string,
   sequenceNumber: number,
 ) {
-  return `${formatDepartmentCode(departmentCode)}-${sequenceNumber
+  return `${normalizeDepartmentCode(departmentCode).slice(0, 4)}-${sequenceNumber
     .toString()
     .padStart(4, '0')}`
 }
