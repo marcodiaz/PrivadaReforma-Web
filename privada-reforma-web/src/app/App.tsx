@@ -3,7 +3,7 @@ import { AppProviders } from './providers/AppProviders'
 import { router } from './router'
 import { GlobalStatus } from '../shared/ui'
 
-function App() {
+const App = () => {
   return (
     <AppProviders>
       <GlobalStatus />
