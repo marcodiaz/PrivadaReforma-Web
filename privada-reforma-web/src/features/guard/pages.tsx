@@ -8,46 +8,108 @@ import {
   isSlaOverdue,
   sortIncidentsForGuard,
 } from '../incidents/logic'
+import {
+  findPassesByDepartmentSequence,
+  getLast4Code,
+} from '../access/qrLogic'
+
+function guardIncidentEmphasis(score: number) {
+  if (score >= 10) {
+    return 'ring-2 ring-red-500 border-red-500/40 bg-red-950/30'
+  }
+  if (score >= 5) {
+    return 'ring-2 ring-amber-500 border-amber-500/40 bg-amber-900/20'
+  }
+  return 'border-slate-700 bg-slate-900'
+}
 
 export function GuardScanPage() {
   const { qrPasses, handleGuardScanDecision } = useDemoData()
-  const [qrValue, setQrValue] = useState('')
+  const [departmentCode, setDepartmentCode] = useState('')
+  const [sequenceCode, setSequenceCode] = useState('')
   const [note, setNote] = useState('')
   const [resultMessage, setResultMessage] = useState('')
-  const [selectedQr, setSelectedQr] = useState('')
+  const [scanHint, setScanHint] = useState('')
+  const [approvedFlash, setApprovedFlash] = useState(false)
 
-  function resolvePreview() {
-    const pass = qrPasses.find((entry) => entry.qrValue === qrValue.trim())
-    setSelectedQr(pass?.id ?? '')
-  }
+  const matches = useMemo(
+    () => findPassesByDepartmentSequence(qrPasses, departmentCode, sequenceCode),
+    [qrPasses, departmentCode, sequenceCode],
+  )
+  const currentPass = matches.length === 1 ? matches[0] : null
 
   function act(result: 'allow' | 'reject') {
-    const response = handleGuardScanDecision({ qrValue, result, note })
+    const response = handleGuardScanDecision({
+      departmentCode,
+      sequenceCode,
+      result,
+      note,
+    })
     setResultMessage(response.message)
     if (response.ok) {
+      if (result === 'allow') {
+        setApprovedFlash(true)
+        window.setTimeout(() => setApprovedFlash(false), 1200)
+      }
+      setDepartmentCode('')
+      setSequenceCode('')
       setNote('')
-      setQrValue('')
-      setSelectedQr('')
     }
   }
-
-  const currentPass = qrPasses.find((entry) => entry.id === selectedQr)
 
   return (
     <div className="space-y-3">
       <ModulePlaceholder
         role="Guardia"
         title="Escaneo de acceso"
-        description="Validacion QR con resultado auditado (permitir/rechazar)."
+        description='Usa "Scanear" o entrada manual por ultimos 4 digitos.'
       />
       <AppCard className="space-y-2 border-slate-700 bg-slate-900">
-        <input
-          className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
-          onBlur={resolvePreview}
-          onChange={(event) => setQrValue(event.target.value)}
-          placeholder="Pegar qrValue"
-          value={qrValue}
-        />
+        <AppButton
+          block
+          className="py-3 text-base"
+          onClick={() =>
+            setScanHint(
+              'Scanear no disponible sin permisos de camara en este entorno.',
+            )
+          }
+          variant="secondary"
+        >
+          Scanear
+        </AppButton>
+        {scanHint ? <p className="text-xs text-slate-300">{scanHint}</p> : null}
+
+        <label className="block space-y-1">
+          <span className="text-xs uppercase tracking-[0.08em] text-slate-400">
+            Manual entry
+          </span>
+          <div className="grid grid-cols-2 gap-2">
+            <input
+              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+              inputMode="numeric"
+              maxLength={4}
+              onChange={(event) =>
+                setDepartmentCode(event.target.value.replace(/[^0-9]/g, ''))
+              }
+              pattern="[0-9]*"
+              placeholder="Depto 1141"
+              type="tel"
+              value={departmentCode}
+            />
+            <input
+              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+              inputMode="numeric"
+              maxLength={4}
+              onChange={(event) =>
+                setSequenceCode(event.target.value.replace(/[^0-9]/g, ''))
+              }
+              pattern="[0-9]*"
+              placeholder="Numero 0001"
+              type="tel"
+              value={sequenceCode}
+            />
+          </div>
+        </label>
         <input
           className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
           onChange={(event) => setNote(event.target.value)}
@@ -55,11 +117,16 @@ export function GuardScanPage() {
           value={note}
         />
         <div className="flex gap-2">
-          <AppButton className="px-3 py-2 text-xs" onClick={() => act('allow')}>
+          <AppButton
+            className="px-3 py-2 text-xs"
+            disabled={departmentCode.length !== 4 || sequenceCode.length !== 4}
+            onClick={() => act('allow')}
+          >
             Permitir
           </AppButton>
           <AppButton
             className="px-3 py-2 text-xs"
+            disabled={departmentCode.length !== 4 || sequenceCode.length !== 4}
             onClick={() => act('reject')}
             variant="danger"
           >
@@ -70,13 +137,26 @@ export function GuardScanPage() {
           <p className="text-xs text-slate-300">{resultMessage}</p>
         ) : null}
       </AppCard>
+      {matches.length > 1 ? (
+        <AppCard className="border-amber-500/50 bg-amber-900/20 text-amber-100">
+          Colision: hay {matches.length} codigos con esa combinacion depto-numero.
+        </AppCard>
+      ) : null}
+      {approvedFlash ? (
+        <AppCard className="animate-pulse border-emerald-400 bg-emerald-500/20 text-emerald-100">
+          Acceso aprobado.
+        </AppCard>
+      ) : null}
       {currentPass ? (
         <AppCard className="space-y-1 border-slate-700 bg-slate-900 text-slate-100">
           <p className="text-sm font-semibold">{currentPass.label}</p>
           <p className="text-xs text-slate-300">Unidad: {currentPass.unitId}</p>
           <p className="text-xs text-slate-300">Estado: {currentPass.status}</p>
           <p className="text-xs text-slate-300">
-            Vigencia: {currentPass.startAt ?? '-'} / {currentPass.endAt ?? '-'}
+            Codigo: {currentPass.displayCode} (ultimos 4: {getLast4Code(currentPass.displayCode)})
+          </p>
+          <p className="text-xs text-slate-300">
+            Vigencia: {currentPass.startAt ?? '-'} / {currentPass.endAt ?? 'permanente'}
           </p>
           {currentPass.visitorPhotoUrl ? (
             <p className="text-xs text-slate-300">Foto: {currentPass.visitorPhotoUrl}</p>
@@ -136,6 +216,7 @@ export function GuardIncidentsPage() {
   const [nowMs, setNowMs] = useState(() => Date.now())
   const [draftNote, setDraftNote] = useState<Record<string, string>>({})
   const [draftPhoto, setDraftPhoto] = useState<Record<string, string>>({})
+  const [feedback, setFeedback] = useState<Record<string, string>>({})
   const prioritized = useMemo(() => sortIncidentsForGuard(incidents, nowMs), [incidents, nowMs])
 
   useEffect(() => {
@@ -157,15 +238,12 @@ export function GuardIncidentsPage() {
           const canResolve = canResolveIncident(incident)
 
           return (
-            <AppCard
-              className={`border-slate-700 bg-slate-900 ${overdue ? 'ring-2 ring-red-500' : ''}`}
-              key={incident.id}
-            >
+            <AppCard className={guardIncidentEmphasis(incident.supportScore)} key={incident.id}>
               <div className="space-y-2 text-slate-100">
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <p className="text-sm font-semibold">{incident.title}</p>
-                    <p className="text-xs text-slate-400">
+                    <p className="text-xs text-slate-300">
                       SLA: {formatCountdown(remaining)} {overdue ? '(vencido)' : ''}
                     </p>
                   </div>
@@ -178,8 +256,15 @@ export function GuardIncidentsPage() {
                     </span>
                   </div>
                 </div>
-                <p className="text-sm text-slate-300">{incident.description}</p>
-                <p className="text-xs text-slate-400">Score: {incident.supportScore}</p>
+                <p className="text-sm text-slate-200">{incident.description}</p>
+                <p className="text-xs font-semibold text-slate-300">
+                  Score vecinal: +{incident.supportScore}
+                </p>
+                {incident.supportScore >= 10 ? (
+                  <p className="text-xs font-semibold uppercase tracking-[0.08em] text-red-300">
+                    Alerta maxima: respuesta inmediata
+                  </p>
+                ) : null}
                 <div className="grid grid-cols-2 gap-2">
                   <AppButton
                     className="px-3 py-2 text-xs"
@@ -203,7 +288,7 @@ export function GuardIncidentsPage() {
                       [incident.id]: event.target.value,
                     }))
                   }
-                  placeholder="Accion ejecutada (nota)"
+                  placeholder="Comentario de atencion"
                   rows={2}
                   value={draftNote[incident.id] ?? ''}
                 />
@@ -222,12 +307,20 @@ export function GuardIncidentsPage() {
                   <AppButton
                     className="px-3 py-2 text-xs"
                     onClick={() => {
-                      addGuardAction(incident.id, {
+                      const ok = addGuardAction(incident.id, {
                         note: draftNote[incident.id],
                         photoUrl: draftPhoto[incident.id],
                       })
-                      setDraftNote((previous) => ({ ...previous, [incident.id]: '' }))
-                      setDraftPhoto((previous) => ({ ...previous, [incident.id]: '' }))
+                      setFeedback((previous) => ({
+                        ...previous,
+                        [incident.id]: ok
+                          ? 'Evidencia guardada.'
+                          : 'Agrega comentario o photoUrl.',
+                      }))
+                      if (ok) {
+                        setDraftNote((previous) => ({ ...previous, [incident.id]: '' }))
+                        setDraftPhoto((previous) => ({ ...previous, [incident.id]: '' }))
+                      }
                     }}
                     variant="secondary"
                   >
@@ -235,12 +328,28 @@ export function GuardIncidentsPage() {
                   </AppButton>
                   <AppButton
                     className="px-3 py-2 text-xs"
-                    onClick={() => resolveIncident(incident.id)}
+                    onClick={() => {
+                      const result = resolveIncident(incident.id, {
+                        note: draftNote[incident.id],
+                        photoUrl: draftPhoto[incident.id],
+                      })
+                      setFeedback((previous) => ({
+                        ...previous,
+                        [incident.id]: result.message,
+                      }))
+                      if (result.ok) {
+                        setDraftNote((previous) => ({ ...previous, [incident.id]: '' }))
+                        setDraftPhoto((previous) => ({ ...previous, [incident.id]: '' }))
+                      }
+                    }}
                     variant={canResolve ? 'primary' : 'danger'}
                   >
-                    {canResolve ? 'Resolver' : 'Falta evidencia'}
+                    Marcar terminado
                   </AppButton>
                 </div>
+                {feedback[incident.id] ? (
+                  <p className="text-xs text-slate-300">{feedback[incident.id]}</p>
+                ) : null}
               </div>
             </AppCard>
           )
@@ -252,7 +361,8 @@ export function GuardIncidentsPage() {
 
 export function GuardOfflinePage() {
   const { offlineQueue, enqueueManualOfflineValidation } = useDemoData()
-  const [qrValue, setQrValue] = useState('')
+  const [departmentCode, setDepartmentCode] = useState('')
+  const [sequenceCode, setSequenceCode] = useState('')
   const [note, setNote] = useState('')
 
   return (
@@ -265,9 +375,27 @@ export function GuardOfflinePage() {
       <AppCard className="space-y-2 border-amber-500/40 bg-amber-200/10">
         <input
           className="w-full rounded-lg border border-amber-600/40 bg-amber-950/40 px-3 py-2 text-sm text-amber-100"
-          onChange={(event) => setQrValue(event.target.value)}
-          placeholder="qrValue manual"
-          value={qrValue}
+          inputMode="numeric"
+          maxLength={4}
+          onChange={(event) =>
+            setDepartmentCode(event.target.value.replace(/[^0-9]/g, ''))
+          }
+          pattern="[0-9]*"
+          placeholder="Depto (4)"
+          type="tel"
+          value={departmentCode}
+        />
+        <input
+          className="w-full rounded-lg border border-amber-600/40 bg-amber-950/40 px-3 py-2 text-sm text-amber-100"
+          inputMode="numeric"
+          maxLength={4}
+          onChange={(event) =>
+            setSequenceCode(event.target.value.replace(/[^0-9]/g, ''))
+          }
+          pattern="[0-9]*"
+          placeholder="Numero (4)"
+          type="tel"
+          value={sequenceCode}
         />
         <input
           className="w-full rounded-lg border border-amber-600/40 bg-amber-950/40 px-3 py-2 text-sm text-amber-100"
@@ -278,8 +406,14 @@ export function GuardOfflinePage() {
         <div className="flex gap-2">
           <AppButton
             className="px-3 py-2 text-xs"
+            disabled={departmentCode.length !== 4 || sequenceCode.length !== 4}
             onClick={() =>
-              enqueueManualOfflineValidation({ qrValue, result: 'allow', note })
+              enqueueManualOfflineValidation({
+                departmentCode,
+                sequenceCode,
+                result: 'allow',
+                note,
+              })
             }
             variant="secondary"
           >
@@ -287,8 +421,14 @@ export function GuardOfflinePage() {
           </AppButton>
           <AppButton
             className="px-3 py-2 text-xs"
+            disabled={departmentCode.length !== 4 || sequenceCode.length !== 4}
             onClick={() =>
-              enqueueManualOfflineValidation({ qrValue, result: 'reject', note })
+              enqueueManualOfflineValidation({
+                departmentCode,
+                sequenceCode,
+                result: 'reject',
+                note,
+              })
             }
             variant="danger"
           >

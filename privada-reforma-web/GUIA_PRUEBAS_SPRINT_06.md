@@ -58,30 +58,44 @@ Cuando una incidencia llega a `supportScore >= 3`:
 
 ### Resolver con evidencia
 1. Intenta resolver sin evidencia: no debe resolver.
-2. Agrega evidencia con nota o photoUrl (`Guardar evidencia`).
-3. Pulsa `Resolver`: debe pasar a `resolved` y registrar `resolvedAt`.
+2. Agrega evidencia con nota o photoUrl (`Guardar evidencia`) o desde `Marcar terminado`.
+3. Pulsa `Marcar terminado`: debe pasar a `resolved` y registrar `resolvedAt`.
 
 ## 5) QR end-to-end + auditoria
 
 ### Crear QR (residente/tenant)
 1. Ir a `/app/visits`.
-2. Crear QR `single_use` o `time_window`.
-3. Regla:
-- Si `time_window` supera 7 dias, `visitorPhotoUrl` es obligatorio.
+2. Seleccionar tipo:
+- `Temporal`
+- `Time limit`
+3. Si eliges `Time limit`, solo hay 3 opciones:
+- `1 semana`
+- `1 mes`
+- `Permanente`
+4. Regla:
+- Para `1 mes` o `Permanente`, `visitorPhotoUrl` es obligatorio.
+5. Haz click en un QR para abrir su detalle (ideal para screenshot) y prueba `Borrar QR`.
 
 ### Escanear QR (guardia)
 1. Ir a `/guard/scan`.
-2. Pegar `qrValue`.
-3. Ver tarjeta con:
+2. Usar `Scanear` (UI visual; no hay camara activa en este entorno).
+3. Usar `Manual entry` con dos campos:
+- `Departamento` (4 digitos)
+- `Numero` (4 digitos)
+4. Prueba demo: `1141` + `0001`.
+4. Ver tarjeta con:
 - unidad
 - vigencia
 - status
 - foto si aplica
-4. Probar `Permitir`:
+5. Probar `Permitir`:
 - en `single_use` pasa a `used`
 - se crea evento en auditLog
-5. Probar `Rechazar`:
+6. Probar `Rechazar`:
 - se crea evento en auditLog
+
+Nota:
+- Si dos QR comparten misma pareja `departamento-numero`, se detecta colision y se bloquea la validacion manual.
 
 ### Bitacora
 Ir a `/guard/logbook` y validar eventos de auditoria.

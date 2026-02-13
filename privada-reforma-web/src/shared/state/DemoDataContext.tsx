@@ -30,14 +30,31 @@ import {
   qrPassTypeSchema,
 } from '../domain/demoData'
 import {
-  migrateIfNeeded,
   getItem,
+  migrateIfNeeded,
   removeItem,
   setItem,
   storageKeys,
 } from '../storage/storage'
-import { updateVote as updateIncidentVote, canResolveIncident } from '../../features/incidents/logic'
+import {
+  canResolveIncident,
+  updateVote as updateIncidentVote,
+} from '../../features/incidents/logic'
 import { enqueueOfflineEvent, syncOfflineQueue } from '../../features/guard/offline'
+import {
+  buildDepartmentDisplayCode,
+  findPassesByDepartmentSequence,
+  getNextDepartmentSequence,
+} from '../../features/access/qrLogic'
+
+type CreateQrInput = {
+  label: string
+  unitId: string
+  departmentCode: string
+  accessType: 'temporal' | 'time_limit'
+  timeLimit?: 'week' | 'month' | 'permanent'
+  visitorPhotoUrl?: string
+}
 
 type DemoDataContextValue = {
   accounts: LocalAccount[]
@@ -64,22 +81,21 @@ type DemoDataContextValue = {
   acknowledgeIncident: (incidentId: string) => void
   markIncidentInProgress: (incidentId: string) => void
   addGuardAction: (incidentId: string, input: { note?: string; photoUrl?: string }) => boolean
-  resolveIncident: (incidentId: string) => boolean
-  createQrPass: (input: {
-    label: string
-    unitId: string
-    type: QrPass['type']
-    startAt?: string
-    endAt?: string
-    visitorPhotoUrl?: string
-  }) => { ok: boolean; error?: string }
+  resolveIncident: (
+    incidentId: string,
+    input?: { note?: string; photoUrl?: string },
+  ) => { ok: boolean; message: string }
+  createQrPass: (input: CreateQrInput) => { ok: boolean; error?: string }
+  deleteQrPass: (qrId: string) => void
   handleGuardScanDecision: (input: {
-    qrValue: string
+    departmentCode: string
+    sequenceCode: string
     result: 'allow' | 'reject'
     note?: string
   }) => { ok: boolean; message: string }
   enqueueManualOfflineValidation: (payload: {
-    qrValue: string
+    departmentCode: string
+    sequenceCode: string
     result: 'allow' | 'reject'
     note?: string
   }) => void
@@ -134,7 +150,6 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     const parsed = appSessionSchema.safeParse(raw)
     return parsed.success ? parsed.data : null
   })
-
   const [incidents, setIncidents] = useState<Incident[]>(() =>
     safeReadArray(storageKeys.incidents, incidentSchema.array(), LOCAL_INCIDENTS),
   )
@@ -180,7 +195,6 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
 
     window.addEventListener('online', goOnline)
     window.addEventListener('offline', goOffline)
-
     return () => {
       window.removeEventListener('online', goOnline)
       window.removeEventListener('offline', goOffline)
@@ -191,7 +205,6 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     if (persistTimerRef.current !== null) {
       window.clearTimeout(persistTimerRef.current)
     }
-
     persistTimerRef.current = window.setTimeout(() => {
       if (session) {
         setItem(storageKeys.session, session)
@@ -203,7 +216,6 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       setItem(storageKeys.auditLog, auditLog)
       setItem(storageKeys.offlineQueue, offlineQueue)
     }, 300)
-
     return () => {
       if (persistTimerRef.current !== null) {
         window.clearTimeout(persistTimerRef.current)
@@ -219,7 +231,6 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       setSession(buildSessionFromAccount(fromAccount))
       return
     }
-
     setSession({
       userId: randomId('session-user'),
       email,
@@ -265,14 +276,12 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     if (!session) {
       return false
     }
-
     if (!incidentPrioritySchema.safeParse(input.priority).success) {
       return false
     }
     if (!incidentCategorySchema.safeParse(input.category).success) {
       return false
     }
-
     setIncidents((previous) => [
       {
         id: randomId('inc'),
@@ -332,7 +341,6 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     if (!cleanNote && !cleanPhotoUrl) {
       return false
     }
-
     setIncidents((previous) =>
       previous.map((incident) =>
         incident.id === incidentId
@@ -350,66 +358,96 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
           : incident,
       ),
     )
-
     return true
   }
 
-  function resolveIncident(incidentId: string) {
-    const incident = incidents.find((entry) => entry.id === incidentId)
-    if (!incident || !canResolveIncident(incident)) {
-      return false
-    }
+  function resolveIncident(
+    incidentId: string,
+    input?: { note?: string; photoUrl?: string },
+  ) {
+    let resolved = false
+    let message = 'No se pudo resolver.'
+    const cleanNote = input?.note?.trim()
+    const cleanPhotoUrl = input?.photoUrl?.trim()
 
     setIncidents((previous) =>
-      previous.map((entry) =>
-        entry.id === incidentId
-          ? {
-              ...entry,
-              status: 'resolved',
-              resolvedAt: new Date().toISOString(),
-            }
-          : entry,
-      ),
+      previous.map((incident) => {
+        if (incident.id !== incidentId) {
+          return incident
+        }
+
+        const nextGuardActions =
+          cleanNote || cleanPhotoUrl
+            ? [
+                ...incident.guardActions,
+                {
+                  at: new Date().toISOString(),
+                  note: cleanNote,
+                  photoUrl: cleanPhotoUrl,
+                },
+              ]
+            : incident.guardActions
+
+        const candidate = { ...incident, guardActions: nextGuardActions }
+        if (!canResolveIncident(candidate)) {
+          message = 'Para terminar necesitas comentario o evidencia.'
+          return incident
+        }
+
+        resolved = true
+        message = 'Incidencia marcada como terminada.'
+        return {
+          ...candidate,
+          status: 'resolved',
+          resolvedAt: new Date().toISOString(),
+        }
+      }),
     )
-    return true
+
+    return { ok: resolved, message }
   }
 
-  function createQrPass(input: {
-    label: string
-    unitId: string
-    type: QrPass['type']
-    startAt?: string
-    endAt?: string
-    visitorPhotoUrl?: string
-  }) {
+  function createQrPass(input: CreateQrInput) {
     if (!session) {
       return { ok: false, error: 'Sesion requerida.' }
     }
     if (debtMode) {
       return { ok: false, error: 'No se puede crear QR: modo adeudo activo.' }
     }
-    if (!qrPassTypeSchema.safeParse(input.type).success) {
+
+    const type = input.accessType === 'temporal' ? 'single_use' : 'time_window'
+    const normalizedDepartment = input.departmentCode.trim()
+    if (!/^\d{4}$/.test(normalizedDepartment)) {
+      return { ok: false, error: 'Departamento debe tener 4 digitos (ej. 1141).' }
+    }
+    if (!qrPassTypeSchema.safeParse(type).success) {
       return { ok: false, error: 'Tipo de QR invalido.' }
     }
 
-    const isWindow = input.type === 'time_window'
-    if (isWindow) {
-      if (!input.startAt || !input.endAt) {
-        return {
-          ok: false,
-          error: 'QR por ventana requiere fecha de inicio y fin.',
-        }
+    const now = Date.now()
+    let startAt: string | undefined
+    let endAt: string | undefined
+    if (type === 'time_window') {
+      startAt = new Date(now).toISOString()
+      if (input.timeLimit === 'week') {
+        endAt = new Date(now + 7 * 24 * 60 * 60 * 1000).toISOString()
+      } else if (input.timeLimit === 'month') {
+        endAt = new Date(now + 30 * 24 * 60 * 60 * 1000).toISOString()
+      } else if (input.timeLimit === 'permanent') {
+        endAt = undefined
+      } else {
+        return { ok: false, error: 'Selecciona una vigencia para time limit.' }
       }
-      const durationMs =
-        new Date(input.endAt).getTime() - new Date(input.startAt).getTime()
-      if (
-        durationMs > 7 * 24 * 60 * 60 * 1000 &&
-        !input.visitorPhotoUrl?.trim()
-      ) {
-        return {
-          ok: false,
-          error: 'Ventanas > 7 dias requieren foto del visitante.',
-        }
+    } else {
+      endAt = new Date(now + 3 * 60 * 60 * 1000).toISOString()
+    }
+
+    const needsPhoto =
+      type === 'time_window' && (input.timeLimit === 'month' || input.timeLimit === 'permanent')
+    if (needsPhoto && !input.visitorPhotoUrl?.trim()) {
+      return {
+        ok: false,
+        error: 'Para 1 mes o permanente se requiere foto del visitante.',
       }
     }
 
@@ -418,16 +456,24 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       label: input.label.trim(),
       unitId: input.unitId.trim(),
       createdByUserId: session.userId,
-      type: input.type,
-      startAt: input.startAt,
-      endAt: input.endAt,
+      type,
+      startAt,
+      endAt,
       visitorPhotoUrl: input.visitorPhotoUrl?.trim(),
       status: 'active',
       qrValue: `QR-${crypto.randomUUID()}`,
-      displayCode: Math.random().toString(36).slice(2, 10).toUpperCase(),
+      displayCode: buildDepartmentDisplayCode(
+        normalizedDepartment,
+        getNextDepartmentSequence(qrPasses, normalizedDepartment),
+      ),
     }
+
     setQrPasses((previous) => [pass, ...previous])
     return { ok: true }
+  }
+
+  function deleteQrPass(qrId: string) {
+    setQrPasses((previous) => previous.filter((pass) => pass.id !== qrId))
   }
 
   function logAudit(entry: Omit<AuditLogEntry, 'id' | 'at'>) {
@@ -442,14 +488,14 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
   }
 
   function enqueueManualOfflineValidation(payload: {
-    qrValue: string
+    departmentCode: string
+    sequenceCode: string
     result: 'allow' | 'reject'
     note?: string
   }) {
     if (!session) {
       return
     }
-
     const event: OfflineQueueEvent = {
       id: randomId('offline'),
       at: new Date().toISOString(),
@@ -462,37 +508,63 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
   }
 
   function handleGuardScanDecision(input: {
-    qrValue: string
+    departmentCode: string
+    sequenceCode: string
     result: 'allow' | 'reject'
     note?: string
   }) {
     const actor = session?.userId ?? 'guard-unknown'
+    const normalizedDepartment = input.departmentCode.trim()
+    const normalizedSequence = input.sequenceCode.trim()
+    if (!/^\d{4}$/.test(normalizedDepartment) || !/^\d{4}$/.test(normalizedSequence)) {
+      return { ok: false, message: 'Departamento y numero deben tener 4 digitos.' }
+    }
 
     if (!isOnline) {
       enqueueManualOfflineValidation(input)
+      return { ok: true, message: 'Sin red: evento encolado para sincronizacion.' }
+    }
+
+    const matches = findPassesByDepartmentSequence(
+      qrPasses,
+      normalizedDepartment,
+      normalizedSequence,
+    )
+    const targetDisplayCode = `${normalizedDepartment}-${normalizedSequence}`
+    if (matches.length === 0) {
+      logAudit({
+        actorUserId: actor,
+        action: 'qr_scan_manual',
+        targetId: targetDisplayCode,
+        result: 'reject',
+        note: 'Sin coincidencias',
+      })
+      return { ok: false, message: 'Codigo no encontrado.' }
+    }
+    if (matches.length > 1) {
+      logAudit({
+        actorUserId: actor,
+        action: 'qr_scan_manual',
+        targetId: targetDisplayCode,
+        result: 'reject',
+        note: 'Colision manual',
+      })
       return {
-        ok: true,
-        message: 'Sin red: evento enviado a offlineQueue para sincronizar.',
+        ok: false,
+        message: 'Colision detectada: mas de un QR coincide con ese codigo.',
       }
     }
 
-    const pass = qrPasses.find((entry) => entry.qrValue === input.qrValue.trim())
+    const pass = matches[0]
     if (!pass) {
-      logAudit({
-        actorUserId: actor,
-        action: 'qr_scan',
-        targetId: input.qrValue,
-        result: 'reject',
-        note: 'QR no encontrado',
-      })
-      return { ok: false, message: 'QR no encontrado.' }
+      return { ok: false, message: 'Codigo no encontrado.' }
     }
 
     const effectiveStatus = getEffectiveQrStatus(pass, new Date())
     if (effectiveStatus !== 'active') {
       logAudit({
         actorUserId: actor,
-        action: 'qr_scan',
+        action: 'qr_scan_manual',
         targetId: pass.id,
         result: 'reject',
         note: `QR en estado ${effectiveStatus}`,
@@ -510,7 +582,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       }
       logAudit({
         actorUserId: actor,
-        action: 'qr_scan',
+        action: 'qr_scan_manual',
         targetId: pass.id,
         result: 'allow',
         note: input.note,
@@ -520,7 +592,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
 
     logAudit({
       actorUserId: actor,
-      action: 'qr_scan',
+      action: 'qr_scan_manual',
       targetId: pass.id,
       result: 'reject',
       note: input.note ?? 'Rechazado por guardia',
@@ -550,6 +622,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     addGuardAction,
     resolveIncident,
     createQrPass,
+    deleteQrPass,
     handleGuardScanDecision,
     enqueueManualOfflineValidation,
   }
@@ -562,6 +635,5 @@ export function useDemoData() {
   if (!context) {
     throw new Error('useDemoData must be used within DemoDataProvider')
   }
-
   return context
 }

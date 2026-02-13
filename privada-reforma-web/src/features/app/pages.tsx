@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react'
 import { AppButton, AppCard, ModulePlaceholder } from '../../shared/ui'
 import { useDemoData } from '../../shared/state/DemoDataContext'
 import { sortIncidentsForGuard } from '../incidents/logic'
-import type { Incident } from '../../shared/domain/demoData'
+import type { Incident, QrPass } from '../../shared/domain/demoData'
+import { getLast4Code } from '../access/qrLogic'
 
 function priorityBadge(priority: Incident['priority']) {
   if (priority === 'high') {
@@ -12,6 +13,26 @@ function priorityBadge(priority: Incident['priority']) {
     return 'bg-amber-100 text-amber-700'
   }
   return 'bg-slate-100 text-slate-700'
+}
+
+function incidentEmphasis(score: number) {
+  if (score >= 10) {
+    return 'ring-2 ring-red-500 border-red-500/40 bg-red-50'
+  }
+  if (score >= 5) {
+    return 'ring-2 ring-amber-500 border-amber-500/40 bg-amber-50'
+  }
+  return ''
+}
+
+function formatValidity(pass: QrPass) {
+  if (pass.type === 'single_use') {
+    return 'Temporal (single use)'
+  }
+  if (!pass.endAt) {
+    return 'Permanente'
+  }
+  return `Hasta ${new Date(pass.endAt).toLocaleDateString()}`
 }
 
 export function AppHomePage() {
@@ -45,22 +66,25 @@ export function AppHomePage() {
 }
 
 export function AppVisitsPage() {
-  const { qrPasses, createQrPass, debtMode } = useDemoData()
+  const { qrPasses, createQrPass, deleteQrPass, debtMode } = useDemoData()
   const [label, setLabel] = useState('Visita temporal: tecnico')
-  const [type, setType] = useState<'single_use' | 'time_window'>('single_use')
-  const [unitId, setUnitId] = useState('Casa 17')
-  const [startAt, setStartAt] = useState('')
-  const [endAt, setEndAt] = useState('')
+  const [unitId, setUnitId] = useState('Casa 1141')
+  const [departmentCode, setDepartmentCode] = useState('1141')
+  const [accessType, setAccessType] = useState<'temporal' | 'time_limit'>('temporal')
+  const [timeLimit, setTimeLimit] = useState<'week' | 'month' | 'permanent'>('week')
   const [visitorPhotoUrl, setVisitorPhotoUrl] = useState('')
   const [message, setMessage] = useState('')
+  const [selectedQrId, setSelectedQrId] = useState<string | null>(null)
+
+  const selectedQr = qrPasses.find((pass) => pass.id === selectedQrId) ?? null
 
   function handleCreateQr() {
     const result = createQrPass({
       label,
       unitId,
-      type,
-      startAt: startAt || undefined,
-      endAt: endAt || undefined,
+      departmentCode,
+      accessType,
+      timeLimit: accessType === 'time_limit' ? timeLimit : undefined,
       visitorPhotoUrl: visitorPhotoUrl || undefined,
     })
     setMessage(result.ok ? 'QR creado correctamente.' : result.error ?? 'Error.')
@@ -71,7 +95,7 @@ export function AppVisitsPage() {
       <ModulePlaceholder
         role="Residente / Inquilino"
         title="Visitas"
-        description="Generacion de QR con reglas de seguridad y trazabilidad."
+        description="Generacion de QR temporal o con limite de tiempo."
       />
       <AppCard className="space-y-2">
         <p className="text-sm font-semibold">Crear nuevo QR</p>
@@ -92,32 +116,40 @@ export function AppVisitsPage() {
           placeholder="Unidad"
           value={unitId}
         />
+        <input
+          className="w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
+          maxLength={4}
+          onChange={(event) =>
+            setDepartmentCode(event.target.value.replace(/[^0-9]/g, ''))
+          }
+          placeholder="Departamento (4 digitos, ej. 1141)"
+          value={departmentCode}
+        />
         <select
           className="w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
-          onChange={(event) => setType(event.target.value as 'single_use' | 'time_window')}
-          value={type}
+          onChange={(event) => setAccessType(event.target.value as 'temporal' | 'time_limit')}
+          value={accessType}
         >
-          <option value="single_use">single_use</option>
-          <option value="time_window">time_window</option>
+          <option value="temporal">Temporal</option>
+          <option value="time_limit">Time limit</option>
         </select>
-        {type === 'time_window' ? (
+        {accessType === 'time_limit' ? (
           <>
-            <input
+            <select
               className="w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
-              onChange={(event) => setStartAt(event.target.value)}
-              placeholder="startAt ISO"
-              value={startAt}
-            />
-            <input
-              className="w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
-              onChange={(event) => setEndAt(event.target.value)}
-              placeholder="endAt ISO"
-              value={endAt}
-            />
+              onChange={(event) =>
+                setTimeLimit(event.target.value as 'week' | 'month' | 'permanent')
+              }
+              value={timeLimit}
+            >
+              <option value="week">1 semana</option>
+              <option value="month">1 mes</option>
+              <option value="permanent">Permanente</option>
+            </select>
             <input
               className="w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
               onChange={(event) => setVisitorPhotoUrl(event.target.value)}
-              placeholder="visitorPhotoUrl (opcional)"
+              placeholder="visitorPhotoUrl (requerido para 1 mes/permanente)"
               value={visitorPhotoUrl}
             />
           </>
@@ -131,32 +163,66 @@ export function AppVisitsPage() {
       </AppCard>
       <div className="space-y-2">
         {qrPasses.map((pass) => (
-          <AppCard key={pass.id}>
-            <div className="space-y-1">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-semibold">{pass.label}</p>
-                <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase text-slate-700">
-                  {pass.type}
-                </span>
-              </div>
-              <p className="text-xs text-[var(--color-text-muted)]">
-                Unidad: {pass.unitId} - Estado: {pass.status}
-              </p>
-              <p className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-mono text-slate-700">
-                {pass.qrValue}
-              </p>
-              <p className="text-xs text-[var(--color-text-muted)]">
-                Codigo: {pass.displayCode}
-              </p>
-              {pass.visitorPhotoUrl ? (
+          <button
+            className="block w-full text-left"
+            key={pass.id}
+            onClick={() => setSelectedQrId(pass.id)}
+            type="button"
+          >
+            <AppCard className="hover:border-[var(--color-brand)]/50">
+              <div className="space-y-1">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold">{pass.label}</p>
+                  <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase text-slate-700">
+                    {pass.type === 'single_use' ? 'Temporal' : 'Time limit'}
+                  </span>
+                </div>
                 <p className="text-xs text-[var(--color-text-muted)]">
-                  Foto: {pass.visitorPhotoUrl}
+                  Unidad: {pass.unitId} - Estado: {pass.status}
                 </p>
-              ) : null}
-            </div>
-          </AppCard>
+                <p className="text-xs font-semibold text-[var(--color-text-muted)]">
+                  Ultimos 4: {getLast4Code(pass.displayCode)}
+                </p>
+              </div>
+            </AppCard>
+          </button>
         ))}
       </div>
+      {selectedQr ? (
+        <AppCard className="space-y-2 border-[var(--color-brand)]/40">
+          <p className="text-sm font-semibold">Detalle QR (ideal para screenshot)</p>
+          <p className="text-xs text-[var(--color-text-muted)]">Etiqueta: {selectedQr.label}</p>
+          <p className="text-xs text-[var(--color-text-muted)]">Unidad: {selectedQr.unitId}</p>
+          <p className="text-xs text-[var(--color-text-muted)]">
+            Vigencia: {formatValidity(selectedQr)}
+          </p>
+          <p className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-mono text-slate-700">
+            qrValue: {selectedQr.qrValue}
+          </p>
+          <p className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-mono text-slate-700">
+            displayCode: {selectedQr.displayCode} (ultimos 4: {getLast4Code(selectedQr.displayCode)})
+          </p>
+          {selectedQr.visitorPhotoUrl ? (
+            <p className="text-xs text-[var(--color-text-muted)]">
+              Foto: {selectedQr.visitorPhotoUrl}
+            </p>
+          ) : null}
+          <div className="flex gap-2">
+            <AppButton
+              onClick={() => {
+                deleteQrPass(selectedQr.id)
+                setSelectedQrId(null)
+              }}
+              variant="danger"
+            >
+              Borrar QR
+            </AppButton>
+            <AppButton onClick={() => setSelectedQrId(null)} variant="secondary">
+              Cerrar detalle
+            </AppButton>
+          </div>
+        </AppCard>
+      ) : null}
     </div>
   )
 }
@@ -179,10 +245,7 @@ export function AppIncidentsPage() {
   const [priority, setPriority] = useState<Incident['priority']>('medium')
   const [message, setMessage] = useState('')
 
-  const sortedIncidents = useMemo(
-    () => sortIncidentsForGuard(incidents),
-    [incidents],
-  )
+  const sortedIncidents = useMemo(() => sortIncidentsForGuard(incidents), [incidents])
   const communalAlert = sortedIncidents.some((incident) => incident.supportScore >= 3)
 
   function handleCreateIncident() {
@@ -259,7 +322,7 @@ export function AppIncidentsPage() {
         {sortedIncidents.map((incident) => {
           const myVote = incident.votes.find((vote) => vote.userId === session?.userId)?.value
           return (
-            <AppCard key={incident.id}>
+            <AppCard className={incidentEmphasis(incident.supportScore)} key={incident.id}>
               <div className="space-y-2">
                 <div className="flex items-start justify-between gap-2">
                   <div>
@@ -282,6 +345,11 @@ export function AppIncidentsPage() {
                   </div>
                 </div>
                 <p className="text-sm text-[var(--color-text-muted)]">{incident.description}</p>
+                {incident.supportScore >= 10 ? (
+                  <p className="text-xs font-semibold uppercase tracking-[0.08em] text-red-700">
+                    Prioridad critica comunitaria
+                  </p>
+                ) : null}
                 <div className="flex gap-2">
                   <AppButton
                     className={`px-3 py-2 text-xs ${myVote === 1 ? 'ring-2 ring-emerald-400' : ''}`}
