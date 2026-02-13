@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from 'react-router-dom'
+import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useNetworkStatus } from '../../shared/hooks/useNetworkStatus'
 
 const opsNav = [
@@ -10,6 +10,7 @@ const opsNav = [
 
 export function OpsLayout() {
   const { isOnline } = useNetworkStatus()
+  const navigate = useNavigate()
 
   return (
     <div className="min-h-dvh bg-slate-950 text-white">
@@ -21,15 +22,24 @@ export function OpsLayout() {
             </p>
             <h1 className="text-base font-semibold">Control de acceso</h1>
           </div>
-          <span
-            className={`rounded-full px-3 py-1 text-xs font-semibold ${
-              isOnline
-                ? 'bg-emerald-500/20 text-emerald-200'
-                : 'bg-amber-500/20 text-amber-200'
-            }`}
-          >
-            {isOnline ? 'En linea' : 'Offline'}
-          </span>
+          <div className="flex items-center gap-2">
+            <span
+              className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                isOnline
+                  ? 'bg-emerald-500/20 text-emerald-200'
+                  : 'bg-amber-500/20 text-amber-200'
+              }`}
+            >
+              {isOnline ? 'En linea' : 'Offline'}
+            </span>
+            <button
+              className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-100"
+              onClick={() => navigate('/login')}
+              type="button"
+            >
+              Salir
+            </button>
+          </div>
         </div>
       </header>
 

@@ -6,6 +6,7 @@ import {
   userRoleSchema,
   type UserRole,
 } from '../../../shared/domain/auth'
+import { useDemoData } from '../../../shared/state/DemoDataContext'
 import { AppButton, AppCard } from '../../../shared/ui'
 
 const roleLabels: Record<UserRole, string> = {
@@ -18,6 +19,7 @@ const roleLabels: Record<UserRole, string> = {
 
 export function LoginPage() {
   const navigate = useNavigate()
+  const { accounts, findAccountByRole } = useDemoData()
   const [email, setEmail] = useState('demo@privadareforma.mx')
   const [role, setRole] = useState<UserRole>('resident')
   const [errorMessage, setErrorMessage] = useState('')
@@ -31,6 +33,16 @@ export function LoginPage() {
 
     setErrorMessage('')
     navigate(getRoleLandingPath(result.data.role))
+  }
+
+  function fillDemoAccount(nextRole: UserRole) {
+    const account = findAccountByRole(nextRole)
+    if (!account) {
+      return
+    }
+
+    setRole(account.role)
+    setEmail(account.email)
   }
 
   return (
@@ -74,6 +86,29 @@ export function LoginPage() {
           ))}
         </select>
       </label>
+
+      <div className="space-y-2">
+        <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
+          Cuentas demo locales
+        </p>
+        <div className="grid grid-cols-1 gap-2">
+          {accounts.slice(0, 3).map((account) => (
+            <button
+              key={account.id}
+              className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-left text-xs"
+              onClick={() => fillDemoAccount(account.role)}
+              type="button"
+            >
+              <p className="font-semibold text-[var(--color-text)]">
+                {account.fullName}
+              </p>
+              <p className="text-[var(--color-text-muted)]">
+                {account.email} - {roleLabels[account.role]} ({account.unit})
+              </p>
+            </button>
+          ))}
+        </div>
+      </div>
 
       {errorMessage ? (
         <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">

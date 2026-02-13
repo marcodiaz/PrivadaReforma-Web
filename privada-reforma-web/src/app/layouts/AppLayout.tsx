@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 
 type NavItem = {
   to: string
@@ -31,19 +31,29 @@ function resolveTitle(pathname: string): string {
 
 export function AppLayout() {
   const { pathname } = useLocation()
+  const navigate = useNavigate()
   const isAdmin = pathname.startsWith('/admin')
   const navItems = isAdmin ? adminNav : residentNav
 
   return (
     <div className="min-h-dvh bg-[var(--color-bg)]">
       <header className="sticky top-0 z-10 border-b border-[var(--color-border)] bg-[var(--color-surface)]/95 px-4 pb-3 pt-3 backdrop-blur">
-        <div className="mx-auto w-full max-w-md">
-          <p className="text-xs uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
-            Privada Reforma
-          </p>
-          <h1 className="text-base font-semibold text-[var(--color-text)]">
-            {resolveTitle(pathname)}
-          </h1>
+        <div className="mx-auto flex w-full max-w-md items-start justify-between gap-2">
+          <div>
+            <p className="text-xs uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
+              Privada Reforma
+            </p>
+            <h1 className="text-base font-semibold text-[var(--color-text)]">
+              {resolveTitle(pathname)}
+            </h1>
+          </div>
+          <button
+            className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-1.5 text-xs font-semibold text-[var(--color-text)]"
+            onClick={() => navigate('/login')}
+            type="button"
+          >
+            Salir
+          </button>
         </div>
       </header>
 
