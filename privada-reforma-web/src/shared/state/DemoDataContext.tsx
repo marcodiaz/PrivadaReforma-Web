@@ -29,13 +29,7 @@ import {
   type QrPass,
   qrPassTypeSchema,
 } from '../domain/demoData'
-import {
-  getItem,
-  migrateIfNeeded,
-  removeItem,
-  setItem,
-  storageKeys,
-} from '../storage/storage'
+import { getItem, migrateIfNeeded, removeItem, setItem, storageKeys } from '../storage/storage'
 import {
   canResolveIncident,
   updateVote as updateIncidentVote,
@@ -47,6 +41,17 @@ import {
   getNextDepartmentSequence,
   normalizeDepartmentCode,
 } from '../../features/access/qrLogic'
+import { LOCAL_PACKAGES, packageSchema, type Package } from '../domain/packages'
+import {
+  canMarkPackageReady,
+  canRegisterOrDeliverPackage,
+  deliverPackageTransition,
+  getHeldPackageCountForUnit as getHeldCountForUnit,
+  getHeldPackageCountForUnits,
+  getHeldPackageCountGlobal as getHeldCountGlobal,
+  markPackageReadyTransition,
+  registerPackageTransition,
+} from '../../features/packages/logic'
 
 type CreateQrInput = {
   label: string
@@ -62,6 +67,7 @@ type DemoDataContextValue = {
   session: AppSession | null
   incidents: Incident[]
   qrPasses: QrPass[]
+  packages: Package[]
   auditLog: AuditLogEntry[]
   offlineQueue: OfflineQueueEvent[]
   isOnline: boolean
@@ -84,7 +90,7 @@ type DemoDataContextValue = {
   addGuardAction: (incidentId: string, input: { note?: string; photoUrl?: string }) => boolean
   resolveIncident: (
     incidentId: string,
-    input?: { note?: string; photoUrl?: string },
+    input?: { note?: string; photoUrl?: string }
   ) => { ok: boolean; message: string }
   createQrPass: (input: CreateQrInput) => { ok: boolean; error?: string }
   deleteQrPass: (qrId: string) => void
@@ -100,6 +106,18 @@ type DemoDataContextValue = {
     result: 'allow' | 'reject'
     note?: string
   }) => void
+  registerPackage: (input: {
+    unitNumber: string
+    photoUrl: string
+    carrier?: string
+    notes?: string
+  }) => { ok: boolean; error?: string }
+  markPackageReady: (packageId: string) => { ok: boolean; error?: string }
+  deliverPackage: (packageId: string) => { ok: boolean; error?: string }
+  getHeldPackageCountForUnit: (unitNumber: string) => number
+  getHeldPackageCountForUser: (targetSession?: AppSession | null) => number
+  getHeldPackageCountGlobal: () => number
+  getPackagesForUser: (targetSession?: AppSession | null) => Package[]
 }
 
 const DemoDataContext = createContext<DemoDataContextValue | null>(null)
@@ -107,7 +125,7 @@ const DemoDataContext = createContext<DemoDataContextValue | null>(null)
 function safeReadArray<T>(
   key: string,
   schema: { safeParse: (value: unknown) => { success: boolean; data?: T } },
-  fallback: T,
+  fallback: T
 ) {
   const raw = getItem<unknown>(key)
   if (raw === null) {
@@ -152,20 +170,19 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     return parsed.success ? parsed.data : null
   })
   const [incidents, setIncidents] = useState<Incident[]>(() =>
-    safeReadArray(storageKeys.incidents, incidentSchema.array(), LOCAL_INCIDENTS),
+    safeReadArray(storageKeys.incidents, incidentSchema.array(), LOCAL_INCIDENTS)
   )
   const [qrPasses, setQrPasses] = useState<QrPass[]>(() =>
-    safeReadArray(storageKeys.qrPasses, qrPassSchema.array(), LOCAL_QR_PASSES),
+    safeReadArray(storageKeys.qrPasses, qrPassSchema.array(), LOCAL_QR_PASSES)
+  )
+  const [packages, setPackages] = useState<Package[]>(() =>
+    safeReadArray(storageKeys.packages, packageSchema.array(), LOCAL_PACKAGES)
   )
   const [auditLog, setAuditLog] = useState<AuditLogEntry[]>(() =>
-    safeReadArray(storageKeys.auditLog, auditLogSchema.array(), LOCAL_AUDIT_LOG),
+    safeReadArray(storageKeys.auditLog, auditLogSchema.array(), LOCAL_AUDIT_LOG)
   )
   const [offlineQueue, setOfflineQueue] = useState<OfflineQueueEvent[]>(() =>
-    safeReadArray(
-      storageKeys.offlineQueue,
-      offlineQueueSchema.array(),
-      LOCAL_OFFLINE_QUEUE,
-    ),
+    safeReadArray(storageKeys.offlineQueue, offlineQueueSchema.array(), LOCAL_OFFLINE_QUEUE)
   )
   const [isOnline, setIsOnline] = useState(() => navigator.onLine)
   const [syncToast, setSyncToast] = useState<string | null>(null)
@@ -214,6 +231,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       }
       setItem(storageKeys.incidents, incidents)
       setItem(storageKeys.qrPasses, qrPasses)
+      setItem(storageKeys.packages, packages)
       setItem(storageKeys.auditLog, auditLog)
       setItem(storageKeys.offlineQueue, offlineQueue)
     }, 300)
@@ -222,11 +240,11 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
         window.clearTimeout(persistTimerRef.current)
       }
     }
-  }, [session, incidents, qrPasses, auditLog, offlineQueue])
+  }, [session, incidents, qrPasses, packages, auditLog, offlineQueue])
 
   function login(email: string, role: UserRole) {
     const fromAccount = LOCAL_ACCOUNTS.find(
-      (account) => account.email === email && account.role === role,
+      (account) => account.email === email && account.role === role
     )
     if (fromAccount) {
       setSession(buildSessionFromAccount(fromAccount))
@@ -251,11 +269,13 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     setSession(null)
     setIncidents(LOCAL_INCIDENTS)
     setQrPasses(LOCAL_QR_PASSES)
+    setPackages(LOCAL_PACKAGES)
     setAuditLog(LOCAL_AUDIT_LOG)
     setOfflineQueue(LOCAL_OFFLINE_QUEUE)
     removeItem(storageKeys.session)
     removeItem(storageKeys.incidents)
     removeItem(storageKeys.qrPasses)
+    removeItem(storageKeys.packages)
     removeItem(storageKeys.auditLog)
     removeItem(storageKeys.offlineQueue)
   }
@@ -266,6 +286,19 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
 
   function findAccountByRole(role: UserRole) {
     return LOCAL_ACCOUNTS.find((account) => account.role === role)
+  }
+
+  function getSessionUnitNumbers(targetSession?: AppSession | null) {
+    const activeSession = targetSession ?? session
+    if (!activeSession) {
+      return []
+    }
+
+    const account = LOCAL_ACCOUNTS.find((entry) => entry.id === activeSession.userId)
+    if (account?.unitId) {
+      return [account.unitId]
+    }
+    return []
   }
 
   function createIncident(input: {
@@ -306,9 +339,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     if (!session || !['resident', 'tenant'].includes(session.role)) {
       return
     }
-    setIncidents((previous) =>
-      updateIncidentVote(previous, incidentId, session.userId, newValue),
-    )
+    setIncidents((previous) => updateIncidentVote(previous, incidentId, session.userId, newValue))
   }
 
   function acknowledgeIncident(incidentId: string) {
@@ -320,23 +351,20 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
               status: 'acknowledged',
               acknowledgedAt: incident.acknowledgedAt ?? new Date().toISOString(),
             }
-          : incident,
-      ),
+          : incident
+      )
     )
   }
 
   function markIncidentInProgress(incidentId: string) {
     setIncidents((previous) =>
       previous.map((incident) =>
-        incident.id === incidentId ? { ...incident, status: 'in_progress' } : incident,
-      ),
+        incident.id === incidentId ? { ...incident, status: 'in_progress' } : incident
+      )
     )
   }
 
-  function addGuardAction(
-    incidentId: string,
-    input: { note?: string; photoUrl?: string },
-  ) {
+  function addGuardAction(incidentId: string, input: { note?: string; photoUrl?: string }) {
     const cleanNote = input.note?.trim()
     const cleanPhotoUrl = input.photoUrl?.trim()
     if (!cleanNote && !cleanPhotoUrl) {
@@ -356,16 +384,13 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
                 },
               ],
             }
-          : incident,
-      ),
+          : incident
+      )
     )
     return true
   }
 
-  function resolveIncident(
-    incidentId: string,
-    input?: { note?: string; photoUrl?: string },
-  ) {
+  function resolveIncident(incidentId: string, input?: { note?: string; photoUrl?: string }) {
     let resolved = false
     let message = 'No se pudo resolver.'
     const cleanNote = input?.note?.trim()
@@ -402,7 +427,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
           status: 'resolved',
           resolvedAt: new Date().toISOString(),
         }
-      }),
+      })
     )
 
     return { ok: resolved, message }
@@ -471,7 +496,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       qrValue: `QR-${crypto.randomUUID()}`,
       displayCode: buildDepartmentDisplayCode(
         normalizedDepartment,
-        getNextDepartmentSequence(qrPasses, normalizedDepartment),
+        getNextDepartmentSequence(qrPasses, normalizedDepartment)
       ),
     }
 
@@ -535,7 +560,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     const matches = findPassesByDepartmentSequence(
       qrPasses,
       normalizedDepartment,
-      normalizedSequence,
+      normalizedSequence
     )
     const targetDisplayCode = `${normalizedDepartment}-${normalizedSequence}`
     if (matches.length === 0) {
@@ -582,9 +607,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     if (input.result === 'allow') {
       if (pass.type === 'single_use') {
         setQrPasses((previous) =>
-          previous.map((entry) =>
-            entry.id === pass.id ? { ...entry, status: 'used' } : entry,
-          ),
+          previous.map((entry) => (entry.id === pass.id ? { ...entry, status: 'used' } : entry))
         )
       }
       logAudit({
@@ -607,11 +630,107 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     return { ok: true, message: 'Acceso rechazado y auditado.' }
   }
 
+  function registerPackage(input: {
+    unitNumber: string
+    photoUrl: string
+    carrier?: string
+    notes?: string
+  }) {
+    if (!session) {
+      return { ok: false, error: 'Sesion requerida.' }
+    }
+    if (!canRegisterOrDeliverPackage(session.role)) {
+      return { ok: false, error: 'Solo guardia puede registrar paquetes.' }
+    }
+
+    const result = registerPackageTransition(packages, input, session.userId)
+    if (!result.ok) {
+      return { ok: false, error: result.error }
+    }
+    setPackages(result.nextPackages)
+    return { ok: true }
+  }
+
+  function markPackageReady(packageId: string) {
+    if (!session) {
+      return { ok: false, error: 'Sesion requerida.' }
+    }
+
+    const target = packages.find((entry) => entry.id === packageId)
+    if (!target) {
+      return { ok: false, error: 'Paquete no encontrado.' }
+    }
+
+    const unitNumbers = getSessionUnitNumbers(session)
+    if (!canMarkPackageReady(session.role, target.unitNumber, unitNumbers)) {
+      return {
+        ok: false,
+        error: 'Solo residente/inquilino de la unidad puede confirmar recepcion.',
+      }
+    }
+
+    const result = markPackageReadyTransition(packages, packageId, session.userId)
+    if (!result.ok) {
+      return { ok: false, error: result.error }
+    }
+    setPackages(result.nextPackages)
+    return { ok: true }
+  }
+
+  function deliverPackage(packageId: string) {
+    if (!session) {
+      return { ok: false, error: 'Sesion requerida.' }
+    }
+    if (!canRegisterOrDeliverPackage(session.role)) {
+      return { ok: false, error: 'Solo guardia puede entregar paquetes.' }
+    }
+
+    const result = deliverPackageTransition(packages, packageId, session.userId)
+    if (!result.ok) {
+      return { ok: false, error: result.error }
+    }
+    setPackages(result.nextPackages)
+    return { ok: true }
+  }
+
+  function getHeldPackageCountForUnit(unitNumber: string) {
+    return getHeldCountForUnit(packages, unitNumber)
+  }
+
+  function getHeldPackageCountForUser(targetSession?: AppSession | null) {
+    const activeSession = targetSession ?? session
+    if (!activeSession) {
+      return 0
+    }
+    if (['admin', 'board'].includes(activeSession.role)) {
+      return getHeldCountGlobal(packages)
+    }
+    const units = getSessionUnitNumbers(activeSession)
+    return getHeldPackageCountForUnits(packages, units)
+  }
+
+  function getHeldPackageCountGlobal() {
+    return getHeldCountGlobal(packages)
+  }
+
+  function getPackagesForUser(targetSession?: AppSession | null) {
+    const activeSession = targetSession ?? session
+    if (!activeSession) {
+      return []
+    }
+    if (['admin', 'board', 'guard'].includes(activeSession.role)) {
+      return packages
+    }
+    const units = getSessionUnitNumbers(activeSession)
+    return packages.filter((entry) => units.includes(entry.unitNumber))
+  }
+
   const value: DemoDataContextValue = {
     accounts: LOCAL_ACCOUNTS,
     session,
     incidents,
     qrPasses,
+    packages,
     auditLog,
     offlineQueue,
     isOnline,
@@ -632,6 +751,13 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     deleteQrPass,
     handleGuardScanDecision,
     enqueueManualOfflineValidation,
+    registerPackage,
+    markPackageReady,
+    deliverPackage,
+    getHeldPackageCountForUnit,
+    getHeldPackageCountForUser,
+    getHeldPackageCountGlobal,
+    getPackagesForUser,
   }
 
   return <DemoDataContext.Provider value={value}>{children}</DemoDataContext.Provider>
