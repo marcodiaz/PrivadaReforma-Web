@@ -32,6 +32,7 @@ import {
   AdminUsersPage,
   AdminVisitsPage,
 } from '../features/admin/pages'
+import { NotFoundPage } from '../features/public/pages/NotFoundPage'
 
 export const router = createBrowserRouter([
   {
@@ -88,6 +89,6 @@ export const router = createBrowserRouter([
   },
   {
     path: '*',
-    element: <Navigate to="/login" replace />,
+    element: <NotFoundPage />,
   },
 ])
