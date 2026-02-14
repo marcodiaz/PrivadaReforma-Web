@@ -8,10 +8,8 @@ import {
   isSlaOverdue,
   sortIncidentsForGuard,
 } from '../incidents/logic'
-import {
-  findPassesByDepartmentSequence,
-  getLast4Code,
-} from '../access/qrLogic'
+import { findPassesByDepartmentSequence, getLast4Code } from '../access/qrLogic'
+export { GuardPackagesPage } from '../packages/pages'
 
 function guardIncidentEmphasis(score: number) {
   if (score >= 10) {
@@ -34,7 +32,7 @@ export function GuardScanPage() {
 
   const matches = useMemo(
     () => findPassesByDepartmentSequence(qrPasses, departmentCode, sequenceCode),
-    [qrPasses, departmentCode, sequenceCode],
+    [qrPasses, departmentCode, sequenceCode]
   )
   const currentPass = matches.length === 1 ? matches[0] : null
 
@@ -69,9 +67,7 @@ export function GuardScanPage() {
           block
           className="py-3 text-base"
           onClick={() =>
-            setScanHint(
-              'Scanear no disponible sin permisos de camara en este entorno.',
-            )
+            setScanHint('Scanear no disponible sin permisos de camara en este entorno.')
           }
           variant="secondary"
         >
@@ -80,17 +76,13 @@ export function GuardScanPage() {
         {scanHint ? <p className="text-xs text-slate-300">{scanHint}</p> : null}
 
         <label className="block space-y-1">
-          <span className="text-xs uppercase tracking-[0.08em] text-slate-400">
-            Manual entry
-          </span>
+          <span className="text-xs uppercase tracking-[0.08em] text-slate-400">Manual entry</span>
           <div className="grid grid-cols-2 gap-2">
             <input
               className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
               inputMode="numeric"
               maxLength={4}
-              onChange={(event) =>
-                setDepartmentCode(event.target.value.replace(/[^0-9]/g, ''))
-              }
+              onChange={(event) => setDepartmentCode(event.target.value.replace(/[^0-9]/g, ''))}
               pattern="[0-9]*"
               placeholder="Depto 1141"
               type="tel"
@@ -100,9 +92,7 @@ export function GuardScanPage() {
               className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
               inputMode="numeric"
               maxLength={4}
-              onChange={(event) =>
-                setSequenceCode(event.target.value.replace(/[^0-9]/g, ''))
-              }
+              onChange={(event) => setSequenceCode(event.target.value.replace(/[^0-9]/g, ''))}
               pattern="[0-9]*"
               placeholder="Numero 0001"
               type="tel"
@@ -133,9 +123,7 @@ export function GuardScanPage() {
             Rechazar
           </AppButton>
         </div>
-        {resultMessage ? (
-          <p className="text-xs text-slate-300">{resultMessage}</p>
-        ) : null}
+        {resultMessage ? <p className="text-xs text-slate-300">{resultMessage}</p> : null}
       </AppCard>
       {matches.length > 1 ? (
         <AppCard className="border-amber-500/50 bg-amber-900/20 text-amber-100">
@@ -194,9 +182,7 @@ export function GuardLogbookPage() {
                 <p className="text-xs text-slate-300">
                   {new Date(entry.at).toLocaleString()} - target: {entry.targetId}
                 </p>
-                {entry.note ? (
-                  <p className="text-xs text-slate-400">Nota: {entry.note}</p>
-                ) : null}
+                {entry.note ? <p className="text-xs text-slate-400">Nota: {entry.note}</p> : null}
               </AppCard>
             ))
         )}
@@ -313,9 +299,7 @@ export function GuardIncidentsPage() {
                       })
                       setFeedback((previous) => ({
                         ...previous,
-                        [incident.id]: ok
-                          ? 'Evidencia guardada.'
-                          : 'Agrega comentario o photoUrl.',
+                        [incident.id]: ok ? 'Evidencia guardada.' : 'Agrega comentario o photoUrl.',
                       }))
                       if (ok) {
                         setDraftNote((previous) => ({ ...previous, [incident.id]: '' }))
@@ -377,9 +361,7 @@ export function GuardOfflinePage() {
           className="w-full rounded-lg border border-amber-600/40 bg-amber-950/40 px-3 py-2 text-sm text-amber-100"
           inputMode="numeric"
           maxLength={4}
-          onChange={(event) =>
-            setDepartmentCode(event.target.value.replace(/[^0-9]/g, ''))
-          }
+          onChange={(event) => setDepartmentCode(event.target.value.replace(/[^0-9]/g, ''))}
           pattern="[0-9]*"
           placeholder="Depto (1141)"
           type="tel"
@@ -389,9 +371,7 @@ export function GuardOfflinePage() {
           className="w-full rounded-lg border border-amber-600/40 bg-amber-950/40 px-3 py-2 text-sm text-amber-100"
           inputMode="numeric"
           maxLength={4}
-          onChange={(event) =>
-            setSequenceCode(event.target.value.replace(/[^0-9]/g, ''))
-          }
+          onChange={(event) => setSequenceCode(event.target.value.replace(/[^0-9]/g, ''))}
           pattern="[0-9]*"
           placeholder="Numero (4)"
           type="tel"

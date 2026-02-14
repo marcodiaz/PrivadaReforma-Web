@@ -4,10 +4,8 @@ import { AppButton, AppCard, ModulePlaceholder } from '../../shared/ui'
 import { useDemoData } from '../../shared/state/DemoDataContext'
 import { sortIncidentsForGuard } from '../incidents/logic'
 import type { Incident, QrPass } from '../../shared/domain/demoData'
-import {
-  getLast4Code,
-  normalizeDepartmentCode,
-} from '../access/qrLogic'
+import { getLast4Code, normalizeDepartmentCode } from '../access/qrLogic'
+export { AppPackagesPage } from '../packages/pages'
 
 function priorityBadge(priority: Incident['priority']) {
   if (priority === 'high') {
@@ -45,7 +43,7 @@ export function AppHomePage() {
   const activeAlerts = incidents.filter((incident) => incident.supportScore >= 3).length
   const activeQr = qrPasses.filter((pass) => pass.status === 'active').length
   const mediumOrHighIncidents = incidents.filter(
-    (incident) => incident.priority === 'medium' || incident.priority === 'high',
+    (incident) => incident.priority === 'medium' || incident.priority === 'high'
   )
 
   return (
@@ -58,14 +56,14 @@ export function AppHomePage() {
       <div className="grid grid-cols-3 gap-3">
         <button onClick={() => navigate('/app/visits')} type="button">
           <AppCard className="text-left transition hover:border-[var(--color-brand)]/50">
-          <p className="text-xs text-[var(--color-text-muted)]">QR activos</p>
-          <p className="text-2xl font-semibold">{activeQr}</p>
+            <p className="text-xs text-[var(--color-text-muted)]">QR activos</p>
+            <p className="text-2xl font-semibold">{activeQr}</p>
           </AppCard>
         </button>
         <button onClick={() => navigate('/app/announcements')} type="button">
           <AppCard className="text-left transition hover:border-[var(--color-brand)]/50">
-          <p className="text-xs text-[var(--color-text-muted)]">Alertas</p>
-          <p className="text-2xl font-semibold">{activeAlerts}</p>
+            <p className="text-xs text-[var(--color-text-muted)]">Alertas</p>
+            <p className="text-2xl font-semibold">{activeAlerts}</p>
           </AppCard>
         </button>
         <AppCard>
@@ -76,9 +74,7 @@ export function AppHomePage() {
       <AppCard className="space-y-2">
         <p className="text-sm font-semibold">Incidencias relevantes (medium+)</p>
         {mediumOrHighIncidents.length === 0 ? (
-          <p className="text-xs text-[var(--color-text-muted)]">
-            No hay incidencias medium/high.
-          </p>
+          <p className="text-xs text-[var(--color-text-muted)]">No hay incidencias medium/high.</p>
         ) : (
           mediumOrHighIncidents.slice(0, 3).map((incident) => (
             <div
@@ -119,7 +115,7 @@ export function AppVisitsPage() {
       timeLimit: accessType === 'time_limit' ? timeLimit : undefined,
       visitorPhotoUrl: visitorPhotoUrl || undefined,
     })
-    setMessage(result.ok ? 'QR creado correctamente.' : result.error ?? 'Error.')
+    setMessage(result.ok ? 'QR creado correctamente.' : (result.error ?? 'Error.'))
   }
 
   return (
@@ -191,9 +187,7 @@ export function AppVisitsPage() {
         <AppButton block onClick={handleCreateQr}>
           Crear QR
         </AppButton>
-        {message ? (
-          <p className="text-xs text-[var(--color-text-muted)]">{message}</p>
-        ) : null}
+        {message ? <p className="text-xs text-[var(--color-text-muted)]">{message}</p> : null}
       </AppCard>
       <div className="space-y-2">
         {qrPasses.map((pass) => (
@@ -214,11 +208,11 @@ export function AppVisitsPage() {
                 <p className="text-xs text-[var(--color-text-muted)]">
                   Unidad: {pass.unitId} - Estado: {pass.status}
                 </p>
-              <p className="text-xs font-semibold text-[var(--color-text-muted)]">
+                <p className="text-xs font-semibold text-[var(--color-text-muted)]">
                   Codigo: {pass.displayCode} (ultimos 4: {getLast4Code(pass.displayCode)})
-              </p>
-            </div>
-          </AppCard>
+                </p>
+              </div>
+            </AppCard>
           </button>
         ))}
       </div>
@@ -226,40 +220,41 @@ export function AppVisitsPage() {
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/55 p-4 sm:items-center">
           <div className="w-full max-w-sm rounded-2xl bg-white shadow-2xl">
             <AppCard className="space-y-2 border-[var(--color-brand)]/40">
-          <p className="text-sm font-semibold">Detalle QR (ideal para screenshot)</p>
-          <p className="text-xs text-[var(--color-text-muted)]">Etiqueta: {selectedQr.label}</p>
-          <p className="text-xs text-[var(--color-text-muted)]">Unidad: {selectedQr.unitId}</p>
-          <p className="text-xs text-[var(--color-text-muted)]">
-            Departamento: {normalizeDepartmentCode(selectedQr.unitId).slice(0, 4)}
-          </p>
-          <p className="text-xs text-[var(--color-text-muted)]">
-            Vigencia: {formatValidity(selectedQr)}
-          </p>
-          <p className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-mono text-slate-700">
-            qrValue: {selectedQr.qrValue}
-          </p>
-          <p className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-mono text-slate-700">
-            displayCode: {selectedQr.displayCode} (ultimos 4: {getLast4Code(selectedQr.displayCode)})
-          </p>
-          {selectedQr.visitorPhotoUrl ? (
-            <p className="text-xs text-[var(--color-text-muted)]">
-              Foto: {selectedQr.visitorPhotoUrl}
-            </p>
-          ) : null}
-          <div className="flex gap-2">
-            <AppButton
-              onClick={() => {
-                deleteQrPass(selectedQr.id)
-                setSelectedQrId(null)
-              }}
-              variant="danger"
-            >
-              Borrar QR
-            </AppButton>
-            <AppButton onClick={() => setSelectedQrId(null)} variant="secondary">
-              Cerrar detalle
-            </AppButton>
-          </div>
+              <p className="text-sm font-semibold">Detalle QR (ideal para screenshot)</p>
+              <p className="text-xs text-[var(--color-text-muted)]">Etiqueta: {selectedQr.label}</p>
+              <p className="text-xs text-[var(--color-text-muted)]">Unidad: {selectedQr.unitId}</p>
+              <p className="text-xs text-[var(--color-text-muted)]">
+                Departamento: {normalizeDepartmentCode(selectedQr.unitId).slice(0, 4)}
+              </p>
+              <p className="text-xs text-[var(--color-text-muted)]">
+                Vigencia: {formatValidity(selectedQr)}
+              </p>
+              <p className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-mono text-slate-700">
+                qrValue: {selectedQr.qrValue}
+              </p>
+              <p className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-mono text-slate-700">
+                displayCode: {selectedQr.displayCode} (ultimos 4:{' '}
+                {getLast4Code(selectedQr.displayCode)})
+              </p>
+              {selectedQr.visitorPhotoUrl ? (
+                <p className="text-xs text-[var(--color-text-muted)]">
+                  Foto: {selectedQr.visitorPhotoUrl}
+                </p>
+              ) : null}
+              <div className="flex gap-2">
+                <AppButton
+                  onClick={() => {
+                    deleteQrPass(selectedQr.id)
+                    setSelectedQrId(null)
+                  }}
+                  variant="danger"
+                >
+                  Borrar QR
+                </AppButton>
+                <AppButton onClick={() => setSelectedQrId(null)} variant="secondary">
+                  Cerrar detalle
+                </AppButton>
+              </div>
             </AppCard>
           </div>
         </div>
@@ -437,8 +432,8 @@ export function AppAnnouncementsPage() {
           <ul className="mt-2 space-y-2">
             {escalated.map((incident) => (
               <li key={incident.id} className="text-sm text-[var(--color-text-muted)]">
-                {incident.title}: score {incident.supportScore}. Abre Incidencias para
-                apoyar (+1/-1).
+                {incident.title}: score {incident.supportScore}. Abre Incidencias para apoyar
+                (+1/-1).
               </li>
             ))}
           </ul>
