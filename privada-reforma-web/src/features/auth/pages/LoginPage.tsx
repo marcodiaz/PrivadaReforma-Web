@@ -19,7 +19,7 @@ const roleLabels: Record<UserRole, string> = {
 
 export function LoginPage() {
   const navigate = useNavigate()
-  const { accounts, findAccountByRole } = useDemoData()
+  const { accounts, findAccountByRole, login, resetDemoData } = useDemoData()
   const [email, setEmail] = useState('demo@privadareforma.mx')
   const [role, setRole] = useState<UserRole>('resident')
   const [errorMessage, setErrorMessage] = useState('')
@@ -31,6 +31,7 @@ export function LoginPage() {
       return
     }
 
+    login(result.data.email, result.data.role)
     setErrorMessage('')
     navigate(getRoleLandingPath(result.data.role))
   }
@@ -53,7 +54,7 @@ export function LoginPage() {
         </p>
         <h1 className="text-xl font-semibold">Privada Reforma</h1>
         <p className="text-sm text-[var(--color-text-muted)]">
-          Sprint 0.5: flujo de acceso y navegacion por rol.
+          Sprint 0.6: incidencias, QR y guardia offline sin backend.
         </p>
       </header>
 
@@ -92,7 +93,7 @@ export function LoginPage() {
           Cuentas demo locales
         </p>
         <div className="grid grid-cols-1 gap-2">
-          {accounts.slice(0, 3).map((account) => (
+          {accounts.slice(0, 4).map((account) => (
             <button
               key={account.id}
               className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-left text-xs"
@@ -103,12 +104,18 @@ export function LoginPage() {
                 {account.fullName}
               </p>
               <p className="text-[var(--color-text-muted)]">
-                {account.email} - {roleLabels[account.role]} ({account.unit})
+                {account.email} - {roleLabels[account.role]} ({account.unitId})
               </p>
             </button>
           ))}
         </div>
       </div>
+
+      {import.meta.env.DEV ? (
+        <AppButton block onClick={resetDemoData} variant="secondary">
+          Reset demo data (dev)
+        </AppButton>
+      ) : null}
 
       {errorMessage ? (
         <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">

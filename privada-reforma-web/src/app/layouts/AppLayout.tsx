@@ -1,21 +1,25 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { useDemoData } from '../../shared/state/DemoDataContext'
 
 type NavItem = {
   to: string
   label: string
+  kind?: 'packages'
 }
 
 const residentNav: NavItem[] = [
   { to: '/app/home', label: 'Inicio' },
   { to: '/app/visits', label: 'Visitas' },
-  { to: '/app/pool', label: 'Alberca' },
+  { to: '/app/packages', label: 'Paquetes', kind: 'packages' },
   { to: '/app/incidents', label: 'Incidencias' },
+  { to: '/app/pool', label: 'Alberca' },
   { to: '/app/profile', label: 'Perfil' },
 ]
 
 const adminNav: NavItem[] = [
   { to: '/admin/dashboard', label: 'Panel' },
   { to: '/admin/users', label: 'Usuarios' },
+  { to: '/admin/packages', label: 'Paquetes', kind: 'packages' },
   { to: '/admin/debts', label: 'Adeudos' },
   { to: '/admin/finance', label: 'Finanzas' },
   { to: '/admin/exports', label: 'Reportes' },
@@ -32,8 +36,11 @@ function resolveTitle(pathname: string): string {
 export function AppLayout() {
   const { pathname } = useLocation()
   const navigate = useNavigate()
+  const { getHeldPackageCountForUser, logout, session } = useDemoData()
   const isAdmin = pathname.startsWith('/admin')
   const navItems = isAdmin ? adminNav : residentNav
+  const heldPackages = getHeldPackageCountForUser()
+  const shouldShowTopPackages = ['resident', 'tenant', 'board'].includes(session?.role ?? '')
 
   return (
     <div className="min-h-dvh bg-[var(--color-bg)]">
@@ -46,10 +53,18 @@ export function AppLayout() {
             <h1 className="text-base font-semibold text-[var(--color-text)]">
               {resolveTitle(pathname)}
             </h1>
+            {shouldShowTopPackages ? (
+              <p className="mt-1 text-xs font-semibold text-[var(--color-text-muted)]">
+                Packages: {heldPackages}
+              </p>
+            ) : null}
           </div>
           <button
             className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-1.5 text-xs font-semibold text-[var(--color-text)]"
-            onClick={() => navigate('/login')}
+            onClick={() => {
+              logout()
+              navigate('/login')
+            }}
             type="button"
           >
             Salir
@@ -62,7 +77,10 @@ export function AppLayout() {
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 border-t border-[var(--color-border)] bg-[var(--color-surface)]/95 px-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2 backdrop-blur">
-        <ul className="mx-auto grid w-full max-w-md grid-cols-5 gap-1">
+        <ul
+          className="mx-auto grid w-full max-w-md gap-1"
+          style={{ gridTemplateColumns: `repeat(${navItems.length}, minmax(0, 1fr))` }}
+        >
           {navItems.map((item) => (
             <li key={item.to}>
               <NavLink
@@ -75,7 +93,14 @@ export function AppLayout() {
                   }`
                 }
               >
-                {item.label}
+                <span className="inline-flex items-center justify-center gap-1">
+                  <span>{item.label}</span>
+                  {item.kind === 'packages' && heldPackages > 0 ? (
+                    <span className="rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] font-bold leading-none">
+                      {heldPackages}
+                    </span>
+                  ) : null}
+                </span>
               </NavLink>
             </li>
           ))}

@@ -8,6 +8,7 @@ import {
   AppFinancePage,
   AppHomePage,
   AppIncidentsPage,
+  AppPackagesPage,
   AppPoolPage,
   AppProfilePage,
   AppVisitsPage,
@@ -16,6 +17,7 @@ import {
   GuardIncidentsPage,
   GuardLogbookPage,
   GuardOfflinePage,
+  GuardPackagesPage,
   GuardScanPage,
 } from '../features/guard/pages'
 import {
@@ -26,6 +28,7 @@ import {
   AdminFinancePage,
   AdminIncidentsPage,
   AdminMaintenancePage,
+  AdminPackagesPage,
   AdminUsersPage,
   AdminVisitsPage,
 } from '../features/admin/pages'
@@ -46,6 +49,7 @@ export const router = createBrowserRouter([
       { index: true, element: <Navigate to="home" replace /> },
       { path: 'home', element: <AppHomePage /> },
       { path: 'visits', element: <AppVisitsPage /> },
+      { path: 'packages', element: <AppPackagesPage /> },
       { path: 'pool', element: <AppPoolPage /> },
       { path: 'incidents', element: <AppIncidentsPage /> },
       { path: 'announcements', element: <AppAnnouncementsPage /> },
@@ -59,6 +63,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="scan" replace /> },
       { path: 'scan', element: <GuardScanPage /> },
+      { path: 'packages', element: <GuardPackagesPage /> },
       { path: 'logbook', element: <GuardLogbookPage /> },
       { path: 'incidents', element: <GuardIncidentsPage /> },
       { path: 'offline', element: <GuardOfflinePage /> },
@@ -73,6 +78,7 @@ export const router = createBrowserRouter([
       { path: 'users', element: <AdminUsersPage /> },
       { path: 'debts', element: <AdminDebtsPage /> },
       { path: 'visits', element: <AdminVisitsPage /> },
+      { path: 'packages', element: <AdminPackagesPage /> },
       { path: 'incidents', element: <AdminIncidentsPage /> },
       { path: 'maintenance', element: <AdminMaintenancePage /> },
       { path: 'announcements', element: <AdminAnnouncementsPage /> },

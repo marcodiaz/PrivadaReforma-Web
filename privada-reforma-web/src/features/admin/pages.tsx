@@ -1,4 +1,5 @@
 import { ModulePlaceholder } from '../../shared/ui'
+export { AdminPackagesPage } from '../packages/pages'
 
 export function AdminDashboardPage() {
   return (

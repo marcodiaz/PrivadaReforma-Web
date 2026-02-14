@@ -1,3 +1,1 @@
-export type IncidentReport = {
-  incidentId: string
-}
+export { calculateSupportScore, sortIncidentsForGuard, updateVote } from './logic'

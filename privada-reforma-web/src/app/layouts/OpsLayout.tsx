@@ -1,16 +1,18 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { useNetworkStatus } from '../../shared/hooks/useNetworkStatus'
+import { useDemoData } from '../../shared/state/DemoDataContext'
 
 const opsNav = [
   { to: '/guard/scan', label: 'Escanear' },
+  { to: '/guard/packages', label: 'Paquetes' },
   { to: '/guard/logbook', label: 'Bitacora' },
   { to: '/guard/incidents', label: 'Incidencia' },
   { to: '/guard/offline', label: 'Offline' },
 ]
 
 export function OpsLayout() {
-  const { isOnline } = useNetworkStatus()
+  const { getHeldPackageCountGlobal, isOnline, logout } = useDemoData()
   const navigate = useNavigate()
+  const heldPackages = getHeldPackageCountGlobal()
 
   return (
     <div className="min-h-dvh bg-slate-950 text-white">
@@ -21,20 +23,22 @@ export function OpsLayout() {
               Operacion de guardia
             </p>
             <h1 className="text-base font-semibold">Control de acceso</h1>
+            <p className="text-xs text-slate-400">Paquetes en resguardo: {heldPackages}</p>
           </div>
           <div className="flex items-center gap-2">
             <span
               className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                isOnline
-                  ? 'bg-emerald-500/20 text-emerald-200'
-                  : 'bg-amber-500/20 text-amber-200'
+                isOnline ? 'bg-emerald-500/20 text-emerald-200' : 'bg-amber-500/20 text-amber-200'
               }`}
             >
               {isOnline ? 'En linea' : 'Offline'}
             </span>
             <button
               className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-100"
-              onClick={() => navigate('/login')}
+              onClick={() => {
+                logout()
+                navigate('/login')
+              }}
               type="button"
             >
               Salir
@@ -67,7 +71,14 @@ export function OpsLayout() {
                   }`
                 }
               >
-                {item.label}
+                <span className="inline-flex items-center gap-1">
+                  <span>{item.label}</span>
+                  {item.to === '/guard/packages' && heldPackages > 0 ? (
+                    <span className="rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] font-bold leading-none">
+                      {heldPackages}
+                    </span>
+                  ) : null}
+                </span>
               </NavLink>
             </li>
           ))}
