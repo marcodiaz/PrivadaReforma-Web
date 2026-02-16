@@ -27,10 +27,14 @@ import {
 } from '../domain/demoData'
 import { getItem, migrateIfNeeded, removeItem, setItem, storageKeys } from '../storage/storage'
 import {
+  createIncidentInSupabase,
+  deliverPackageInSupabase,
   fetchIncidentsFromSupabase,
   fetchPackagesFromSupabase,
-  syncIncidentsToSupabase,
-  syncPackagesToSupabase,
+  markPackageReadyInSupabase,
+  registerPackageInSupabase,
+  updateIncidentInSupabase,
+  voteIncidentInSupabase,
 } from '../supabase/data'
 import { isSupabaseConfigured } from '../supabase/client'
 import { useSupabaseAuth } from '../auth/SupabaseAuthProvider'
@@ -38,7 +42,7 @@ import {
   canResolveIncident,
   updateVote as updateIncidentVote,
 } from '../../features/incidents/logic'
-import { enqueueOfflineEvent, syncOfflineQueue } from '../../features/guard/offline'
+import { enqueueOfflineEvent, flushOfflineQueueWithApi } from '../../features/guard/offline'
 import {
   buildDepartmentDisplayCode,
   findPassesByDepartmentSequence,
@@ -180,8 +184,8 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
   const [syncToast, setSyncToast] = useState<string | null>(null)
   const [debtMode] = useState(false)
   const persistTimerRef = useRef<number | null>(null)
-  const remoteSyncTimerRef = useRef<number | null>(null)
   const remoteLoadDoneRef = useRef(false)
+  const flushingOfflineQueueRef = useRef(false)
   const auditLogRef = useRef<AuditLogEntry[]>(auditLog)
 
   useEffect(() => {
@@ -191,14 +195,6 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     function goOnline() {
       setIsOnline(true)
-      setOfflineQueue((previousQueue) => {
-        const result = syncOfflineQueue(previousQueue, auditLogRef.current)
-        if (result.syncedCount > 0) {
-          setAuditLog(result.nextAuditLog)
-          setSyncToast(`${result.syncedCount} eventos sincronizados`)
-        }
-        return result.nextQueue
-      })
     }
 
     function goOffline() {
@@ -214,7 +210,11 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
   }, [])
 
   useEffect(() => {
-    if (!isSupabaseConfigured || !isOnline || remoteLoadDoneRef.current) {
+    remoteLoadDoneRef.current = false
+  }, [session?.userId])
+
+  useEffect(() => {
+    if (!session || !isSupabaseConfigured || !isOnline || remoteLoadDoneRef.current) {
       return
     }
 
@@ -223,18 +223,18 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
 
     void (async () => {
       const [remotePackages, remoteIncidents] = await Promise.all([
-        fetchPackagesFromSupabase(),
-        fetchIncidentsFromSupabase(),
+        fetchPackagesFromSupabase({ role: session.role, unitNumber: session.unitNumber }),
+        fetchIncidentsFromSupabase({ role: session.role, unitNumber: session.unitNumber }),
       ])
 
       if (!isMounted) {
         return
       }
 
-      if (remotePackages && remotePackages.length > 0) {
+      if (remotePackages) {
         setPackages(remotePackages)
       }
-      if (remoteIncidents && remoteIncidents.length > 0) {
+      if (remoteIncidents) {
         setIncidents(remoteIncidents)
       }
     })()
@@ -242,7 +242,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     return () => {
       isMounted = false
     }
-  }, [isOnline])
+  }, [isOnline, session])
 
   useEffect(() => {
     if (persistTimerRef.current !== null) {
@@ -263,27 +263,31 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
   }, [incidents, qrPasses, packages, auditLog, offlineQueue])
 
   useEffect(() => {
-    if (!isSupabaseConfigured || !isOnline) {
+    if (!isOnline || !session || !isSupabaseConfigured || flushingOfflineQueueRef.current) {
+      return
+    }
+    if (!offlineQueue.some((entry) => !entry.synced)) {
       return
     }
 
-    if (remoteSyncTimerRef.current !== null) {
-      window.clearTimeout(remoteSyncTimerRef.current)
-    }
-
-    remoteSyncTimerRef.current = window.setTimeout(() => {
-      void Promise.all([
-        syncPackagesToSupabase(packages),
-        syncIncidentsToSupabase(incidents),
-      ])
-    }, 700)
-
-    return () => {
-      if (remoteSyncTimerRef.current !== null) {
-        window.clearTimeout(remoteSyncTimerRef.current)
+    flushingOfflineQueueRef.current = true
+    void (async () => {
+      const result = await flushOfflineQueueWithApi(offlineQueue, auditLogRef.current, {
+        registerPackage: registerPackageInSupabase,
+        markPackageReady: markPackageReadyInSupabase,
+        deliverPackage: deliverPackageInSupabase,
+        createIncident: createIncidentInSupabase,
+        voteIncident: voteIncidentInSupabase,
+        updateIncident: updateIncidentInSupabase,
+      })
+      setOfflineQueue(result.nextQueue)
+      if (result.syncedCount > 0) {
+        setAuditLog(result.nextAuditLog)
+        setSyncToast(`${result.syncedCount} eventos sincronizados`)
       }
-    }
-  }, [packages, incidents, isOnline])
+      flushingOfflineQueueRef.current = false
+    })()
+  }, [isOnline, offlineQueue, session])
 
   async function login(email: string, password: string) {
     return signInWithPassword(email, password)
@@ -313,6 +317,21 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     setSyncToast(null)
   }
 
+  function enqueueDomainEvent(type: string, payload: Record<string, unknown>) {
+    if (!session) {
+      return
+    }
+    const event: OfflineQueueEvent = {
+      id: randomId('offline'),
+      at: new Date().toISOString(),
+      type,
+      payload,
+      guardUserId: session.userId,
+      synced: false,
+    }
+    setOfflineQueue((previous) => enqueueOfflineEvent(previous, event))
+  }
+
   function getSessionUnitNumbers(targetSession?: AppSession | null) {
     const activeSession = targetSession ?? session
     if (!activeSession) {
@@ -340,22 +359,33 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     if (!incidentCategorySchema.safeParse(input.category).success) {
       return false
     }
-    setIncidents((previous) => [
-      {
-        id: randomId('inc'),
-        title: input.title.trim(),
-        description: input.description.trim(),
-        category: input.category,
-        priority: input.priority,
-        createdAt: new Date().toISOString(),
-        createdByUserId: session.userId,
-        status: 'open',
-        supportScore: 0,
-        votes: [],
-        guardActions: [],
-      },
-      ...previous,
-    ])
+    const nextIncident: Incident = {
+      id: randomId('inc'),
+      unitNumber: session.unitNumber,
+      title: input.title.trim(),
+      description: input.description.trim(),
+      category: input.category,
+      priority: input.priority,
+      createdAt: new Date().toISOString(),
+      createdByUserId: session.userId,
+      status: 'open',
+      supportScore: 0,
+      votes: [],
+      guardActions: [],
+    }
+    setIncidents((previous) => [nextIncident, ...previous])
+
+    if (isSupabaseConfigured) {
+      if (!isOnline) {
+        enqueueDomainEvent('incident_create', { incident: nextIncident })
+      } else {
+        void createIncidentInSupabase(nextIncident).then((ok) => {
+          if (!ok) {
+            enqueueDomainEvent('incident_create', { incident: nextIncident })
+          }
+        })
+      }
+    }
     return true
   }
 
@@ -364,28 +394,67 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       return
     }
     setIncidents((previous) => updateIncidentVote(previous, incidentId, session.userId, newValue))
+    if (isSupabaseConfigured) {
+      if (!isOnline) {
+        enqueueDomainEvent('incident_vote', { incidentId, newValue })
+      } else {
+        void voteIncidentInSupabase({ incidentId, newValue }).then((ok) => {
+          if (!ok) {
+            enqueueDomainEvent('incident_vote', { incidentId, newValue })
+          }
+        })
+      }
+    }
   }
 
   function acknowledgeIncident(incidentId: string) {
-    setIncidents((previous) =>
-      previous.map((incident) =>
+    let nextIncident: Incident | null = null
+    setIncidents((previous) => {
+      const next = previous.map((incident) =>
         incident.id === incidentId
           ? {
               ...incident,
-              status: 'acknowledged',
+              status: 'acknowledged' as const,
               acknowledgedAt: incident.acknowledgedAt ?? new Date().toISOString(),
             }
           : incident
       )
-    )
+      nextIncident = next.find((entry) => entry.id === incidentId) ?? null
+      return next
+    })
+    if (nextIncident && isSupabaseConfigured) {
+      if (!isOnline) {
+        enqueueDomainEvent('incident_update', { incident: nextIncident })
+      } else {
+        void updateIncidentInSupabase(nextIncident).then((ok) => {
+          if (!ok) {
+            enqueueDomainEvent('incident_update', { incident: nextIncident })
+          }
+        })
+      }
+    }
   }
 
   function markIncidentInProgress(incidentId: string) {
-    setIncidents((previous) =>
-      previous.map((incident) =>
-        incident.id === incidentId ? { ...incident, status: 'in_progress' } : incident
+    let nextIncident: Incident | null = null
+    setIncidents((previous) => {
+      const next = previous.map((incident) =>
+        incident.id === incidentId ? { ...incident, status: 'in_progress' as const } : incident
       )
-    )
+      nextIncident = next.find((entry) => entry.id === incidentId) ?? null
+      return next
+    })
+    if (nextIncident && isSupabaseConfigured) {
+      if (!isOnline) {
+        enqueueDomainEvent('incident_update', { incident: nextIncident })
+      } else {
+        void updateIncidentInSupabase(nextIncident).then((ok) => {
+          if (!ok) {
+            enqueueDomainEvent('incident_update', { incident: nextIncident })
+          }
+        })
+      }
+    }
   }
 
   function addGuardAction(incidentId: string, input: { note?: string; photoUrl?: string }) {
@@ -394,8 +463,9 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     if (!cleanNote && !cleanPhotoUrl) {
       return false
     }
-    setIncidents((previous) =>
-      previous.map((incident) =>
+    let nextIncident: Incident | null = null
+    setIncidents((previous) => {
+      const next = previous.map((incident) =>
         incident.id === incidentId
           ? {
               ...incident,
@@ -410,7 +480,20 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
             }
           : incident
       )
-    )
+      nextIncident = next.find((entry) => entry.id === incidentId) ?? null
+      return next
+    })
+    if (nextIncident && isSupabaseConfigured) {
+      if (!isOnline) {
+        enqueueDomainEvent('incident_update', { incident: nextIncident })
+      } else {
+        void updateIncidentInSupabase(nextIncident).then((ok) => {
+          if (!ok) {
+            enqueueDomainEvent('incident_update', { incident: nextIncident })
+          }
+        })
+      }
+    }
     return true
   }
 
@@ -420,8 +503,9 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     const cleanNote = input?.note?.trim()
     const cleanPhotoUrl = input?.photoUrl?.trim()
 
-    setIncidents((previous) =>
-      previous.map((incident) => {
+    let nextIncident: Incident | null = null
+    setIncidents((previous) => {
+      const next = previous.map((incident) => {
         if (incident.id !== incidentId) {
           return incident
         }
@@ -448,11 +532,25 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
         message = 'Incidencia marcada como terminada.'
         return {
           ...candidate,
-          status: 'resolved',
+          status: 'resolved' as const,
           resolvedAt: new Date().toISOString(),
         }
       })
-    )
+      nextIncident = next.find((entry) => entry.id === incidentId) ?? null
+      return next
+    })
+
+    if (resolved && nextIncident && isSupabaseConfigured) {
+      if (!isOnline) {
+        enqueueDomainEvent('incident_update', { incident: nextIncident })
+      } else {
+        void updateIncidentInSupabase(nextIncident).then((ok) => {
+          if (!ok) {
+            enqueueDomainEvent('incident_update', { incident: nextIncident })
+          }
+        })
+      }
+    }
 
     return { ok: resolved, message }
   }
@@ -672,6 +770,17 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       return { ok: false, error: result.error }
     }
     setPackages(result.nextPackages)
+    if (isSupabaseConfigured && result.created) {
+      if (!isOnline) {
+        enqueueDomainEvent('package_register', { package: result.created })
+      } else {
+        void registerPackageInSupabase(result.created).then((ok) => {
+          if (!ok) {
+            enqueueDomainEvent('package_register', { package: result.created })
+          }
+        })
+      }
+    }
     return { ok: true }
   }
 
@@ -698,6 +807,17 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       return { ok: false, error: result.error }
     }
     setPackages(result.nextPackages)
+    if (isSupabaseConfigured) {
+      if (!isOnline) {
+        enqueueDomainEvent('package_mark_ready', { packageId })
+      } else {
+        void markPackageReadyInSupabase(packageId).then((ok) => {
+          if (!ok) {
+            enqueueDomainEvent('package_mark_ready', { packageId })
+          }
+        })
+      }
+    }
     return { ok: true }
   }
 
@@ -714,6 +834,17 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       return { ok: false, error: result.error }
     }
     setPackages(result.nextPackages)
+    if (isSupabaseConfigured) {
+      if (!isOnline) {
+        enqueueDomainEvent('package_deliver', { packageId })
+      } else {
+        void deliverPackageInSupabase(packageId).then((ok) => {
+          if (!ok) {
+            enqueueDomainEvent('package_deliver', { packageId })
+          }
+        })
+      }
+    }
     return { ok: true }
   }
 

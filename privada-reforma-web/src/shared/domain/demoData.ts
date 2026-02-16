@@ -34,6 +34,7 @@ export const guardActionSchema = z.object({
 
 export const incidentSchema = z.object({
   id: z.string(),
+  unitNumber: z.string().optional(),
   title: z.string(),
   description: z.string(),
   category: incidentCategorySchema,

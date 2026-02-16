@@ -7,6 +7,7 @@ This folder contains SQL migrations for the backend MVP tables used by the FE.
 1. `migrations/20260216130000_create_core_tables.sql`
 2. `migrations/20260216131000_enable_rls_and_policies.sql`
 3. `migrations/20260216133000_storage_private_package_photos.sql`
+4. `migrations/20260216160000_packages_incidents_action_rpc.sql`
 
 ## Included Tables
 
@@ -57,3 +58,14 @@ This folder contains SQL migrations for the backend MVP tables used by the FE.
 - Upload stores object path in DB.
 - UI requests short-lived signed URLs (`createSignedUrl`, 15 minutes) at render time.
 - Offline fallback can show local `data:` photos or placeholder when signed URL is unavailable.
+
+## Action RPCs
+
+- `packages_mark_ready(p_package_id text)`
+  - Only transitions `stored -> ready_for_pickup`.
+- `packages_deliver(p_package_id text)`
+  - Only transitions `ready_for_pickup -> delivered`.
+- `incidents_vote(p_incident_id text, p_value integer)`
+  - Handles vote add/remove/toggle and recalculates `support_score`.
+
+These are used by the FE per-action writes to avoid full-array upsert clobbering across devices.

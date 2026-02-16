@@ -1,3 +1,4 @@
+import type { UserRole } from '../domain/auth'
 import type { Incident } from '../domain/demoData'
 import type { Package } from '../domain/packages'
 import { supabase } from './client'
@@ -22,6 +23,7 @@ type PackageRow = {
 
 type IncidentRow = {
   id: string
+  unit_number: string
   title: string
   description: string
   category: Incident['category']
@@ -34,6 +36,10 @@ type IncidentRow = {
   support_score: number
   votes: Incident['votes']
   guard_actions: Incident['guardActions']
+}
+
+type RpcPackageTransitionRow = {
+  id: string
 }
 
 function mapPackageRow(row: PackageRow): Package {
@@ -91,6 +97,7 @@ function mapPackageToRow(input: Package): PackageRow {
 function mapIncidentToRow(input: Incident): IncidentRow {
   return {
     id: input.id,
+    unit_number: input.unitNumber ?? '0000',
     title: input.title,
     description: input.description,
     category: input.category,
@@ -106,17 +113,31 @@ function mapIncidentToRow(input: Incident): IncidentRow {
   }
 }
 
-export async function fetchPackagesFromSupabase() {
+function applyUnitScope<T extends { eq: (...args: [string, string]) => T }>(
+  query: T,
+  role: UserRole,
+  unitNumber?: string,
+) {
+  if (['resident', 'tenant'].includes(role) && unitNumber?.trim()) {
+    return query.eq('unit_number', unitNumber.trim())
+  }
+  return query
+}
+
+export async function fetchPackagesFromSupabase(input: { role: UserRole; unitNumber?: string }) {
   if (!supabase) {
     return null
   }
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('packages')
     .select(
-      'id, unit_number, photo_url, carrier, notes, status, created_at, stored_by_guard_user_id, ready_at, delivered_at, delivered_by_guard_user_id, ready_by_user_id'
+      'id, unit_number, photo_url, carrier, notes, status, created_at, stored_by_guard_user_id, ready_at, delivered_at, delivered_by_guard_user_id, ready_by_user_id',
     )
     .order('created_at', { ascending: false })
+
+  query = applyUnitScope(query, input.role, input.unitNumber)
+  const { data, error } = await query
 
   if (error || !data) {
     return null
@@ -125,17 +146,20 @@ export async function fetchPackagesFromSupabase() {
   return data.map((row) => mapPackageRow(row as PackageRow))
 }
 
-export async function fetchIncidentsFromSupabase() {
+export async function fetchIncidentsFromSupabase(input: { role: UserRole; unitNumber?: string }) {
   if (!supabase) {
     return null
   }
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('incidents')
     .select(
-      'id, title, description, category, priority, created_at, created_by_user_id, status, acknowledged_at, resolved_at, support_score, votes, guard_actions'
+      'id, unit_number, title, description, category, priority, created_at, created_by_user_id, status, acknowledged_at, resolved_at, support_score, votes, guard_actions',
     )
     .order('created_at', { ascending: false })
+
+  query = applyUnitScope(query, input.role, input.unitNumber)
+  const { data, error } = await query
 
   if (error || !data) {
     return null
@@ -144,22 +168,81 @@ export async function fetchIncidentsFromSupabase() {
   return data.map((row) => mapIncidentRow(row as IncidentRow))
 }
 
-export async function syncPackagesToSupabase(packages: Package[]) {
-  if (!supabase || packages.length === 0) {
-    return
+export async function registerPackageInSupabase(pkg: Package) {
+  if (!supabase) {
+    return false
   }
-
-  const payload = packages.map(mapPackageToRow)
-  await supabase.from('packages').upsert(payload, { onConflict: 'id' })
+  const { error } = await supabase.from('packages').insert(mapPackageToRow(pkg))
+  return !error
 }
 
-export async function syncIncidentsToSupabase(incidents: Incident[]) {
-  if (!supabase || incidents.length === 0) {
-    return
+export async function markPackageReadyInSupabase(packageId: string) {
+  if (!supabase) {
+    return false
   }
+  const { data, error } = await supabase.rpc('packages_mark_ready', {
+    p_package_id: packageId,
+  })
+  if (error) {
+    return false
+  }
+  const rows = data as RpcPackageTransitionRow[] | null
+  return Boolean(rows && rows.length > 0 && rows[0]?.id)
+}
 
-  const payload = incidents.map(mapIncidentToRow)
-  await supabase.from('incidents').upsert(payload, { onConflict: 'id' })
+export async function deliverPackageInSupabase(packageId: string) {
+  if (!supabase) {
+    return false
+  }
+  const { data, error } = await supabase.rpc('packages_deliver', {
+    p_package_id: packageId,
+  })
+  if (error) {
+    return false
+  }
+  const rows = data as RpcPackageTransitionRow[] | null
+  return Boolean(rows && rows.length > 0 && rows[0]?.id)
+}
+
+export async function createIncidentInSupabase(incident: Incident) {
+  if (!supabase) {
+    return false
+  }
+  const { error } = await supabase.from('incidents').insert(mapIncidentToRow(incident))
+  return !error
+}
+
+export async function voteIncidentInSupabase(input: { incidentId: string; newValue: 1 | -1 }) {
+  if (!supabase) {
+    return false
+  }
+  const { data, error } = await supabase.rpc('incidents_vote', {
+    p_incident_id: input.incidentId,
+    p_value: input.newValue,
+  })
+  if (error) {
+    return false
+  }
+  const rows = data as { id: string }[] | null
+  return Boolean(rows && rows.length > 0)
+}
+
+export async function updateIncidentInSupabase(incident: Incident) {
+  if (!supabase) {
+    return false
+  }
+  const { error } = await supabase
+    .from('incidents')
+    .update({
+      status: incident.status,
+      acknowledged_at: incident.acknowledgedAt ?? null,
+      resolved_at: incident.resolvedAt ?? null,
+      support_score: incident.supportScore,
+      votes: incident.votes,
+      guard_actions: incident.guardActions,
+    })
+    .eq('id', incident.id)
+  return !error
 }
 
 export async function uploadPackagePhoto(file: Blob) {
