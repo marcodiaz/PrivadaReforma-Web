@@ -3,6 +3,7 @@ import type { Package } from '../domain/packages'
 import { supabase } from './client'
 
 const PACKAGE_BUCKET = 'package-photos'
+const PACKAGE_PHOTO_SIGNED_URL_SECONDS = 15 * 60
 
 type PackageRow = {
   id: string
@@ -188,10 +189,40 @@ export async function uploadPackagePhoto(file: Blob) {
     }
   }
 
-  const { data } = bucket.getPublicUrl(path)
-  if (!data.publicUrl) {
-    throw new Error('No se pudo generar URL publica para la foto.')
+  return path
+}
+
+function isDirectDisplayUrl(value: string) {
+  return (
+    value.startsWith('http://') ||
+    value.startsWith('https://') ||
+    value.startsWith('data:') ||
+    value.startsWith('blob:')
+  )
+}
+
+export function isStorageObjectPath(value: string) {
+  return Boolean(value) && !isDirectDisplayUrl(value)
+}
+
+export async function getSignedPackagePhotoUrl(path: string) {
+  if (!path) {
+    return null
+  }
+  if (isDirectDisplayUrl(path)) {
+    return path
+  }
+  if (!supabase) {
+    return null
   }
 
-  return data.publicUrl
+  const { data, error } = await supabase.storage
+    .from(PACKAGE_BUCKET)
+    .createSignedUrl(path, PACKAGE_PHOTO_SIGNED_URL_SECONDS)
+
+  if (error || !data?.signedUrl) {
+    return null
+  }
+
+  return data.signedUrl
 }

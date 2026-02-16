@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { AppButton, AppCard, ModulePlaceholder } from '../../shared/ui'
+import { AppButton, AppCard, ModulePlaceholder, PackagePhoto } from '../../shared/ui'
 import { useDemoData } from '../../shared/state/DemoDataContext'
 import type { Package } from '../../shared/domain/packages'
 import { isSupabaseConfigured } from '../../shared/supabase/client'
@@ -143,10 +143,10 @@ export function AppPackagesPage() {
                   {packageStatusText(entry.status)}
                 </span>
               </div>
-              <img
+              <PackagePhoto
                 alt={`Paquete ${entry.unitNumber}`}
                 className="h-24 w-full rounded-xl border border-[var(--color-border)] object-cover"
-                src={entry.photoUrl}
+                pathOrUrl={entry.photoUrl}
               />
               {entry.carrier ? (
                 <p className="text-xs text-[var(--color-text-muted)]">Carrier: {entry.carrier}</p>
@@ -222,9 +222,9 @@ export function GuardPackagesPage() {
       }
 
       if (isSupabaseConfigured && navigator.onLine) {
-        const uploadedUrl = await uploadPackagePhoto(compressedBlob)
-        setPhotoUrl(uploadedUrl)
-        setFeedback('Upload photo completo. Imagen lista para guardar.')
+        const objectPath = await uploadPackagePhoto(compressedBlob)
+        setPhotoUrl(objectPath)
+        setFeedback('Upload photo completo. Imagen privada lista para guardar.')
         return
       }
 
@@ -315,7 +315,7 @@ export function GuardPackagesPage() {
           <input
             className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
             onChange={(event) => setPhotoUrl(event.target.value)}
-            placeholder="o pega photoUrl/dataURL manual"
+            placeholder="o pega object path/dataURL manual"
             value={photoUrl}
           />
           <input
@@ -376,10 +376,10 @@ export function GuardPackagesPage() {
                     {entry.status}
                   </span>
                 </div>
-                <img
+                <PackagePhoto
                   alt={`Paquete ${entry.unitNumber}`}
                   className="h-24 w-full rounded-xl border border-slate-700 object-cover"
-                  src={entry.photoUrl}
+                  pathOrUrl={entry.photoUrl}
                 />
                 {entry.status === 'stored' ? (
                   <div className="space-y-1">
