@@ -97,6 +97,7 @@ export const appSessionSchema = z.object({
   email: z.string().email(),
   fullName: z.string(),
   role: userRoleSchema,
+  unitNumber: z.string().optional(),
 })
 
 export type AppSession = z.infer<typeof appSessionSchema>

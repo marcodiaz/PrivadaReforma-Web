@@ -1,5 +1,6 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { NavLink, Navigate, Outlet, useNavigate } from 'react-router-dom'
 import { useDemoData } from '../../shared/state/DemoDataContext'
+import { getRoleLandingPath } from '../../shared/domain/auth'
 
 const opsNav = [
   { to: '/guard/scan', label: 'Escanear' },
@@ -10,8 +11,21 @@ const opsNav = [
 ]
 
 export function OpsLayout() {
-  const { getHeldPackageCountGlobal, isOnline, logout } = useDemoData()
+  const { authLoading, getHeldPackageCountGlobal, isOnline, logout, session } = useDemoData()
   const navigate = useNavigate()
+
+  if (authLoading) {
+    return null
+  }
+
+  if (!session) {
+    return <Navigate to="/login" replace />
+  }
+
+  if (session.role !== 'guard') {
+    return <Navigate to={getRoleLandingPath(session.role)} replace />
+  }
+
   const heldPackages = getHeldPackageCountGlobal()
 
   return (

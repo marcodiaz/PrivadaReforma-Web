@@ -7,14 +7,11 @@ import {
   useState,
   type PropsWithChildren,
 } from 'react'
-import type { UserRole } from '../domain/auth'
 import {
-  LOCAL_ACCOUNTS,
   LOCAL_AUDIT_LOG,
   LOCAL_INCIDENTS,
   LOCAL_OFFLINE_QUEUE,
   LOCAL_QR_PASSES,
-  appSessionSchema,
   auditLogSchema,
   type AppSession,
   type AuditLogEntry,
@@ -22,7 +19,6 @@ import {
   incidentCategorySchema,
   incidentPrioritySchema,
   incidentSchema,
-  type LocalAccount,
   offlineQueueSchema,
   type OfflineQueueEvent,
   qrPassSchema,
@@ -37,6 +33,7 @@ import {
   syncPackagesToSupabase,
 } from '../supabase/data'
 import { isSupabaseConfigured } from '../supabase/client'
+import { useSupabaseAuth } from '../auth/SupabaseAuthProvider'
 import {
   canResolveIncident,
   updateVote as updateIncidentVote,
@@ -70,8 +67,8 @@ type CreateQrInput = {
 }
 
 type DemoDataContextValue = {
-  accounts: LocalAccount[]
   session: AppSession | null
+  authLoading: boolean
   incidents: Incident[]
   qrPasses: QrPass[]
   packages: Package[]
@@ -80,11 +77,10 @@ type DemoDataContextValue = {
   isOnline: boolean
   syncToast: string | null
   debtMode: boolean
-  login: (email: string, role: UserRole) => void
+  login: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>
   logout: () => void
   resetDemoData: () => void
   dismissSyncToast: () => void
-  findAccountByRole: (role: UserRole) => LocalAccount | undefined
   createIncident: (input: {
     title: string
     description: string
@@ -146,15 +142,6 @@ function randomId(prefix: string) {
   return `${prefix}-${crypto.randomUUID()}`
 }
 
-function buildSessionFromAccount(account: LocalAccount): AppSession {
-  return {
-    userId: account.id,
-    email: account.email,
-    fullName: account.fullName,
-    role: account.role,
-  }
-}
-
 function getEffectiveQrStatus(pass: QrPass, now = new Date()): QrPass['status'] {
   if (pass.status !== 'active') {
     return pass.status
@@ -167,15 +154,13 @@ function getEffectiveQrStatus(pass: QrPass, now = new Date()): QrPass['status'] 
 
 export function DemoDataProvider({ children }: PropsWithChildren) {
   migrateIfNeeded()
+  const {
+    session,
+    isLoading: authLoading,
+    signInWithPassword,
+    signOut,
+  } = useSupabaseAuth()
 
-  const [session, setSession] = useState<AppSession | null>(() => {
-    const raw = getItem<unknown>(storageKeys.session)
-    if (raw === null) {
-      return null
-    }
-    const parsed = appSessionSchema.safeParse(raw)
-    return parsed.success ? parsed.data : null
-  })
   const [incidents, setIncidents] = useState<Incident[]>(() =>
     safeReadArray(storageKeys.incidents, incidentSchema.array(), LOCAL_INCIDENTS)
   )
@@ -264,11 +249,6 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       window.clearTimeout(persistTimerRef.current)
     }
     persistTimerRef.current = window.setTimeout(() => {
-      if (session) {
-        setItem(storageKeys.session, session)
-      } else {
-        removeItem(storageKeys.session)
-      }
       setItem(storageKeys.incidents, incidents)
       setItem(storageKeys.qrPasses, qrPasses)
       setItem(storageKeys.packages, packages)
@@ -280,7 +260,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
         window.clearTimeout(persistTimerRef.current)
       }
     }
-  }, [session, incidents, qrPasses, packages, auditLog, offlineQueue])
+  }, [incidents, qrPasses, packages, auditLog, offlineQueue])
 
   useEffect(() => {
     if (!isSupabaseConfigured || !isOnline) {
@@ -305,37 +285,23 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     }
   }, [packages, incidents, isOnline])
 
-  function login(email: string, role: UserRole) {
-    const fromAccount = LOCAL_ACCOUNTS.find(
-      (account) => account.email === email && account.role === role
-    )
-    if (fromAccount) {
-      setSession(buildSessionFromAccount(fromAccount))
-      return
-    }
-    setSession({
-      userId: randomId('session-user'),
-      email,
-      fullName: email.split('@')[0] ?? 'Usuario',
-      role,
-    })
+  async function login(email: string, password: string) {
+    return signInWithPassword(email, password)
   }
 
   function logout() {
-    setSession(null)
+    void signOut()
   }
 
   function resetDemoData() {
     if (!import.meta.env.DEV) {
       return
     }
-    setSession(null)
     setIncidents(LOCAL_INCIDENTS)
     setQrPasses(LOCAL_QR_PASSES)
     setPackages(LOCAL_PACKAGES)
     setAuditLog(LOCAL_AUDIT_LOG)
     setOfflineQueue(LOCAL_OFFLINE_QUEUE)
-    removeItem(storageKeys.session)
     removeItem(storageKeys.incidents)
     removeItem(storageKeys.qrPasses)
     removeItem(storageKeys.packages)
@@ -347,19 +313,14 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     setSyncToast(null)
   }
 
-  function findAccountByRole(role: UserRole) {
-    return LOCAL_ACCOUNTS.find((account) => account.role === role)
-  }
-
   function getSessionUnitNumbers(targetSession?: AppSession | null) {
     const activeSession = targetSession ?? session
     if (!activeSession) {
       return []
     }
 
-    const account = LOCAL_ACCOUNTS.find((entry) => entry.id === activeSession.userId)
-    if (account?.unitId) {
-      return [account.unitId]
+    if (activeSession.unitNumber?.trim()) {
+      return [activeSession.unitNumber]
     }
     return []
   }
@@ -789,8 +750,8 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
   }
 
   const value: DemoDataContextValue = {
-    accounts: LOCAL_ACCOUNTS,
     session,
+    authLoading,
     incidents,
     qrPasses,
     packages,
@@ -803,7 +764,6 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     logout,
     resetDemoData,
     dismissSyncToast,
-    findAccountByRole,
     createIncident,
     updateVote,
     acknowledgeIncident,

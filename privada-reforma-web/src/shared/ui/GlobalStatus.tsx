@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { useDemoData } from '../state/DemoDataContext'
+import { DevProfileTools } from '../auth/DevProfileTools'
 
 export function GlobalStatus() {
   const { isOnline, syncToast, dismissSyncToast } = useDemoData()
@@ -24,6 +25,7 @@ export function GlobalStatus() {
           {syncToast}
         </div>
       ) : null}
+      <DevProfileTools />
     </>
   )
 }

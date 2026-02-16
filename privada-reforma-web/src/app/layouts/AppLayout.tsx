@@ -1,5 +1,6 @@
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useDemoData } from '../../shared/state/DemoDataContext'
+import { getRoleLandingPath } from '../../shared/domain/auth'
 
 type NavItem = {
   to: string
@@ -36,7 +37,26 @@ function resolveTitle(pathname: string): string {
 export function AppLayout() {
   const { pathname } = useLocation()
   const navigate = useNavigate()
-  const { getHeldPackageCountForUser, logout, session } = useDemoData()
+  const { authLoading, getHeldPackageCountForUser, logout, session } = useDemoData()
+
+  if (authLoading) {
+    return null
+  }
+
+  if (!session) {
+    return <Navigate to="/login" replace />
+  }
+
+  const expectedIsAdminArea = pathname.startsWith('/admin')
+  const canUseAdminArea = ['admin', 'board'].includes(session.role)
+  const canUseAppArea = ['resident', 'tenant', 'board', 'admin'].includes(session.role)
+  if (expectedIsAdminArea && !canUseAdminArea) {
+    return <Navigate to={getRoleLandingPath(session.role)} replace />
+  }
+  if (!expectedIsAdminArea && !canUseAppArea) {
+    return <Navigate to={getRoleLandingPath(session.role)} replace />
+  }
+
   const isAdmin = pathname.startsWith('/admin')
   const navItems = isAdmin ? adminNav : residentNav
   const heldPackages = getHeldPackageCountForUser()
