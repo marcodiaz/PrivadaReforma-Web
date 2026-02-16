@@ -1,4 +1,7 @@
-import { ModulePlaceholder } from '../../shared/ui'
+import { useState } from 'react'
+import { useDemoData } from '../../shared/state/DemoDataContext'
+import { adminCreateOrInviteUser, type ManagedUserRole } from '../../shared/supabase/admin'
+import { AppButton, AppCard, ModulePlaceholder } from '../../shared/ui'
 export { AdminPackagesPage } from '../packages/pages'
 
 export function AdminDashboardPage() {
@@ -12,12 +15,137 @@ export function AdminDashboardPage() {
 }
 
 export function AdminUsersPage() {
+  const { session } = useDemoData()
+  const [mode, setMode] = useState<'invite' | 'create'>('invite')
+  const [email, setEmail] = useState('')
+  const [role, setRole] = useState<ManagedUserRole>('resident')
+  const [unitNumber, setUnitNumber] = useState('')
+  const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [feedback, setFeedback] = useState('')
+
+  const roles: ManagedUserRole[] = [
+    'resident',
+    'tenant',
+    'guard',
+    'board_member',
+    'maintenance',
+    'admin',
+  ]
+
+  async function handleSubmit() {
+    if (!email.trim()) {
+      setFeedback('Correo requerido.')
+      return
+    }
+    if (mode === 'create' && !password.trim()) {
+      setFeedback('Contrasena temporal requerida para modo create.')
+      return
+    }
+
+    setLoading(true)
+    const result = await adminCreateOrInviteUser({
+      mode,
+      email,
+      role,
+      unitNumber: unitNumber.trim() || undefined,
+      password: mode === 'create' ? password : undefined,
+    })
+    setLoading(false)
+
+    if (!result.ok) {
+      setFeedback(result.error ?? 'No fue posible completar la operacion.')
+      return
+    }
+
+    setFeedback(
+      mode === 'invite'
+        ? `Invitacion enviada a ${result.email ?? email}.`
+        : `Usuario creado: ${result.email ?? email}.`
+    )
+    setPassword('')
+  }
+
+  if (!session || session.role !== 'admin') {
+    return (
+      <AppCard className="text-sm text-[var(--color-text-muted)]">
+        Solo administradores pueden crear o invitar usuarios.
+      </AppCard>
+    )
+  }
+
   return (
-    <ModulePlaceholder
-      role="Administrador / Comite"
-      title="Usuarios"
-      description="Gestion de residentes, inquilinos, guardias y permisos."
-    />
+    <div className="space-y-3">
+      <ModulePlaceholder
+        role="Administrador"
+        title="Usuarios"
+        description="Invita o crea cuentas y asigna perfil/rol inicial."
+      />
+      <AppCard className="space-y-2">
+        <label className="block text-xs text-[var(--color-text-muted)]">
+          Modo
+          <select
+            className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
+            onChange={(event) => setMode(event.target.value as 'invite' | 'create')}
+            value={mode}
+          >
+            <option value="invite">Invite por email (set password en link)</option>
+            <option value="create">Create con password temporal</option>
+          </select>
+        </label>
+        <label className="block text-xs text-[var(--color-text-muted)]">
+          Correo
+          <input
+            className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
+            onChange={(event) => setEmail(event.target.value)}
+            placeholder="usuario@dominio.com"
+            type="email"
+            value={email}
+          />
+        </label>
+        {mode === 'create' ? (
+          <label className="block text-xs text-[var(--color-text-muted)]">
+            Contrasena temporal
+            <input
+              className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="Minimo 8 caracteres"
+              type="password"
+              value={password}
+            />
+          </label>
+        ) : null}
+        <label className="block text-xs text-[var(--color-text-muted)]">
+          Rol
+          <select
+            className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
+            onChange={(event) => setRole(event.target.value as ManagedUserRole)}
+            value={role}
+          >
+            {roles.map((entry) => (
+              <option key={entry} value={entry}>
+                {entry}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block text-xs text-[var(--color-text-muted)]">
+          unit_number (opcional para guard/admin/board)
+          <input
+            className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
+            onChange={(event) => setUnitNumber(event.target.value)}
+            placeholder="1141"
+            value={unitNumber}
+          />
+        </label>
+        <AppButton block disabled={loading} onClick={() => void handleSubmit()}>
+          {loading ? 'Procesando...' : mode === 'invite' ? 'Enviar invitacion' : 'Crear usuario'}
+        </AppButton>
+        {feedback ? (
+          <p className="text-xs text-[var(--color-text-muted)]">{feedback}</p>
+        ) : null}
+      </AppCard>
+    </div>
   )
 }
 

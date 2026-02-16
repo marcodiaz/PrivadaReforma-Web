@@ -23,6 +23,12 @@ npm install
 npm run dev
 ```
 
+## Variables de entorno (Supabase)
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+
+Usa `.env.example` como plantilla para tu `.env.local`.
+
 ## Scripts utiles
 - `npm run dev`: inicia servidor local
 - `npm run build`: genera build de produccion

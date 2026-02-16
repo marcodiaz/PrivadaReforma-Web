@@ -1,7 +1,9 @@
 import { useState } from 'react'
-import { AppButton, AppCard, ModulePlaceholder } from '../../shared/ui'
+import { AppButton, AppCard, ModulePlaceholder, PackagePhoto } from '../../shared/ui'
 import { useDemoData } from '../../shared/state/DemoDataContext'
 import type { Package } from '../../shared/domain/packages'
+import { isSupabaseConfigured } from '../../shared/supabase/client'
+import { uploadPackagePhoto } from '../../shared/supabase/data'
 
 const MAX_UPLOAD_BYTES = 500 * 1024
 const TARGET_UPLOAD_BYTES = 400 * 1024
@@ -26,7 +28,7 @@ function packageStatusText(status: Package['status']) {
   return 'Delivered'
 }
 
-function readFileAsDataUrl(file: File) {
+function readFileAsDataUrl(file: Blob) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(String(reader.result))
@@ -44,7 +46,23 @@ function loadImage(dataUrl: string) {
   })
 }
 
-async function compressImageToDataUrl(file: File) {
+function canvasToWebpBlob(canvas: HTMLCanvasElement, quality: number) {
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          reject(new Error('No fue posible comprimir la imagen.'))
+          return
+        }
+        resolve(blob)
+      },
+      'image/webp',
+      quality
+    )
+  })
+}
+
+async function compressImageToWebpBlob(file: File) {
   const originalDataUrl = await readFileAsDataUrl(file)
   const image = await loadImage(originalDataUrl)
   const maxWidth = 1280
@@ -63,12 +81,12 @@ async function compressImageToDataUrl(file: File) {
 
   const tryQualities = [0.85, 0.75, 0.65, 0.55]
   for (const quality of tryQualities) {
-    const dataUrl = canvas.toDataURL('image/webp', quality)
-    if (dataUrl.length <= TARGET_UPLOAD_BYTES * 1.37) {
-      return dataUrl
+    const blob = await canvasToWebpBlob(canvas, quality)
+    if (blob.size <= TARGET_UPLOAD_BYTES) {
+      return blob
     }
   }
-  return canvas.toDataURL('image/webp', 0.5)
+  return canvasToWebpBlob(canvas, 0.5)
 }
 
 export function AppPackagesPage() {
@@ -125,10 +143,10 @@ export function AppPackagesPage() {
                   {packageStatusText(entry.status)}
                 </span>
               </div>
-              <img
+              <PackagePhoto
                 alt={`Paquete ${entry.unitNumber}`}
                 className="h-24 w-full rounded-xl border border-[var(--color-border)] object-cover"
-                src={entry.photoUrl}
+                pathOrUrl={entry.photoUrl}
               />
               {entry.carrier ? (
                 <p className="text-xs text-[var(--color-text-muted)]">Carrier: {entry.carrier}</p>
@@ -183,6 +201,7 @@ export function GuardPackagesPage() {
   const [carrier, setCarrier] = useState('')
   const [notes, setNotes] = useState('')
   const [feedback, setFeedback] = useState('')
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const [statusFilter, setStatusFilter] = useState<'stored' | 'ready_for_pickup'>('stored')
 
   const heldCount = getHeldPackageCountGlobal()
@@ -194,16 +213,28 @@ export function GuardPackagesPage() {
     if (!file) {
       return
     }
+    setUploadingPhoto(true)
     try {
-      const compressedDataUrl = await compressImageToDataUrl(file)
-      if (compressedDataUrl.length > MAX_UPLOAD_BYTES * 1.37) {
+      const compressedBlob = await compressImageToWebpBlob(file)
+      if (compressedBlob.size > MAX_UPLOAD_BYTES) {
         setFeedback('Imagen demasiado grande. Intenta una foto mas ligera (<500KB).')
         return
       }
+
+      if (isSupabaseConfigured && navigator.onLine) {
+        const objectPath = await uploadPackagePhoto(compressedBlob)
+        setPhotoUrl(objectPath)
+        setFeedback('Upload photo completo. Imagen privada lista para guardar.')
+        return
+      }
+
+      const compressedDataUrl = await readFileAsDataUrl(compressedBlob)
       setPhotoUrl(compressedDataUrl)
-      setFeedback('Imagen lista para guardar.')
+      setFeedback('Sin Supabase/red: imagen guardada localmente para modo offline.')
     } catch (error) {
       setFeedback(error instanceof Error ? error.message : 'No fue posible procesar imagen.')
+    } finally {
+      setUploadingPhoto(false)
     }
   }
 
@@ -273,7 +304,7 @@ export function GuardPackagesPage() {
             value={unitNumber}
           />
           <label className="block text-xs text-slate-300">
-            Foto del paquete (requerida)
+            Upload photo (requerida)
             <input
               accept="image/*"
               className="mt-1 block w-full text-xs"
@@ -284,7 +315,7 @@ export function GuardPackagesPage() {
           <input
             className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
             onChange={(event) => setPhotoUrl(event.target.value)}
-            placeholder="o pega photoUrl/dataURL manual"
+            placeholder="o pega object path/dataURL manual"
             value={photoUrl}
           />
           <input
@@ -300,8 +331,8 @@ export function GuardPackagesPage() {
             rows={2}
             value={notes}
           />
-          <AppButton block onClick={handleRegister}>
-            Registrar paquete
+          <AppButton block disabled={uploadingPhoto} onClick={handleRegister}>
+            {uploadingPhoto ? 'Subiendo foto...' : 'Registrar paquete'}
           </AppButton>
         </AppCard>
       ) : (
@@ -345,10 +376,10 @@ export function GuardPackagesPage() {
                     {entry.status}
                   </span>
                 </div>
-                <img
+                <PackagePhoto
                   alt={`Paquete ${entry.unitNumber}`}
                   className="h-24 w-full rounded-xl border border-slate-700 object-cover"
-                  src={entry.photoUrl}
+                  pathOrUrl={entry.photoUrl}
                 />
                 {entry.status === 'stored' ? (
                   <div className="space-y-1">

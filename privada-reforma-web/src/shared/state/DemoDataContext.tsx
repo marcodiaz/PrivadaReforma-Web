@@ -7,14 +7,11 @@ import {
   useState,
   type PropsWithChildren,
 } from 'react'
-import type { UserRole } from '../domain/auth'
 import {
-  LOCAL_ACCOUNTS,
   LOCAL_AUDIT_LOG,
   LOCAL_INCIDENTS,
   LOCAL_OFFLINE_QUEUE,
   LOCAL_QR_PASSES,
-  appSessionSchema,
   auditLogSchema,
   type AppSession,
   type AuditLogEntry,
@@ -22,7 +19,6 @@ import {
   incidentCategorySchema,
   incidentPrioritySchema,
   incidentSchema,
-  type LocalAccount,
   offlineQueueSchema,
   type OfflineQueueEvent,
   qrPassSchema,
@@ -31,10 +27,22 @@ import {
 } from '../domain/demoData'
 import { getItem, migrateIfNeeded, removeItem, setItem, storageKeys } from '../storage/storage'
 import {
+  createIncidentInSupabase,
+  deliverPackageInSupabase,
+  fetchIncidentsFromSupabase,
+  fetchPackagesFromSupabase,
+  markPackageReadyInSupabase,
+  registerPackageInSupabase,
+  updateIncidentInSupabase,
+  voteIncidentInSupabase,
+} from '../supabase/data'
+import { isSupabaseConfigured } from '../supabase/client'
+import { useSupabaseAuth } from '../auth/SupabaseAuthProvider'
+import {
   canResolveIncident,
   updateVote as updateIncidentVote,
 } from '../../features/incidents/logic'
-import { enqueueOfflineEvent, syncOfflineQueue } from '../../features/guard/offline'
+import { enqueueOfflineEvent, flushOfflineQueueWithApi } from '../../features/guard/offline'
 import {
   buildDepartmentDisplayCode,
   findPassesByDepartmentSequence,
@@ -63,8 +71,8 @@ type CreateQrInput = {
 }
 
 type DemoDataContextValue = {
-  accounts: LocalAccount[]
   session: AppSession | null
+  authLoading: boolean
   incidents: Incident[]
   qrPasses: QrPass[]
   packages: Package[]
@@ -73,11 +81,10 @@ type DemoDataContextValue = {
   isOnline: boolean
   syncToast: string | null
   debtMode: boolean
-  login: (email: string, role: UserRole) => void
+  login: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>
   logout: () => void
   resetDemoData: () => void
   dismissSyncToast: () => void
-  findAccountByRole: (role: UserRole) => LocalAccount | undefined
   createIncident: (input: {
     title: string
     description: string
@@ -139,15 +146,6 @@ function randomId(prefix: string) {
   return `${prefix}-${crypto.randomUUID()}`
 }
 
-function buildSessionFromAccount(account: LocalAccount): AppSession {
-  return {
-    userId: account.id,
-    email: account.email,
-    fullName: account.fullName,
-    role: account.role,
-  }
-}
-
 function getEffectiveQrStatus(pass: QrPass, now = new Date()): QrPass['status'] {
   if (pass.status !== 'active') {
     return pass.status
@@ -160,15 +158,13 @@ function getEffectiveQrStatus(pass: QrPass, now = new Date()): QrPass['status'] 
 
 export function DemoDataProvider({ children }: PropsWithChildren) {
   migrateIfNeeded()
+  const {
+    session,
+    isLoading: authLoading,
+    signInWithPassword,
+    signOut,
+  } = useSupabaseAuth()
 
-  const [session, setSession] = useState<AppSession | null>(() => {
-    const raw = getItem<unknown>(storageKeys.session)
-    if (raw === null) {
-      return null
-    }
-    const parsed = appSessionSchema.safeParse(raw)
-    return parsed.success ? parsed.data : null
-  })
   const [incidents, setIncidents] = useState<Incident[]>(() =>
     safeReadArray(storageKeys.incidents, incidentSchema.array(), LOCAL_INCIDENTS)
   )
@@ -188,6 +184,8 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
   const [syncToast, setSyncToast] = useState<string | null>(null)
   const [debtMode] = useState(false)
   const persistTimerRef = useRef<number | null>(null)
+  const remoteLoadDoneRef = useRef(false)
+  const flushingOfflineQueueRef = useRef(false)
   const auditLogRef = useRef<AuditLogEntry[]>(auditLog)
 
   useEffect(() => {
@@ -197,14 +195,6 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     function goOnline() {
       setIsOnline(true)
-      setOfflineQueue((previousQueue) => {
-        const result = syncOfflineQueue(previousQueue, auditLogRef.current)
-        if (result.syncedCount > 0) {
-          setAuditLog(result.nextAuditLog)
-          setSyncToast(`${result.syncedCount} eventos sincronizados`)
-        }
-        return result.nextQueue
-      })
     }
 
     function goOffline() {
@@ -220,15 +210,45 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
   }, [])
 
   useEffect(() => {
+    remoteLoadDoneRef.current = false
+  }, [session?.userId])
+
+  useEffect(() => {
+    if (!session || !isSupabaseConfigured || !isOnline || remoteLoadDoneRef.current) {
+      return
+    }
+
+    remoteLoadDoneRef.current = true
+    let isMounted = true
+
+    void (async () => {
+      const [remotePackages, remoteIncidents] = await Promise.all([
+        fetchPackagesFromSupabase({ role: session.role, unitNumber: session.unitNumber }),
+        fetchIncidentsFromSupabase({ role: session.role, unitNumber: session.unitNumber }),
+      ])
+
+      if (!isMounted) {
+        return
+      }
+
+      if (remotePackages) {
+        setPackages(remotePackages)
+      }
+      if (remoteIncidents) {
+        setIncidents(remoteIncidents)
+      }
+    })()
+
+    return () => {
+      isMounted = false
+    }
+  }, [isOnline, session])
+
+  useEffect(() => {
     if (persistTimerRef.current !== null) {
       window.clearTimeout(persistTimerRef.current)
     }
     persistTimerRef.current = window.setTimeout(() => {
-      if (session) {
-        setItem(storageKeys.session, session)
-      } else {
-        removeItem(storageKeys.session)
-      }
       setItem(storageKeys.incidents, incidents)
       setItem(storageKeys.qrPasses, qrPasses)
       setItem(storageKeys.packages, packages)
@@ -240,39 +260,52 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
         window.clearTimeout(persistTimerRef.current)
       }
     }
-  }, [session, incidents, qrPasses, packages, auditLog, offlineQueue])
+  }, [incidents, qrPasses, packages, auditLog, offlineQueue])
 
-  function login(email: string, role: UserRole) {
-    const fromAccount = LOCAL_ACCOUNTS.find(
-      (account) => account.email === email && account.role === role
-    )
-    if (fromAccount) {
-      setSession(buildSessionFromAccount(fromAccount))
+  useEffect(() => {
+    if (!isOnline || !session || !isSupabaseConfigured || flushingOfflineQueueRef.current) {
       return
     }
-    setSession({
-      userId: randomId('session-user'),
-      email,
-      fullName: email.split('@')[0] ?? 'Usuario',
-      role,
-    })
+    if (!offlineQueue.some((entry) => !entry.synced)) {
+      return
+    }
+
+    flushingOfflineQueueRef.current = true
+    void (async () => {
+      const result = await flushOfflineQueueWithApi(offlineQueue, auditLogRef.current, {
+        registerPackage: registerPackageInSupabase,
+        markPackageReady: markPackageReadyInSupabase,
+        deliverPackage: deliverPackageInSupabase,
+        createIncident: createIncidentInSupabase,
+        voteIncident: voteIncidentInSupabase,
+        updateIncident: updateIncidentInSupabase,
+      })
+      setOfflineQueue(result.nextQueue)
+      if (result.syncedCount > 0) {
+        setAuditLog(result.nextAuditLog)
+        setSyncToast(`${result.syncedCount} eventos sincronizados`)
+      }
+      flushingOfflineQueueRef.current = false
+    })()
+  }, [isOnline, offlineQueue, session])
+
+  async function login(email: string, password: string) {
+    return signInWithPassword(email, password)
   }
 
   function logout() {
-    setSession(null)
+    void signOut()
   }
 
   function resetDemoData() {
     if (!import.meta.env.DEV) {
       return
     }
-    setSession(null)
     setIncidents(LOCAL_INCIDENTS)
     setQrPasses(LOCAL_QR_PASSES)
     setPackages(LOCAL_PACKAGES)
     setAuditLog(LOCAL_AUDIT_LOG)
     setOfflineQueue(LOCAL_OFFLINE_QUEUE)
-    removeItem(storageKeys.session)
     removeItem(storageKeys.incidents)
     removeItem(storageKeys.qrPasses)
     removeItem(storageKeys.packages)
@@ -284,8 +317,19 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     setSyncToast(null)
   }
 
-  function findAccountByRole(role: UserRole) {
-    return LOCAL_ACCOUNTS.find((account) => account.role === role)
+  function enqueueDomainEvent(type: string, payload: Record<string, unknown>) {
+    if (!session) {
+      return
+    }
+    const event: OfflineQueueEvent = {
+      id: randomId('offline'),
+      at: new Date().toISOString(),
+      type,
+      payload,
+      guardUserId: session.userId,
+      synced: false,
+    }
+    setOfflineQueue((previous) => enqueueOfflineEvent(previous, event))
   }
 
   function getSessionUnitNumbers(targetSession?: AppSession | null) {
@@ -294,9 +338,8 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       return []
     }
 
-    const account = LOCAL_ACCOUNTS.find((entry) => entry.id === activeSession.userId)
-    if (account?.unitId) {
-      return [account.unitId]
+    if (activeSession.unitNumber?.trim()) {
+      return [activeSession.unitNumber]
     }
     return []
   }
@@ -316,22 +359,33 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     if (!incidentCategorySchema.safeParse(input.category).success) {
       return false
     }
-    setIncidents((previous) => [
-      {
-        id: randomId('inc'),
-        title: input.title.trim(),
-        description: input.description.trim(),
-        category: input.category,
-        priority: input.priority,
-        createdAt: new Date().toISOString(),
-        createdByUserId: session.userId,
-        status: 'open',
-        supportScore: 0,
-        votes: [],
-        guardActions: [],
-      },
-      ...previous,
-    ])
+    const nextIncident: Incident = {
+      id: randomId('inc'),
+      unitNumber: session.unitNumber,
+      title: input.title.trim(),
+      description: input.description.trim(),
+      category: input.category,
+      priority: input.priority,
+      createdAt: new Date().toISOString(),
+      createdByUserId: session.userId,
+      status: 'open',
+      supportScore: 0,
+      votes: [],
+      guardActions: [],
+    }
+    setIncidents((previous) => [nextIncident, ...previous])
+
+    if (isSupabaseConfigured) {
+      if (!isOnline) {
+        enqueueDomainEvent('incident_create', { incident: nextIncident })
+      } else {
+        void createIncidentInSupabase(nextIncident).then((ok) => {
+          if (!ok) {
+            enqueueDomainEvent('incident_create', { incident: nextIncident })
+          }
+        })
+      }
+    }
     return true
   }
 
@@ -340,28 +394,67 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       return
     }
     setIncidents((previous) => updateIncidentVote(previous, incidentId, session.userId, newValue))
+    if (isSupabaseConfigured) {
+      if (!isOnline) {
+        enqueueDomainEvent('incident_vote', { incidentId, newValue })
+      } else {
+        void voteIncidentInSupabase({ incidentId, newValue }).then((ok) => {
+          if (!ok) {
+            enqueueDomainEvent('incident_vote', { incidentId, newValue })
+          }
+        })
+      }
+    }
   }
 
   function acknowledgeIncident(incidentId: string) {
-    setIncidents((previous) =>
-      previous.map((incident) =>
+    let nextIncident: Incident | null = null
+    setIncidents((previous) => {
+      const next = previous.map((incident) =>
         incident.id === incidentId
           ? {
               ...incident,
-              status: 'acknowledged',
+              status: 'acknowledged' as const,
               acknowledgedAt: incident.acknowledgedAt ?? new Date().toISOString(),
             }
           : incident
       )
-    )
+      nextIncident = next.find((entry) => entry.id === incidentId) ?? null
+      return next
+    })
+    if (nextIncident && isSupabaseConfigured) {
+      if (!isOnline) {
+        enqueueDomainEvent('incident_update', { incident: nextIncident })
+      } else {
+        void updateIncidentInSupabase(nextIncident).then((ok) => {
+          if (!ok) {
+            enqueueDomainEvent('incident_update', { incident: nextIncident })
+          }
+        })
+      }
+    }
   }
 
   function markIncidentInProgress(incidentId: string) {
-    setIncidents((previous) =>
-      previous.map((incident) =>
-        incident.id === incidentId ? { ...incident, status: 'in_progress' } : incident
+    let nextIncident: Incident | null = null
+    setIncidents((previous) => {
+      const next = previous.map((incident) =>
+        incident.id === incidentId ? { ...incident, status: 'in_progress' as const } : incident
       )
-    )
+      nextIncident = next.find((entry) => entry.id === incidentId) ?? null
+      return next
+    })
+    if (nextIncident && isSupabaseConfigured) {
+      if (!isOnline) {
+        enqueueDomainEvent('incident_update', { incident: nextIncident })
+      } else {
+        void updateIncidentInSupabase(nextIncident).then((ok) => {
+          if (!ok) {
+            enqueueDomainEvent('incident_update', { incident: nextIncident })
+          }
+        })
+      }
+    }
   }
 
   function addGuardAction(incidentId: string, input: { note?: string; photoUrl?: string }) {
@@ -370,8 +463,9 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     if (!cleanNote && !cleanPhotoUrl) {
       return false
     }
-    setIncidents((previous) =>
-      previous.map((incident) =>
+    let nextIncident: Incident | null = null
+    setIncidents((previous) => {
+      const next = previous.map((incident) =>
         incident.id === incidentId
           ? {
               ...incident,
@@ -386,7 +480,20 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
             }
           : incident
       )
-    )
+      nextIncident = next.find((entry) => entry.id === incidentId) ?? null
+      return next
+    })
+    if (nextIncident && isSupabaseConfigured) {
+      if (!isOnline) {
+        enqueueDomainEvent('incident_update', { incident: nextIncident })
+      } else {
+        void updateIncidentInSupabase(nextIncident).then((ok) => {
+          if (!ok) {
+            enqueueDomainEvent('incident_update', { incident: nextIncident })
+          }
+        })
+      }
+    }
     return true
   }
 
@@ -396,8 +503,9 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     const cleanNote = input?.note?.trim()
     const cleanPhotoUrl = input?.photoUrl?.trim()
 
-    setIncidents((previous) =>
-      previous.map((incident) => {
+    let nextIncident: Incident | null = null
+    setIncidents((previous) => {
+      const next = previous.map((incident) => {
         if (incident.id !== incidentId) {
           return incident
         }
@@ -424,11 +532,25 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
         message = 'Incidencia marcada como terminada.'
         return {
           ...candidate,
-          status: 'resolved',
+          status: 'resolved' as const,
           resolvedAt: new Date().toISOString(),
         }
       })
-    )
+      nextIncident = next.find((entry) => entry.id === incidentId) ?? null
+      return next
+    })
+
+    if (resolved && nextIncident && isSupabaseConfigured) {
+      if (!isOnline) {
+        enqueueDomainEvent('incident_update', { incident: nextIncident })
+      } else {
+        void updateIncidentInSupabase(nextIncident).then((ok) => {
+          if (!ok) {
+            enqueueDomainEvent('incident_update', { incident: nextIncident })
+          }
+        })
+      }
+    }
 
     return { ok: resolved, message }
   }
@@ -648,6 +770,17 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       return { ok: false, error: result.error }
     }
     setPackages(result.nextPackages)
+    if (isSupabaseConfigured && result.created) {
+      if (!isOnline) {
+        enqueueDomainEvent('package_register', { package: result.created })
+      } else {
+        void registerPackageInSupabase(result.created).then((ok) => {
+          if (!ok) {
+            enqueueDomainEvent('package_register', { package: result.created })
+          }
+        })
+      }
+    }
     return { ok: true }
   }
 
@@ -674,6 +807,17 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       return { ok: false, error: result.error }
     }
     setPackages(result.nextPackages)
+    if (isSupabaseConfigured) {
+      if (!isOnline) {
+        enqueueDomainEvent('package_mark_ready', { packageId })
+      } else {
+        void markPackageReadyInSupabase(packageId).then((ok) => {
+          if (!ok) {
+            enqueueDomainEvent('package_mark_ready', { packageId })
+          }
+        })
+      }
+    }
     return { ok: true }
   }
 
@@ -690,6 +834,17 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       return { ok: false, error: result.error }
     }
     setPackages(result.nextPackages)
+    if (isSupabaseConfigured) {
+      if (!isOnline) {
+        enqueueDomainEvent('package_deliver', { packageId })
+      } else {
+        void deliverPackageInSupabase(packageId).then((ok) => {
+          if (!ok) {
+            enqueueDomainEvent('package_deliver', { packageId })
+          }
+        })
+      }
+    }
     return { ok: true }
   }
 
@@ -726,8 +881,8 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
   }
 
   const value: DemoDataContextValue = {
-    accounts: LOCAL_ACCOUNTS,
     session,
+    authLoading,
     incidents,
     qrPasses,
     packages,
@@ -740,7 +895,6 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     logout,
     resetDemoData,
     dismissSyncToast,
-    findAccountByRole,
     createIncident,
     updateVote,
     acknowledgeIncident,
