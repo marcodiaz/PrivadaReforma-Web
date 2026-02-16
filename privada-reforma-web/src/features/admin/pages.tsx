@@ -169,6 +169,9 @@ function localizeAdminError(raw?: string): string {
   if (lower.includes('non-2xx')) {
     return 'El servidor rechazo la solicitud. Revisa los logs de la funcion para ver el detalle.'
   }
+  if (lower.includes('invalid jwt')) {
+    return 'La sesion no fue aceptada por el servidor. Cierra sesion, vuelve a entrar y vuelve a intentar.'
+  }
   if (
     lower.includes('not admin') ||
     lower.includes('forbidden') ||
