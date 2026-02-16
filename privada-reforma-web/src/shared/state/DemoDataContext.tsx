@@ -31,6 +31,13 @@ import {
 } from '../domain/demoData'
 import { getItem, migrateIfNeeded, removeItem, setItem, storageKeys } from '../storage/storage'
 import {
+  fetchIncidentsFromSupabase,
+  fetchPackagesFromSupabase,
+  syncIncidentsToSupabase,
+  syncPackagesToSupabase,
+} from '../supabase/data'
+import { isSupabaseConfigured } from '../supabase/client'
+import {
   canResolveIncident,
   updateVote as updateIncidentVote,
 } from '../../features/incidents/logic'
@@ -188,6 +195,8 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
   const [syncToast, setSyncToast] = useState<string | null>(null)
   const [debtMode] = useState(false)
   const persistTimerRef = useRef<number | null>(null)
+  const remoteSyncTimerRef = useRef<number | null>(null)
+  const remoteLoadDoneRef = useRef(false)
   const auditLogRef = useRef<AuditLogEntry[]>(auditLog)
 
   useEffect(() => {
@@ -220,6 +229,37 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
   }, [])
 
   useEffect(() => {
+    if (!isSupabaseConfigured || !isOnline || remoteLoadDoneRef.current) {
+      return
+    }
+
+    remoteLoadDoneRef.current = true
+    let isMounted = true
+
+    void (async () => {
+      const [remotePackages, remoteIncidents] = await Promise.all([
+        fetchPackagesFromSupabase(),
+        fetchIncidentsFromSupabase(),
+      ])
+
+      if (!isMounted) {
+        return
+      }
+
+      if (remotePackages && remotePackages.length > 0) {
+        setPackages(remotePackages)
+      }
+      if (remoteIncidents && remoteIncidents.length > 0) {
+        setIncidents(remoteIncidents)
+      }
+    })()
+
+    return () => {
+      isMounted = false
+    }
+  }, [isOnline])
+
+  useEffect(() => {
     if (persistTimerRef.current !== null) {
       window.clearTimeout(persistTimerRef.current)
     }
@@ -241,6 +281,29 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       }
     }
   }, [session, incidents, qrPasses, packages, auditLog, offlineQueue])
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || !isOnline) {
+      return
+    }
+
+    if (remoteSyncTimerRef.current !== null) {
+      window.clearTimeout(remoteSyncTimerRef.current)
+    }
+
+    remoteSyncTimerRef.current = window.setTimeout(() => {
+      void Promise.all([
+        syncPackagesToSupabase(packages),
+        syncIncidentsToSupabase(incidents),
+      ])
+    }, 700)
+
+    return () => {
+      if (remoteSyncTimerRef.current !== null) {
+        window.clearTimeout(remoteSyncTimerRef.current)
+      }
+    }
+  }, [packages, incidents, isOnline])
 
   function login(email: string, role: UserRole) {
     const fromAccount = LOCAL_ACCOUNTS.find(
