@@ -8,6 +8,7 @@ This folder contains SQL migrations for the backend MVP tables used by the FE.
 2. `migrations/20260216131000_enable_rls_and_policies.sql`
 3. `migrations/20260216133000_storage_private_package_photos.sql`
 4. `migrations/20260216160000_packages_incidents_action_rpc.sql`
+5. `migrations/20260216173000_profiles_self_bootstrap.sql`
 
 ## Included Tables
 
@@ -69,3 +70,56 @@ This folder contains SQL migrations for the backend MVP tables used by the FE.
   - Handles vote add/remove/toggle and recalculates `support_score`.
 
 These are used by the FE per-action writes to avoid full-array upsert clobbering across devices.
+
+## Account Setup (Auth + Profiles)
+
+1. Create users in Supabase Dashboard:
+   - Authentication -> Users -> Add user
+2. Run seed SQL:
+   - `seeds/20260216_profiles_manual_seed.sql`
+3. Resident mapping included:
+   - `marcodiaz0493@gmail.com` -> `resident`, unit `1141`
+4. Admin account:
+   - Create a separate auth user first (recommended `marcodiaz0493+admin@gmail.com`)
+   - Re-run seed SQL to map role `admin`
+
+### First-login bootstrap policy
+
+Migration `20260216173000_profiles_self_bootstrap.sql` allows an authenticated user with no profile row to insert only:
+- `user_id = auth.uid()`
+- `role = 'resident'`
+- `unit_number is not null`
+
+This keeps self-bootstrap narrow while preserving admin-controlled role changes.
+
+## Admin User Management (Invite/Create)
+
+Frontend admin screen:
+- Route: `/admin/users`
+- UI file: `src/features/admin/pages.tsx` (`AdminUsersPage`)
+
+Edge Function:
+- Path: `supabase/functions/admin-create-user/index.ts`
+- Name: `admin-create-user`
+
+### Function behavior
+
+- Requires authenticated caller with `profiles.role = 'admin'`.
+- Supports two modes:
+  - `invite`: sends Supabase invite email (`inviteUserByEmail`)
+  - `create`: creates user with temporary password (`createUser`)
+- Upserts `public.profiles` for the new user (`role`, `unit_number`).
+
+### Deploy steps
+
+1. Link project and login:
+   - `supabase login`
+   - `supabase link --project-ref <project-ref>`
+2. Set function secrets:
+   - `supabase secrets set SUPABASE_URL=https://<project-ref>.supabase.co`
+   - `supabase secrets set SUPABASE_ANON_KEY=<anon-key>`
+   - `supabase secrets set SUPABASE_SERVICE_ROLE_KEY=<service-role-key>`
+3. Deploy:
+   - `supabase functions deploy admin-create-user`
+
+No extra frontend env var is required beyond `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`.
