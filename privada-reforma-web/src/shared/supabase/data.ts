@@ -116,7 +116,7 @@ function mapIncidentToRow(input: Incident): IncidentRow {
 function applyUnitScope<T extends { eq: (...args: [string, string]) => T }>(
   query: T,
   role: UserRole,
-  unitNumber?: string,
+  unitNumber?: string
 ) {
   if (['resident', 'tenant'].includes(role) && unitNumber?.trim()) {
     return query.eq('unit_number', unitNumber.trim())
@@ -132,7 +132,7 @@ export async function fetchPackagesFromSupabase(input: { role: UserRole; unitNum
   let query = supabase
     .from('packages')
     .select(
-      'id, unit_number, photo_url, carrier, notes, status, created_at, stored_by_guard_user_id, ready_at, delivered_at, delivered_by_guard_user_id, ready_by_user_id',
+      'id, unit_number, photo_url, carrier, notes, status, created_at, stored_by_guard_user_id, ready_at, delivered_at, delivered_by_guard_user_id, ready_by_user_id'
     )
     .order('created_at', { ascending: false })
 
@@ -154,7 +154,7 @@ export async function fetchIncidentsFromSupabase(input: { role: UserRole; unitNu
   let query = supabase
     .from('incidents')
     .select(
-      'id, unit_number, title, description, category, priority, created_at, created_by_user_id, status, acknowledged_at, resolved_at, support_score, votes, guard_actions',
+      'id, unit_number, title, description, category, priority, created_at, created_by_user_id, status, acknowledged_at, resolved_at, support_score, votes, guard_actions'
     )
     .order('created_at', { ascending: false })
 
@@ -288,23 +288,26 @@ export function isStorageObjectPath(value: string) {
   return Boolean(value) && !isDirectDisplayUrl(value)
 }
 
-export async function getSignedPackagePhotoUrl(path: string) {
+export async function getSignedPackagePhotoUrl(
+  path: string,
+  expiresSeconds = PACKAGE_PHOTO_SIGNED_URL_SECONDS
+): Promise<string> {
   if (!path) {
-    return null
+    throw new Error('Storage path requerido.')
   }
   if (isDirectDisplayUrl(path)) {
     return path
   }
   if (!supabase) {
-    return null
+    throw new Error('Supabase no esta configurado.')
   }
 
   const { data, error } = await supabase.storage
     .from(PACKAGE_BUCKET)
-    .createSignedUrl(path, PACKAGE_PHOTO_SIGNED_URL_SECONDS)
+    .createSignedUrl(path, expiresSeconds)
 
   if (error || !data?.signedUrl) {
-    return null
+    throw new Error(error?.message ?? 'No fue posible crear signed URL.')
   }
 
   return data.signedUrl

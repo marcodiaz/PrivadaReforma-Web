@@ -20,25 +20,27 @@ export function PackagePhoto({ pathOrUrl, alt, className = '' }: PackagePhotoPro
 
   useEffect(() => {
     if (!pathOrUrl || directSrc || !navigator.onLine) {
-      return () => {
-      }
+      return () => {}
     }
 
     let canceled = false
     void (async () => {
-      const nextSignedUrl = await getSignedPackagePhotoUrl(pathOrUrl)
-      if (canceled) {
-        return
-      }
-      if (!nextSignedUrl) {
-        return
-      }
-      setSignedSrcByPath((previous) => {
-        if (previous[pathOrUrl] === nextSignedUrl) {
-          return previous
+      try {
+        const nextSignedUrl = await getSignedPackagePhotoUrl(pathOrUrl)
+        if (canceled) {
+          return
         }
-        return { ...previous, [pathOrUrl]: nextSignedUrl }
-      })
+        setSignedSrcByPath((previous) => {
+          if (previous[pathOrUrl] === nextSignedUrl) {
+            return previous
+          }
+          return { ...previous, [pathOrUrl]: nextSignedUrl }
+        })
+      } catch {
+        if (!canceled) {
+          setSignedSrcByPath((previous) => ({ ...previous, [pathOrUrl]: '' }))
+        }
+      }
     })()
 
     return () => {
@@ -57,12 +59,5 @@ export function PackagePhoto({ pathOrUrl, alt, className = '' }: PackagePhotoPro
     )
   }
 
-  return (
-    <img
-      alt={alt}
-      className={className}
-      onError={() => setErroredSrc(src)}
-      src={src}
-    />
-  )
+  return <img alt={alt} className={className} onError={() => setErroredSrc(src)} src={src} />
 }
