@@ -23,6 +23,7 @@ export function AdminUsersPage() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [feedback, setFeedback] = useState('')
+  const [feedbackType, setFeedbackType] = useState<'error' | 'success'>('success')
 
   const roles: ManagedUserRole[] = [
     'resident',
@@ -35,10 +36,12 @@ export function AdminUsersPage() {
 
   async function handleSubmit() {
     if (!email.trim()) {
+      setFeedbackType('error')
       setFeedback('Correo requerido.')
       return
     }
     if (mode === 'create' && !password.trim()) {
+      setFeedbackType('error')
       setFeedback('Contrasena temporal requerida para modo create.')
       return
     }
@@ -54,10 +57,12 @@ export function AdminUsersPage() {
     setLoading(false)
 
     if (!result.ok) {
-      setFeedback(result.error ?? 'No fue posible completar la operacion.')
+      setFeedbackType('error')
+      setFeedback(localizeAdminError(result.error))
       return
     }
 
+    setFeedbackType('success')
     setFeedback(
       mode === 'invite'
         ? `Invitacion enviada a ${result.email ?? email}.`
@@ -142,11 +147,49 @@ export function AdminUsersPage() {
           {loading ? 'Procesando...' : mode === 'invite' ? 'Enviar invitacion' : 'Crear usuario'}
         </AppButton>
         {feedback ? (
-          <p className="text-xs text-[var(--color-text-muted)]">{feedback}</p>
+          <p
+            className={
+              feedbackType === 'error'
+                ? 'text-xs text-red-600'
+                : 'text-xs text-[var(--color-text-muted)]'
+            }
+          >
+            {feedback}
+          </p>
         ) : null}
       </AppCard>
     </div>
   )
+}
+
+function localizeAdminError(raw?: string): string {
+  if (!raw?.trim()) return 'No fue posible completar la operacion.'
+  const lower = raw.toLowerCase()
+
+  if (lower.includes('non-2xx')) {
+    return 'El servidor rechazo la solicitud. Revisa los logs de la funcion para ver el detalle.'
+  }
+  if (
+    lower.includes('not admin') ||
+    lower.includes('forbidden') ||
+    lower.includes('unauthorized')
+  ) {
+    return 'Tu usuario no tiene permisos de administrador para crear o invitar usuarios.'
+  }
+  if (lower.includes('unit') || lower.includes('unit_number')) {
+    return 'Falta unit_number. Para resident/tenant/maintenance debes capturar la unidad.'
+  }
+  if (lower.includes('email') && lower.includes('already')) {
+    return 'Ese correo ya existe. Usa otro correo o intenta con modo invite.'
+  }
+  if (lower.includes('invalid') && lower.includes('email')) {
+    return 'El correo no es valido. Verifica el formato.'
+  }
+  if (lower.includes('password')) {
+    return 'La contrasena no cumple requisitos. Usa al menos 8 caracteres.'
+  }
+
+  return `No se pudo completar la operacion: ${raw}`
 }
 
 export function AdminDebtsPage() {

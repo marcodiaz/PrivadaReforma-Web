@@ -36,10 +36,9 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-    const anonKey = Deno.env.get('SUPABASE_ANON_KEY')
 
-    if (!supabaseUrl || !serviceRoleKey || !anonKey) {
-      return json(500, { ok: false, error: 'Missing Supabase env vars.' })
+    if (!supabaseUrl || !serviceRoleKey) {
+      return json(500, { ok: false, error: 'Missing Supabase env vars (URL/SERVICE_ROLE).' })
     }
 
     const authHeader = req.headers.get('Authorization')
@@ -48,13 +47,16 @@ Deno.serve(async (req) => {
     }
     const token = authHeader.replace('Bearer ', '')
 
-    const authClient = createClient(supabaseUrl, anonKey)
     const adminClient = createClient(supabaseUrl, serviceRoleKey)
 
-    const userResult = await authClient.auth.getUser(token)
+    // Validate caller session using service role client to avoid publishable/anon key mismatch issues.
+    const userResult = await adminClient.auth.getUser(token)
     const caller = userResult.data.user
     if (userResult.error || !caller) {
-      return json(401, { ok: false, error: 'Invalid session.' })
+      return json(401, {
+        ok: false,
+        error: `Invalid session: ${userResult.error?.message ?? 'unknown error'}`,
+      })
     }
 
     const roleResult = await adminClient
