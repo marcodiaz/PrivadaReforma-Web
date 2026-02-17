@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getRoleLandingPath } from '../../../shared/domain/auth'
 import { useDemoData } from '../../../shared/state/DemoDataContext'
+import { supabase } from '../../../shared/supabase/client'
 import { AppButton, AppCard } from '../../../shared/ui'
 
 export function LoginPage() {
@@ -11,6 +12,22 @@ export function LoginPage() {
   const [password, setPassword] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [needsPasswordSetup, setNeedsPasswordSetup] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [passwordSetupError, setPasswordSetupError] = useState('')
+  const [settingPassword, setSettingPassword] = useState(false)
+
+  useEffect(() => {
+    const hash = window.location.hash.startsWith('#')
+      ? window.location.hash.slice(1)
+      : window.location.hash
+    const params = new URLSearchParams(hash)
+    const flowType = params.get('type')
+    if (flowType === 'invite' || flowType === 'recovery') {
+      setNeedsPasswordSetup(true)
+    }
+  }, [])
 
   async function handleLogin() {
     if (!email.trim() || !password.trim()) {
@@ -29,15 +46,106 @@ export function LoginPage() {
     setSubmitting(false)
   }
 
+  async function handleSetPassword() {
+    if (!session) {
+      setPasswordSetupError('Primero valida la invitacion e inicia sesion con el enlace.')
+      return
+    }
+    if (!newPassword.trim() || !confirmPassword.trim()) {
+      setPasswordSetupError('Debes capturar y confirmar la nueva contrasena.')
+      return
+    }
+    if (newPassword.length < 8) {
+      setPasswordSetupError('La contrasena debe tener al menos 8 caracteres.')
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordSetupError('La confirmacion no coincide.')
+      return
+    }
+    if (!supabase) {
+      setPasswordSetupError('Supabase no esta configurado.')
+      return
+    }
+
+    setSettingPassword(true)
+    const result = await supabase.auth.updateUser({ password: newPassword })
+    setSettingPassword(false)
+    if (result.error) {
+      setPasswordSetupError(result.error.message)
+      return
+    }
+
+    setPasswordSetupError('')
+    setNeedsPasswordSetup(false)
+    window.history.replaceState({}, '', window.location.pathname + window.location.search)
+    navigate(getRoleLandingPath(session.role), { replace: true })
+  }
+
   useEffect(() => {
     if (!session) {
       return
     }
+    if (needsPasswordSetup) {
+      return
+    }
     navigate(getRoleLandingPath(session.role), { replace: true })
-  }, [navigate, session])
+  }, [navigate, needsPasswordSetup, session])
 
   if (authLoading) {
     return <AppCard className="text-sm text-[var(--color-text-muted)]">Validando sesion...</AppCard>
+  }
+
+  if (needsPasswordSetup) {
+    return (
+      <AppCard className="space-y-4">
+        <header className="space-y-1">
+          <p className="text-xs font-medium uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
+            Invitacion
+          </p>
+          <h1 className="text-xl font-semibold">Configura tu contrasena</h1>
+          <p className="text-sm text-[var(--color-text-muted)]">
+            Antes de entrar, define la contrasena para tu cuenta.
+          </p>
+        </header>
+
+        {!session ? (
+          <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            Validando enlace de invitacion, espera unos segundos.
+          </p>
+        ) : null}
+
+        <label className="block space-y-1">
+          <span className="text-sm font-medium">Nueva contrasena</span>
+          <input
+            className="w-full rounded-xl border border-[var(--color-border)] bg-white px-3 py-3 text-sm outline-none ring-offset-2 focus:ring-2 focus:ring-[var(--color-brand)]"
+            type="password"
+            value={newPassword}
+            onChange={(event) => setNewPassword(event.target.value)}
+            placeholder="Minimo 8 caracteres"
+          />
+        </label>
+
+        <label className="block space-y-1">
+          <span className="text-sm font-medium">Confirmar contrasena</span>
+          <input
+            className="w-full rounded-xl border border-[var(--color-border)] bg-white px-3 py-3 text-sm outline-none ring-offset-2 focus:ring-2 focus:ring-[var(--color-brand)]"
+            type="password"
+            value={confirmPassword}
+            onChange={(event) => setConfirmPassword(event.target.value)}
+            placeholder="Repite la contrasena"
+          />
+        </label>
+
+        {passwordSetupError ? (
+          <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{passwordSetupError}</p>
+        ) : null}
+
+        <AppButton block disabled={settingPassword || !session} onClick={() => void handleSetPassword()}>
+          {settingPassword ? 'Guardando...' : 'Guardar contrasena'}
+        </AppButton>
+      </AppCard>
+    )
   }
 
   if (session) {

@@ -36,6 +36,8 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+    const appBaseUrl = Deno.env.get('APP_BASE_URL')?.trim()
+    const normalizedAppBaseUrl = appBaseUrl ? appBaseUrl.replace(/\/+$/, '') : null
 
     if (!supabaseUrl || !serviceRoleKey) {
       return json(500, { ok: false, error: 'Missing Supabase env vars (URL/SERVICE_ROLE).' })
@@ -97,7 +99,10 @@ Deno.serve(async (req) => {
 
     let userId: string | null = null
     if (mode === 'invite') {
-      const invite = await adminClient.auth.admin.inviteUserByEmail(email)
+      const invite = await adminClient.auth.admin.inviteUserByEmail(
+        email,
+        normalizedAppBaseUrl ? { redirectTo: `${normalizedAppBaseUrl}/login` } : undefined,
+      )
       if (invite.error || !invite.data.user) {
         return json(400, { ok: false, error: invite.error?.message ?? 'Invite failed.' })
       }
