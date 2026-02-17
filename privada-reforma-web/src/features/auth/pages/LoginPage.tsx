@@ -22,10 +22,31 @@ export function LoginPage() {
     const hash = window.location.hash.startsWith('#')
       ? window.location.hash.slice(1)
       : window.location.hash
-    const params = new URLSearchParams(hash)
-    const flowType = params.get('type')
+    const hashParams = new URLSearchParams(hash)
+    const searchParams = new URLSearchParams(window.location.search)
+    const flowType = hashParams.get('type') ?? searchParams.get('type')
+    const flowError = hashParams.get('error_description') ?? searchParams.get('error_description')
+
+    if (flowError) {
+      setErrorMessage(decodeURIComponent(flowError))
+    }
     if (flowType === 'invite' || flowType === 'recovery') {
       setNeedsPasswordSetup(true)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!supabase) {
+      return
+    }
+    const authSubscription = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setNeedsPasswordSetup(true)
+      }
+    })
+
+    return () => {
+      authSubscription.data.subscription.unsubscribe()
     }
   }, [])
 
