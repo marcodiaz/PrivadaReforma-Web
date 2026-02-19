@@ -13,13 +13,15 @@ export function ModulePlaceholder({
 }: ModulePlaceholderProps) {
   return (
     <div className="space-y-3">
-      <header className="space-y-1">
-        <p className="text-xs font-medium uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
+      <header className="space-y-2">
+        <p className="inline-flex rounded-full border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--color-text-muted)]">
           {role}
         </p>
-        <h1 className="text-xl font-semibold text-[var(--color-text)]">{title}</h1>
+        <h1 className="text-[1.4rem] font-semibold tracking-[-0.02em] text-[var(--color-text)]">
+          {title}
+        </h1>
       </header>
-      <AppCard>
+      <AppCard className="bg-[linear-gradient(180deg,_#171717,_#121212)]">
         <p className="text-sm text-[var(--color-text-muted)]">{description}</p>
       </AppCard>
     </div>

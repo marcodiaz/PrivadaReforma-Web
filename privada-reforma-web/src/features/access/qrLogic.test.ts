@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildQrImageUrl,
+  buildQrPayload,
   buildDepartmentDisplayCode,
   findPassesByDepartmentSequence,
   findPassesByLast4,
@@ -65,5 +67,28 @@ describe('qr last4', () => {
   it('normaliza y formatea departamento', () => {
     expect(normalizeDepartmentCode('11 41')).toBe('1141')
     expect(formatDepartmentCode('11 41')).toBe('1141')
+  })
+
+  it('genera payload QR con campos operativos', () => {
+    const payload = buildQrPayload({
+      id: 'qr-1',
+      displayCode: '1141-0004',
+      qrValue: 'QR-1141-0004',
+      unitId: '11-41',
+      status: 'active',
+      type: 'single_use',
+      endAt: '2026-02-20T12:00:00.000Z',
+      visitorName: 'Marco',
+      maxPersons: 2,
+    })
+    expect(payload).toContain('"code":"1141-0004"')
+    expect(payload).toContain('"visitor":"Marco"')
+    expect(payload).toContain('"maxPersons":2')
+  })
+
+  it('construye URL de imagen QR con tamano limitado', () => {
+    const url = buildQrImageUrl('abc', 9999)
+    expect(url).toContain('size=820x820')
+    expect(url).toContain('data=abc')
   })
 })

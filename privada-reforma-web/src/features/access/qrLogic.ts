@@ -78,3 +78,31 @@ export function findPassesByDepartmentSequence(
   )
   return qrPasses.filter((pass) => pass.displayCode === fullCode)
 }
+
+type QrPayloadInput = Pick<
+  QrPass,
+  'id' | 'displayCode' | 'qrValue' | 'unitId' | 'status' | 'type' | 'endAt'
+> & {
+  visitorName?: string
+  maxPersons?: number
+}
+
+export function buildQrPayload(input: QrPayloadInput) {
+  return JSON.stringify({
+    qrId: input.id,
+    code: input.displayCode,
+    token: input.qrValue,
+    unit: input.unitId,
+    visitor: input.visitorName?.trim() || 'VISITA',
+    maxPersons: input.maxPersons ?? 1,
+    status: input.status,
+    type: input.type,
+    expiresAt: input.endAt ?? null,
+  })
+}
+
+export function buildQrImageUrl(payload: string, size = 420) {
+  const safeSize = Number.isFinite(size) ? Math.max(180, Math.min(820, Math.round(size))) : 420
+  const encoded = encodeURIComponent(payload)
+  return `https://api.qrserver.com/v1/create-qr-code/?size=${safeSize}x${safeSize}&format=png&ecc=M&data=${encoded}`
+}

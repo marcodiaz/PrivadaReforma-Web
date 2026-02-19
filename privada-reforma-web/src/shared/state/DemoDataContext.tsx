@@ -65,6 +65,10 @@ type CreateQrInput = {
   label: string
   unitId: string
   departmentCode: string
+  visitorName?: string
+  maxUses?: number
+  maxPersons?: number
+  accessMessage?: string
   accessType: 'temporal' | 'time_limit'
   timeLimit?: 'week' | 'month' | 'permanent'
   visitorPhotoUrl?: string
@@ -610,6 +614,10 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       label: input.label.trim(),
       unitId: input.unitId.trim(),
       createdByUserId: session.userId,
+      visitorName: input.visitorName?.trim() || 'VISITA',
+      maxUses: input.maxUses && input.maxUses > 0 ? Math.floor(input.maxUses) : 1,
+      maxPersons: input.maxPersons && input.maxPersons > 0 ? Math.floor(input.maxPersons) : 1,
+      accessMessage: input.accessMessage?.trim(),
       type,
       startAt,
       endAt,

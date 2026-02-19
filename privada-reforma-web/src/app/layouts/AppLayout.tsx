@@ -31,7 +31,7 @@ function resolveTitle(pathname: string): string {
     return 'Operacion administrativa'
   }
 
-  return 'App residencial'
+  return 'Residencia'
 }
 
 export function AppLayout() {
@@ -64,23 +64,21 @@ export function AppLayout() {
 
   return (
     <div className="min-h-dvh bg-[var(--color-bg)]">
-      <header className="sticky top-0 z-10 border-b border-[var(--color-border)] bg-[var(--color-surface)]/95 px-4 pb-3 pt-3 backdrop-blur">
+      <header className="sticky top-0 z-10 border-b border-[var(--color-border)] bg-black/95 px-4 pb-3 pt-3 shadow-lg backdrop-blur">
         <div className="mx-auto flex w-full max-w-md items-start justify-between gap-2">
           <div>
-            <p className="text-xs uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
+            <p className="text-xs uppercase tracking-[0.08em] text-zinc-400">
               Privada Reforma
             </p>
-            <h1 className="text-base font-semibold text-[var(--color-text)]">
-              {resolveTitle(pathname)}
-            </h1>
+            <h1 className="text-base font-semibold text-white">{resolveTitle(pathname)}</h1>
             {shouldShowTopPackages ? (
-              <p className="mt-1 text-xs font-semibold text-[var(--color-text-muted)]">
+              <p className="mt-1 text-xs font-semibold text-zinc-400">
                 Packages: {heldPackages}
               </p>
             ) : null}
           </div>
           <button
-            className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-1.5 text-xs font-semibold text-[var(--color-text)]"
+            className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-zinc-100"
             onClick={() => {
               logout()
               navigate('/login')
@@ -96,7 +94,7 @@ export function AppLayout() {
         <Outlet />
       </main>
 
-      <nav className="fixed bottom-0 left-0 right-0 border-t border-[var(--color-border)] bg-[var(--color-surface)]/95 px-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2 backdrop-blur">
+      <nav className="fixed bottom-0 left-0 right-0 border-t border-slate-700 bg-slate-950/95 px-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2 backdrop-blur">
         <ul
           className="mx-auto grid w-full max-w-md gap-1"
           style={{ gridTemplateColumns: `repeat(${navItems.length}, minmax(0, 1fr))` }}
@@ -108,8 +106,8 @@ export function AppLayout() {
                 className={({ isActive }) =>
                   `block rounded-xl px-2 py-2 text-center text-xs font-medium ${
                     isActive
-                      ? 'bg-[var(--color-brand)] text-white'
-                      : 'text-[var(--color-text-muted)]'
+                      ? 'bg-white text-black'
+                      : 'text-slate-400'
                   }`
                 }
               >
