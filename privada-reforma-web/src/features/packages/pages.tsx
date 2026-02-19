@@ -428,7 +428,7 @@ export function AdminPackagesPage() {
           All
         </AppButton>
         <select
-          className="w-full rounded-xl border border-[var(--color-border)] bg-white px-3 py-3 text-sm"
+          className="w-full rounded-xl border border-[var(--color-border)] bg-white px-3 py-3 text-sm text-slate-900"
           onChange={(event) => setStatusFilter(event.target.value as 'all' | Package['status'])}
           value={statusFilter}
         >

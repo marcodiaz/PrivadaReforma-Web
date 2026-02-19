@@ -139,7 +139,7 @@ export function LoginPage() {
         <label className="block space-y-1">
           <span className="text-sm font-medium">Nueva contrasena</span>
           <input
-            className="w-full rounded-xl border border-[var(--color-border)] bg-white px-3 py-3 text-sm outline-none ring-offset-2 focus:ring-2 focus:ring-[var(--color-brand)]"
+            className="w-full rounded-xl border border-[var(--color-border)] bg-white px-3 py-3 text-sm text-slate-900 caret-slate-900 outline-none placeholder:text-slate-500 ring-offset-2 focus:ring-2 focus:ring-[var(--color-brand)]"
             type="password"
             value={newPassword}
             onChange={(event) => setNewPassword(event.target.value)}
@@ -150,7 +150,7 @@ export function LoginPage() {
         <label className="block space-y-1">
           <span className="text-sm font-medium">Confirmar contrasena</span>
           <input
-            className="w-full rounded-xl border border-[var(--color-border)] bg-white px-3 py-3 text-sm outline-none ring-offset-2 focus:ring-2 focus:ring-[var(--color-brand)]"
+            className="w-full rounded-xl border border-[var(--color-border)] bg-white px-3 py-3 text-sm text-slate-900 caret-slate-900 outline-none placeholder:text-slate-500 ring-offset-2 focus:ring-2 focus:ring-[var(--color-brand)]"
             type="password"
             value={confirmPassword}
             onChange={(event) => setConfirmPassword(event.target.value)}
@@ -188,7 +188,7 @@ export function LoginPage() {
       <label className="block space-y-1">
         <span className="text-sm font-medium">Correo</span>
         <input
-          className="w-full rounded-xl border border-[var(--color-border)] bg-white px-3 py-3 text-sm outline-none ring-offset-2 focus:ring-2 focus:ring-[var(--color-brand)]"
+          className="w-full rounded-xl border border-[var(--color-border)] bg-white px-3 py-3 text-sm text-slate-900 caret-slate-900 outline-none placeholder:text-slate-500 ring-offset-2 focus:ring-2 focus:ring-[var(--color-brand)]"
           type="email"
           value={email}
           onChange={(event) => setEmail(event.target.value)}
@@ -199,7 +199,7 @@ export function LoginPage() {
       <label className="block space-y-1">
         <span className="text-sm font-medium">Contrasena</span>
         <input
-          className="w-full rounded-xl border border-[var(--color-border)] bg-white px-3 py-3 text-sm outline-none ring-offset-2 focus:ring-2 focus:ring-[var(--color-brand)]"
+          className="w-full rounded-xl border border-[var(--color-border)] bg-white px-3 py-3 text-sm text-slate-900 caret-slate-900 outline-none placeholder:text-slate-500 ring-offset-2 focus:ring-2 focus:ring-[var(--color-brand)]"
           type="password"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
