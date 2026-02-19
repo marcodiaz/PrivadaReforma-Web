@@ -13,8 +13,9 @@ const baseClassName =
   'inline-flex items-center justify-center rounded-xl px-4 py-3 text-sm font-semibold transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60'
 
 const variantClassName: Record<ButtonVariant, string> = {
-  primary: 'bg-[var(--color-brand)] text-white shadow-sm',
-  secondary: 'bg-[var(--color-surface-muted)] text-[var(--color-text)]',
+  primary: 'bg-white text-black shadow-sm',
+  secondary:
+    'border border-[var(--color-border)] bg-[var(--color-surface-muted)] text-[var(--color-text)]',
   danger: 'bg-[var(--color-danger)] text-white',
 }
 
