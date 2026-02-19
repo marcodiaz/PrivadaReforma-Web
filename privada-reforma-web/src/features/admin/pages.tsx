@@ -90,7 +90,7 @@ export function AdminUsersPage() {
         <label className="block text-xs text-[var(--color-text-muted)]">
           Modo
           <select
-            className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
+            className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm text-[var(--color-text)]"
             onChange={(event) => setMode(event.target.value as 'invite' | 'create')}
             value={mode}
           >
@@ -101,7 +101,7 @@ export function AdminUsersPage() {
         <label className="block text-xs text-[var(--color-text-muted)]">
           Correo
           <input
-            className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
+            className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-muted)]"
             onChange={(event) => setEmail(event.target.value)}
             placeholder="usuario@dominio.com"
             type="email"
@@ -112,7 +112,7 @@ export function AdminUsersPage() {
           <label className="block text-xs text-[var(--color-text-muted)]">
             Contrasena temporal
             <input
-              className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
+              className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-muted)]"
               onChange={(event) => setPassword(event.target.value)}
               placeholder="Minimo 8 caracteres"
               type="password"
@@ -123,7 +123,7 @@ export function AdminUsersPage() {
         <label className="block text-xs text-[var(--color-text-muted)]">
           Rol
           <select
-            className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
+            className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm text-[var(--color-text)]"
             onChange={(event) => setRole(event.target.value as ManagedUserRole)}
             value={role}
           >
@@ -137,7 +137,7 @@ export function AdminUsersPage() {
         <label className="block text-xs text-[var(--color-text-muted)]">
           unit_number (opcional para guard/admin/board)
           <input
-            className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
+            className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-muted)]"
             onChange={(event) => setUnitNumber(event.target.value)}
             placeholder="1141"
             value={unitNumber}
