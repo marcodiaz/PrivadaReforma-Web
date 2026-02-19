@@ -8,9 +8,11 @@ import { AppButton, AppCard } from '../../../shared/ui'
 export function LoginPage() {
   const navigate = useNavigate()
   const { session, authLoading, login } = useDemoData()
+  const [authMode, setAuthMode] = useState<'password' | 'magic_link'>('password')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
+  const [magicLinkMessage, setMagicLinkMessage] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [needsPasswordSetup, setNeedsPasswordSetup] = useState(false)
   const [newPassword, setNewPassword] = useState('')
@@ -65,6 +67,37 @@ export function LoginPage() {
     }
     setErrorMessage('')
     setSubmitting(false)
+  }
+
+  async function handleMagicLinkLogin() {
+    if (!email.trim()) {
+      setErrorMessage('Correo obligatorio para enviar magic link.')
+      return
+    }
+    if (!supabase) {
+      setErrorMessage('Supabase no esta configurado.')
+      return
+    }
+
+    setSubmitting(true)
+    setErrorMessage('')
+    setMagicLinkMessage('')
+
+    const redirectTo = `${window.location.origin}/login`
+    const result = await supabase.auth.signInWithOtp({
+      email: email.trim(),
+      options: {
+        emailRedirectTo: redirectTo,
+        shouldCreateUser: false,
+      },
+    })
+
+    setSubmitting(false)
+    if (result.error) {
+      setErrorMessage(result.error.message)
+      return
+    }
+    setMagicLinkMessage('Revisa tu correo. Te enviamos un enlace de acceso.')
   }
 
   async function handleSetPassword() {
@@ -181,9 +214,34 @@ export function LoginPage() {
         </p>
         <h1 className="text-xl font-semibold">Privada Reforma</h1>
         <p className="text-sm text-[var(--color-text-muted)]">
-          Acceso con Supabase Auth (email + password).
+          Acceso con contrasena o magic link.
         </p>
       </header>
+
+      <div className="grid grid-cols-2 gap-2">
+        <AppButton
+          block
+          onClick={() => {
+            setAuthMode('password')
+            setErrorMessage('')
+            setMagicLinkMessage('')
+          }}
+          variant={authMode === 'password' ? 'primary' : 'secondary'}
+        >
+          Contrasena
+        </AppButton>
+        <AppButton
+          block
+          onClick={() => {
+            setAuthMode('magic_link')
+            setErrorMessage('')
+            setMagicLinkMessage('')
+          }}
+          variant={authMode === 'magic_link' ? 'primary' : 'secondary'}
+        >
+          Magic link
+        </AppButton>
+      </div>
 
       <label className="block space-y-1">
         <span className="text-sm font-medium">Correo</span>
@@ -196,26 +254,43 @@ export function LoginPage() {
         />
       </label>
 
-      <label className="block space-y-1">
-        <span className="text-sm font-medium">Contrasena</span>
-        <input
-          className="w-full rounded-xl border border-[var(--color-border)] bg-white px-3 py-3 text-sm text-slate-900 caret-slate-900 outline-none placeholder:text-slate-500 ring-offset-2 focus:ring-2 focus:ring-[var(--color-brand)]"
-          type="password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          placeholder="********"
-        />
-      </label>
+      {authMode === 'password' ? (
+        <label className="block space-y-1">
+          <span className="text-sm font-medium">Contrasena</span>
+          <input
+            className="w-full rounded-xl border border-[var(--color-border)] bg-white px-3 py-3 text-sm text-slate-900 caret-slate-900 outline-none placeholder:text-slate-500 ring-offset-2 focus:ring-2 focus:ring-[var(--color-brand)]"
+            type="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            placeholder="********"
+          />
+        </label>
+      ) : (
+        <p className="text-xs text-[var(--color-text-muted)]">
+          Enviaremos un enlace de acceso seguro a tu correo.
+        </p>
+      )}
 
       {errorMessage ? (
         <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
           {errorMessage}
         </p>
       ) : null}
+      {magicLinkMessage ? (
+        <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+          {magicLinkMessage}
+        </p>
+      ) : null}
 
-      <AppButton block disabled={submitting} onClick={handleLogin}>
-        {submitting ? 'Entrando...' : 'Entrar'}
-      </AppButton>
+      {authMode === 'password' ? (
+        <AppButton block disabled={submitting} onClick={handleLogin}>
+          {submitting ? 'Entrando...' : 'Entrar'}
+        </AppButton>
+      ) : (
+        <AppButton block disabled={submitting} onClick={() => void handleMagicLinkLogin()}>
+          {submitting ? 'Enviando...' : 'Enviar magic link'}
+        </AppButton>
+      )}
     </AppCard>
   )
 }
