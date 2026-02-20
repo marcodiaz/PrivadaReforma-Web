@@ -8,6 +8,8 @@ type NavItem = {
   kind?: 'packages' | 'reports'
 }
 
+type AdminSection = 'ops' | 'moderation' | 'finance'
+
 const residentNav: NavItem[] = [
   { to: '/app/home', label: 'Inicio' },
   { to: '/app/visits', label: 'Visitas' },
@@ -16,16 +18,44 @@ const residentNav: NavItem[] = [
   { to: '/app/profile', label: 'Perfil' },
 ]
 
-const adminNav: NavItem[] = [
-  { to: '/admin/dashboard', label: 'Panel' },
-  { to: '/admin/users', label: 'Usuarios' },
-  { to: '/admin/push', label: 'Push' },
-  { to: '/admin/reports', label: 'Reports', kind: 'reports' },
-  { to: '/admin/packages', label: 'Paquetes', kind: 'packages' },
-  { to: '/admin/debts', label: 'Adeudos' },
-  { to: '/admin/finance', label: 'Finanzas' },
-  { to: '/admin/exports', label: 'Reportes' },
-]
+const adminSectionLabels: Record<AdminSection, string> = {
+  ops: 'Operacion',
+  moderation: 'Moderacion',
+  finance: 'Finanzas',
+}
+
+const adminNavBySection: Record<AdminSection, NavItem[]> = {
+  ops: [
+    { to: '/admin/dashboard', label: 'Panel' },
+    { to: '/admin/users', label: 'Usuarios' },
+    { to: '/admin/push', label: 'Push' },
+  ],
+  moderation: [
+    { to: '/admin/reports', label: 'Reports', kind: 'reports' },
+    { to: '/admin/packages', label: 'Paquetes', kind: 'packages' },
+  ],
+  finance: [
+    { to: '/admin/debts', label: 'Adeudos' },
+    { to: '/admin/finance', label: 'Finanzas' },
+    { to: '/admin/exports', label: 'Reportes' },
+  ],
+}
+
+const adminSectionOrder: AdminSection[] = ['ops', 'moderation', 'finance']
+
+function resolveAdminSection(pathname: string): AdminSection {
+  if (pathname.startsWith('/admin/reports') || pathname.startsWith('/admin/packages')) {
+    return 'moderation'
+  }
+  if (
+    pathname.startsWith('/admin/debts') ||
+    pathname.startsWith('/admin/finance') ||
+    pathname.startsWith('/admin/exports')
+  ) {
+    return 'finance'
+  }
+  return 'ops'
+}
 
 function resolveTitle(pathname: string): string {
   if (pathname.startsWith('/admin')) {
@@ -69,11 +99,12 @@ export function AppLayout() {
   }
 
   const isAdmin = pathname.startsWith('/admin')
-  const navItems = isAdmin ? adminNav : residentNav
+  const activeAdminSection = resolveAdminSection(pathname)
+  const navItems = isAdmin ? adminNavBySection[activeAdminSection] : residentNav
   const heldPackages = getHeldPackageCountForUser()
   const openReports = moderationReports.filter((report) => report.status === 'open').length
   const shouldShowTopPackages = ['resident', 'tenant', 'board'].includes(session?.role ?? '')
-  const navItemWidth = isAdmin ? 'min-w-[108px]' : 'min-w-[92px]'
+  const navItemWidth = isAdmin ? 'min-w-[112px]' : 'min-w-[92px]'
 
   return (
     <div className="min-h-dvh bg-[var(--color-bg)]">
@@ -108,9 +139,28 @@ export function AppLayout() {
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 border-t border-slate-700 bg-slate-950/95 px-2 pb-[calc(0.65rem+env(safe-area-inset-bottom))] pt-2 backdrop-blur">
+        {isAdmin ? (
+          <ul className="mx-auto mb-2 grid w-full max-w-md grid-cols-3 gap-2">
+            {adminSectionOrder.map((section) => (
+              <li key={section}>
+                <button
+                  className={`block w-full rounded-lg border px-2 py-1.5 text-center text-[11px] font-semibold transition-colors ${
+                    section === activeAdminSection
+                      ? 'border-zinc-400 text-zinc-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]'
+                      : 'border-zinc-800 text-slate-400'
+                  }`}
+                  onClick={() => navigate(adminNavBySection[section][0].to)}
+                  type="button"
+                >
+                  {adminSectionLabels[section]}
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
         <ul className="mx-auto flex w-full max-w-md gap-2 overflow-x-auto pb-1">
           {navItems.map((item) => (
-            <li className={`${navItemWidth} shrink-0`} key={item.to}>
+            <li className={`${navItemWidth} ${isAdmin ? 'flex-1' : 'shrink-0'}`} key={item.to}>
               <NavLink
                 to={item.to}
                 className={({ isActive }) =>
