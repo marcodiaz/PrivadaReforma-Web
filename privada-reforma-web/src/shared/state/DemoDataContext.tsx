@@ -75,6 +75,7 @@ import {
   markPackageReadyInSupabase,
   registerPackageInSupabase,
   updateIncidentInSupabase,
+  updatePetPostInSupabase,
   updateMarketplacePostInSupabase,
   updateModerationReportInSupabase,
   votePollInSupabase,
@@ -173,6 +174,12 @@ type DemoDataContextValue = {
     ok: boolean
     error?: string
   }
+  updatePetPost: (input: {
+    postId: string
+    petName: string
+    photoUrl: string
+    comments: string
+  }) => { ok: boolean; error?: string }
   createPetPostComment: (input: { petPostId: string; message: string }) => {
     ok: boolean
     error?: string
@@ -203,10 +210,15 @@ type DemoDataContextValue = {
     targetId: string
     reason: string
     details?: string
-  }) => { ok: boolean; error?: string }
+  }) => Promise<{ ok: boolean; error?: string }>
   dismissModerationReport: (reportId: string) => { ok: boolean; error?: string }
   actionModerationReportDeleteTarget: (reportId: string) => { ok: boolean; error?: string }
-  createParkingReport: (input: { description: string }) => { ok: boolean; error?: string }
+  createParkingReport: (input: {
+    description: string
+    reportType: 'own_spot' | 'visitor_spot'
+    visitorParkingSpot?: string
+    photoUrl: string
+  }) => { ok: boolean; error?: string }
   updateParkingReportStatus: (input: {
     reportId: string
     status: 'owner_notified' | 'tow_truck_notified'
@@ -1189,6 +1201,46 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     return { ok: true }
   }
 
+  function updatePetPost(input: { postId: string; petName: string; photoUrl: string; comments: string }) {
+    if (!session) {
+      return { ok: false, error: 'Sesion requerida.' }
+    }
+    const target = petPosts.find((post) => post.id === input.postId)
+    if (!target) {
+      return { ok: false, error: 'Publicacion de mascota no encontrada.' }
+    }
+    if (target.createdByUserId !== session.userId && session.role !== 'admin') {
+      return { ok: false, error: 'Solo el autor o admin puede editar.' }
+    }
+
+    const petName = input.petName.trim()
+    const photoUrl = input.photoUrl.trim()
+    const comments = input.comments.trim()
+    if (!petName) {
+      return { ok: false, error: 'Nombre de mascota obligatorio.' }
+    }
+    if (!photoUrl) {
+      return { ok: false, error: 'Foto de mascota obligatoria.' }
+    }
+    if (!comments) {
+      return { ok: false, error: 'Comentarios obligatorios.' }
+    }
+
+    const updatedPost: PetPost = {
+      ...target,
+      petName,
+      photoUrl,
+      comments,
+    }
+    setPetPosts((previous) =>
+      previous.map((entry) => (entry.id === input.postId ? updatedPost : entry))
+    )
+    if (isSupabaseConfigured && isOnline) {
+      void updatePetPostInSupabase(updatedPost)
+    }
+    return { ok: true }
+  }
+
   function createPetPostComment(input: { petPostId: string; message: string }) {
     if (!session) {
       return { ok: false, error: 'Sesion requerida.' }
@@ -1365,7 +1417,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     return { ok: true }
   }
 
-  function createModerationReport(input: {
+  async function createModerationReport(input: {
     targetType: ModerationReport['targetType']
     targetId: string
     reason: string
@@ -1409,18 +1461,17 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       createdByUserId: session.userId,
       createdByName: session.fullName,
     }
-    setModerationReports((previous) => [report, ...previous])
-
     if (isSupabaseConfigured && isOnline) {
-      void createModerationReportInSupabase(report).then((ok) => {
-        if (ok) {
-          void emitDomainPushEvent({
-            eventType: 'report_created',
-            reportTargetType: report.targetType,
-          })
-        }
+      const saved = await createModerationReportInSupabase(report)
+      if (!saved) {
+        return { ok: false, error: 'No fue posible enviar el reporte al servidor.' }
+      }
+      void emitDomainPushEvent({
+        eventType: 'report_created',
+        reportTargetType: report.targetType,
       })
     }
+    setModerationReports((previous) => [report, ...previous])
     return { ok: true }
   }
 
@@ -1501,7 +1552,12 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     return { ok: true }
   }
 
-  function createParkingReport(input: { description: string }) {
+  function createParkingReport(input: {
+    description: string
+    reportType: 'own_spot' | 'visitor_spot'
+    visitorParkingSpot?: string
+    photoUrl: string
+  }) {
     if (!session) {
       return { ok: false, error: 'Sesion requerida.' }
     }
@@ -1516,12 +1572,27 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     if (!description) {
       return { ok: false, error: 'Agrega una descripcion del reporte.' }
     }
+    const photoUrl = input.photoUrl.trim()
+    if (!photoUrl) {
+      return { ok: false, error: 'Foto obligatoria para enviar el reporte.' }
+    }
+    const visitorParkingSpot = input.visitorParkingSpot?.trim()
+    if (input.reportType === 'visitor_spot' && !visitorParkingSpot) {
+      return { ok: false, error: 'Indica el cajon de visitante reportado.' }
+    }
+    const parkingSpot =
+      input.reportType === 'visitor_spot'
+        ? `Visitante ${visitorParkingSpot}`
+        : getAssignedParkingForUnit(session.unitNumber)
 
     const report: ParkingReport = {
       id: randomId('park'),
       unitNumber: session.unitNumber,
-      parkingSpot: getAssignedParkingForUnit(session.unitNumber),
+      parkingSpot,
+      reportType: input.reportType,
+      visitorParkingSpot: input.reportType === 'visitor_spot' ? visitorParkingSpot : undefined,
       description,
+      photoUrl,
       status: 'open',
       createdAt: new Date().toISOString(),
       createdByUserId: session.userId,
@@ -1868,6 +1939,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     endPoll,
     deletePoll,
     createPetPost,
+    updatePetPost,
     createPetPostComment,
     createMarketplacePost,
     updateMarketplacePost,

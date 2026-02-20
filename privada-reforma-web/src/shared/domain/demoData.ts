@@ -94,12 +94,16 @@ export const parkingReportStatusSchema = z.enum([
   'owner_notified',
   'tow_truck_notified',
 ])
+export const parkingReportTypeSchema = z.enum(['own_spot', 'visitor_spot'])
 
 export const parkingReportSchema = z.object({
   id: z.string(),
   unitNumber: z.string(),
   parkingSpot: z.string(),
+  reportType: parkingReportTypeSchema,
+  visitorParkingSpot: z.string().optional(),
   description: z.string(),
+  photoUrl: z.string(),
   status: parkingReportStatusSchema,
   createdAt: z.string(),
   createdByUserId: z.string(),

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AppButton, AppCard, ModulePlaceholder } from '../../shared/ui'
+import { AppButton, AppCard, ModulePlaceholder, PetPhoto } from '../../shared/ui'
 import { useDemoData } from '../../shared/state/DemoDataContext'
 import {
   canResolveIncident,
@@ -379,6 +379,16 @@ export function GuardParkingPage() {
     return 'Pendiente'
   }
 
+  function statusBadgeClass(status: string) {
+    if (status === 'open') {
+      return 'bg-amber-500/20 text-amber-200 border-amber-500/30'
+    }
+    if (status === 'owner_notified') {
+      return 'bg-blue-500/20 text-blue-200 border-blue-500/30'
+    }
+    return 'bg-emerald-500/20 text-emerald-200 border-emerald-500/30'
+  }
+
   return (
     <div className="space-y-3">
       <ModulePlaceholder
@@ -394,10 +404,25 @@ export function GuardParkingPage() {
           <div className="space-y-2">
             {pendingReports.map((report) => (
               <div className="rounded-lg border border-slate-700 bg-slate-950 p-2" key={report.id}>
-                <p className="text-sm font-semibold">
-                  {report.parkingSpot} - Depto {report.unitNumber}
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold">
+                    {report.parkingSpot} - Depto {report.unitNumber}
+                  </p>
+                  <span
+                    className={`rounded-full border px-2 py-1 text-[10px] font-semibold uppercase ${statusBadgeClass(report.status)}`}
+                  >
+                    Pendiente
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400">
+                  Tipo: {report.reportType === 'visitor_spot' ? 'Visitante' : 'Mi cajon'}
                 </p>
                 <p className="text-xs text-slate-300">{report.description}</p>
+                <PetPhoto
+                  alt="Evidencia del reporte"
+                  className="mt-2 h-28 w-full rounded-xl border border-slate-700 object-cover"
+                  pathOrUrl={report.photoUrl}
+                />
                 <p className="text-xs text-slate-400">{new Date(report.createdAt).toLocaleString()}</p>
                 <textarea
                   className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-100"
@@ -438,10 +463,25 @@ export function GuardParkingPage() {
           <div className="space-y-2">
             {resolvedReports.map((report) => (
               <div className="rounded-lg border border-slate-700 bg-slate-950 p-2" key={report.id}>
-                <p className="text-sm font-semibold">
-                  {report.parkingSpot} - {statusLabel(report.status)}
-                </p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold">
+                    {report.parkingSpot} - {statusLabel(report.status)}
+                  </p>
+                  <span
+                    className={`rounded-full border px-2 py-1 text-[10px] font-semibold uppercase ${statusBadgeClass(report.status)}`}
+                  >
+                    Atendido
+                  </span>
+                </div>
                 <p className="text-xs text-slate-300">Depto {report.unitNumber}</p>
+                <p className="text-xs text-slate-400">
+                  Tipo: {report.reportType === 'visitor_spot' ? 'Visitante' : 'Mi cajon'}
+                </p>
+                <PetPhoto
+                  alt="Evidencia del reporte"
+                  className="mt-2 h-24 w-full rounded-xl border border-slate-700 object-cover"
+                  pathOrUrl={report.photoUrl}
+                />
                 {report.guardNote ? <p className="text-xs text-slate-400">Nota: {report.guardNote}</p> : null}
               </div>
             ))}

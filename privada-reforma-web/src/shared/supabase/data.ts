@@ -509,6 +509,21 @@ export async function createPetPostInSupabase(petPost: PetPost) {
   return !error
 }
 
+export async function updatePetPostInSupabase(post: PetPost) {
+  if (!supabase) {
+    return false
+  }
+  const { error } = await supabase
+    .from('pet_posts')
+    .update({
+      pet_name: post.petName,
+      photo_url: post.photoUrl,
+      comments: post.comments,
+    })
+    .eq('id', post.id)
+  return !error
+}
+
 export async function fetchPetPostCommentsFromSupabase() {
   if (!supabase) {
     return null

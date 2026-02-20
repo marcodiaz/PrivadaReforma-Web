@@ -43,6 +43,9 @@ function incidentEmphasis(score: number) {
   return ''
 }
 
+const reportActionClass =
+  'border-zinc-700/80 bg-zinc-900/80 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100'
+
 export function AppHomePage() {
   const {
     incidents,
@@ -60,7 +63,9 @@ export function AppHomePage() {
   const myQrPasses = qrPasses.filter((pass) => pass.createdByUserId === session?.userId)
   const activeAlerts = incidents.filter((incident) => incident.supportScore >= 3).length
   const activeQr = myQrPasses.filter((pass) => pass.status === 'active').length
-  const activeParkingReports = parkingReports.filter((report) => report.status === 'open').length
+  const activeParkingReports = parkingReports.filter(
+    (report) => report.status === 'open' && report.createdByUserId === session?.userId
+  ).length
   const activePolls = polls.length
   const activePetPosts = petPosts.length
   const activeMarketPosts = marketplacePosts.filter((post) => post.status === 'active').length
@@ -113,10 +118,12 @@ export function AppHomePage() {
           <p className="text-[11px] uppercase text-slate-400">Auditoria</p>
           <p className="text-2xl font-bold text-white">{auditLog.length}</p>
         </AppCard>
-        <AppCard className="rounded-xl border-zinc-800 bg-zinc-950 p-3 text-center">
-          <p className="text-[11px] uppercase text-slate-400">Parking</p>
-          <p className="text-2xl font-bold text-white">{activeParkingReports}</p>
-        </AppCard>
+        <button onClick={() => navigate('/app/parking')} type="button">
+          <AppCard className="rounded-xl border-zinc-800 bg-zinc-950 p-3 text-center transition hover:border-zinc-500">
+            <p className="text-[11px] uppercase text-slate-400">Parking</p>
+            <p className="text-2xl font-bold text-white">{activeParkingReports}</p>
+          </AppCard>
+        </button>
         <button onClick={() => navigate('/app/polls')} type="button">
           <AppCard className="rounded-xl border-zinc-800 bg-zinc-950 p-3 text-center transition hover:border-zinc-500">
             <p className="text-[11px] uppercase text-slate-400">Votaciones</p>
@@ -566,17 +573,53 @@ export function AppPoolPage() {
 
 export function AppParkingPage() {
   const { createParkingReport, getAssignedParkingForUnit, parkingReports, session } = useDemoData()
+  const [reportType, setReportType] = useState<'own_spot' | 'visitor_spot'>('own_spot')
+  const [visitorParkingSpot, setVisitorParkingSpot] = useState('')
   const [description, setDescription] = useState('Vehiculo no autorizado ocupando mi lugar.')
+  const [photoUrl, setPhotoUrl] = useState('')
+  const [photoName, setPhotoName] = useState('')
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const [message, setMessage] = useState('')
   const myUnit = session?.unitNumber
   const mySpot = getAssignedParkingForUnit(myUnit)
-  const myReports = parkingReports.filter((report) => report.unitNumber === myUnit)
+  const myReports = parkingReports.filter((report) => report.createdByUserId === session?.userId)
+
+  async function handlePhotoSelection(file: File | null) {
+    if (!file) {
+      return
+    }
+    setUploadingPhoto(true)
+    setMessage('')
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(String(reader.result))
+        reader.onerror = () => reject(new Error('No fue posible leer la foto.'))
+        reader.readAsDataURL(file)
+      })
+      setPhotoUrl(dataUrl)
+      setPhotoName(file.name)
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'No se pudo cargar la foto.')
+    } finally {
+      setUploadingPhoto(false)
+    }
+  }
 
   function handleCreateReport() {
-    const result = createParkingReport({ description })
+    const result = createParkingReport({
+      description,
+      reportType,
+      visitorParkingSpot: reportType === 'visitor_spot' ? visitorParkingSpot : undefined,
+      photoUrl,
+    })
     setMessage(result.ok ? 'Reporte enviado a guardia.' : result.error ?? 'No se pudo enviar.')
     if (result.ok) {
+      setReportType('own_spot')
+      setVisitorParkingSpot('')
       setDescription('Vehiculo no autorizado ocupando mi lugar.')
+      setPhotoUrl('')
+      setPhotoName('')
     }
   }
 
@@ -590,25 +633,82 @@ export function AppParkingPage() {
     return 'Guardia notifico a la grua'
   }
 
+  function statusBadgeClass(status: string) {
+    if (status === 'open') {
+      return 'bg-amber-500/20 text-amber-200 border-amber-500/30'
+    }
+    if (status === 'owner_notified') {
+      return 'bg-blue-500/20 text-blue-200 border-blue-500/30'
+    }
+    return 'bg-emerald-500/20 text-emerald-200 border-emerald-500/30'
+  }
+
   return (
     <div className="space-y-3">
       <ModulePlaceholder
         role="Residente / Inquilino"
         title="Estacionamiento"
-        description="Reporta directamente a guardia solo sobre tu cajon asignado."
+        description="Reporta a guardia sobre tu cajon o sobre cajones de visitante."
       />
       <AppCard className="space-y-3 border-zinc-800 bg-zinc-950">
         <p className="text-sm font-semibold text-zinc-100">Nuevo reporte</p>
         <p className="text-xs text-zinc-400">Departamento: {myUnit ?? 'Sin departamento'}</p>
-        <p className="text-xs text-zinc-400">Cajon asignado (auto): {mySpot}</p>
+        <div className="grid grid-cols-2 gap-2">
+          <AppButton
+            block
+            className={reportType === 'own_spot' ? 'ring-1 ring-zinc-400' : ''}
+            onClick={() => setReportType('own_spot')}
+            variant="secondary"
+          >
+            Mi cajon
+          </AppButton>
+          <AppButton
+            block
+            className={reportType === 'visitor_spot' ? 'ring-1 ring-zinc-400' : ''}
+            onClick={() => setReportType('visitor_spot')}
+            variant="secondary"
+          >
+            Cajon visitante
+          </AppButton>
+        </div>
+        {reportType === 'own_spot' ? (
+          <p className="text-xs text-zinc-400">Cajon asignado (auto): {mySpot}</p>
+        ) : (
+          <input
+            className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100"
+            onChange={(event) => setVisitorParkingSpot(event.target.value)}
+            placeholder="Ej. V-12 / Visitante 4"
+            value={visitorParkingSpot}
+          />
+        )}
         <textarea
           className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100"
           onChange={(event) => setDescription(event.target.value)}
           rows={3}
           value={description}
         />
-        <AppButton block onClick={handleCreateReport}>
-          Reportar a guardia
+        <label className="space-y-1">
+          <span className="block text-[11px] uppercase tracking-[0.08em] text-zinc-400">
+            Foto (camara)
+          </span>
+          <input
+            accept="image/*"
+            capture="environment"
+            className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 file:mr-3 file:rounded-lg file:border-0 file:bg-zinc-800 file:px-3 file:py-1 file:text-xs file:font-semibold file:text-zinc-100"
+            onChange={(event) => void handlePhotoSelection(event.target.files?.[0] ?? null)}
+            type="file"
+          />
+          {photoName ? <p className="text-xs text-zinc-400">Archivo: {photoName}</p> : null}
+          {photoUrl ? (
+            <PetPhoto
+              alt="Evidencia de estacionamiento"
+              className="h-32 w-full rounded-xl border border-zinc-700 object-cover"
+              pathOrUrl={photoUrl}
+            />
+          ) : null}
+        </label>
+        <AppButton block disabled={uploadingPhoto} onClick={handleCreateReport}>
+          {uploadingPhoto ? 'Procesando foto...' : 'Reportar a guardia'}
         </AppButton>
         {message ? <p className="text-xs text-zinc-300">{message}</p> : null}
       </AppCard>
@@ -620,8 +720,25 @@ export function AppParkingPage() {
           <div className="space-y-2">
             {myReports.map((report) => (
               <div className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2" key={report.id}>
-                <p className="text-sm font-semibold text-zinc-100">{report.parkingSpot}</p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-zinc-100">{report.parkingSpot}</p>
+                  <span
+                    className={`rounded-full border px-2 py-1 text-[10px] font-semibold uppercase ${statusBadgeClass(report.status)}`}
+                  >
+                    {report.status === 'open' ? 'Pendiente' : 'Atendido'}
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-400">
+                  Tipo: {report.reportType === 'visitor_spot' ? 'Visitante' : 'Mi cajon'}
+                </p>
                 <p className="text-xs text-zinc-300">{report.description}</p>
+                {report.photoUrl ? (
+                  <PetPhoto
+                    alt="Evidencia enviada"
+                    className="mt-2 h-28 w-full rounded-xl border border-zinc-700 object-cover"
+                    pathOrUrl={report.photoUrl}
+                  />
+                ) : null}
                 <p className="text-xs text-zinc-400">{statusLabel(report.status)}</p>
                 {report.guardNote ? <p className="text-xs text-zinc-400">Nota: {report.guardNote}</p> : null}
               </div>
@@ -642,6 +759,7 @@ export function AppIncidentsPage() {
   const [category, setCategory] = useState<Incident['category']>('other')
   const [priority, setPriority] = useState<Incident['priority']>('medium')
   const [message, setMessage] = useState('')
+  const [reportingIncidentId, setReportingIncidentId] = useState<string | null>(null)
 
   const sortedIncidents = useMemo(() => sortIncidentsForGuard(incidents), [incidents])
   const communalAlert = sortedIncidents.some((incident) => incident.supportScore >= 3)
@@ -670,13 +788,15 @@ export function AppIncidentsPage() {
     }
   }
 
-  function handleReportIncident(incidentId: string) {
-    const result = createModerationReport({
+  async function handleReportIncident(incidentId: string) {
+    setReportingIncidentId(incidentId)
+    const result = await createModerationReport({
       targetType: 'incident',
       targetId: incidentId,
       reason: 'Contenido inapropiado en incidencia',
     })
     setMessage(result.ok ? 'Incidencia reportada para moderacion.' : result.error ?? 'No se pudo reportar.')
+    setReportingIncidentId(null)
   }
 
   return (
@@ -757,11 +877,12 @@ export function AppIncidentsPage() {
                     -1 Restar
                   </AppButton>
                   <AppButton
-                    className="px-3 py-2 text-xs"
-                    onClick={() => handleReportIncident(incident.id)}
-                    variant="danger"
+                    className={`px-3 py-2 text-xs ${reportActionClass}`}
+                    disabled={reportingIncidentId === incident.id}
+                    onClick={() => void handleReportIncident(incident.id)}
+                    variant="secondary"
                   >
-                    Reportar
+                    {reportingIncidentId === incident.id ? 'Enviando...' : 'Reportar'}
                   </AppButton>
                 </div>
               </div>
@@ -1066,17 +1187,27 @@ export function AppPollsPage() {
 }
 
 export function AppPetsPage() {
-  const { createPetPost, createPetPostComment, createModerationReport, petPosts, petPostComments } =
-    useDemoData()
+  const {
+    createPetPost,
+    updatePetPost,
+    createPetPostComment,
+    createModerationReport,
+    petPosts,
+    petPostComments,
+    session,
+  } = useDemoData()
   const [petName, setPetName] = useState('')
   const [comments, setComments] = useState('')
   const [photoUrl, setPhotoUrl] = useState('')
   const [selectedPetPostId, setSelectedPetPostId] = useState<string | null>(null)
+  const [editingPetPostId, setEditingPetPostId] = useState<string | null>(null)
   const [newCommentText, setNewCommentText] = useState('')
   const [feedback, setFeedback] = useState('')
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const [reportingPetPostId, setReportingPetPostId] = useState<string | null>(null)
 
   const selectedPetPost = petPosts.find((post) => post.id === selectedPetPostId) ?? null
+  const editingPetPost = petPosts.find((post) => post.id === editingPetPostId) ?? null
   const selectedPetComments = petPostComments.filter((comment) => comment.petPostId === selectedPetPostId)
 
   async function handleFileChange(file: File | null) {
@@ -1107,17 +1238,54 @@ export function AppPetsPage() {
     }
   }
 
-  function handleCreatePetPost() {
+  function resetPetForm() {
+    setPetName('')
+    setComments('')
+    setPhotoUrl('')
+    setSelectedPetPostId(null)
+    setEditingPetPostId(null)
+    setNewCommentText('')
+  }
+
+  function canManage(postUserId: string) {
+    return session?.userId === postUserId || session?.role === 'admin'
+  }
+
+  function beginEditPetPost(postId: string) {
+    const post = petPosts.find((entry) => entry.id === postId)
+    if (!post) {
+      return
+    }
+    setEditingPetPostId(post.id)
+    setPetName(post.petName)
+    setComments(post.comments)
+    setPhotoUrl(post.photoUrl)
+    setFeedback('')
+  }
+
+  function handleSubmitPetPost() {
+    if (editingPetPost) {
+      const result = updatePetPost({
+        postId: editingPetPost.id,
+        petName,
+        photoUrl,
+        comments,
+      })
+      setFeedback(
+        result.ok ? 'Publicacion de mascota actualizada.' : result.error ?? 'No se pudo actualizar.'
+      )
+      if (result.ok) {
+        resetPetForm()
+      }
+      return
+    }
+
     const result = createPetPost({ petName, photoUrl, comments })
     setFeedback(
       result.ok ? 'Mascota publicada correctamente.' : result.error ?? 'No se pudo publicar.'
     )
     if (result.ok) {
-      setPetName('')
-      setComments('')
-      setPhotoUrl('')
-      setSelectedPetPostId(null)
-      setNewCommentText('')
+      resetPetForm()
     }
   }
 
@@ -1134,13 +1302,15 @@ export function AppPetsPage() {
     }
   }
 
-  function handleReportPetPost(petPostId: string) {
-    const result = createModerationReport({
+  async function handleReportPetPost(petPostId: string) {
+    setReportingPetPostId(petPostId)
+    const result = await createModerationReport({
       targetType: 'pet_post',
       targetId: petPostId,
       reason: 'Contenido inapropiado en mascotas',
     })
     setFeedback(result.ok ? 'Publicacion reportada para moderacion.' : result.error ?? 'No se pudo reportar.')
+    setReportingPetPostId(null)
   }
 
   return (
@@ -1151,7 +1321,9 @@ export function AppPetsPage() {
         description="Comparte a tu mascota con foto y experiencia para la comunidad."
       />
       <AppCard className="space-y-3 border-zinc-800 bg-zinc-950">
-        <p className="text-sm font-semibold text-zinc-100">Nueva mascota</p>
+        <p className="text-sm font-semibold text-zinc-100">
+          {editingPetPost ? 'Editar mascota' : 'Nueva mascota'}
+        </p>
         <input
           className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
           onChange={(event) => setPetName(event.target.value)}
@@ -1174,9 +1346,18 @@ export function AppPetsPage() {
           rows={3}
           value={comments}
         />
-        <AppButton block disabled={uploadingPhoto} onClick={handleCreatePetPost}>
-          {uploadingPhoto ? 'Subiendo foto...' : 'Publicar mascota'}
+        <AppButton block disabled={uploadingPhoto} onClick={handleSubmitPetPost}>
+          {uploadingPhoto
+            ? 'Subiendo foto...'
+            : editingPetPost
+              ? 'Guardar cambios'
+              : 'Publicar mascota'}
         </AppButton>
+        {editingPetPost ? (
+          <AppButton block onClick={resetPetForm} variant="secondary">
+            Cancelar edicion
+          </AppButton>
+        ) : null}
         {feedback ? <p className="text-xs text-zinc-300">{feedback}</p> : null}
       </AppCard>
       <div className="space-y-2">
@@ -1204,7 +1385,9 @@ export function AppPetsPage() {
               <p className="text-xs font-semibold text-zinc-400">
                 Comentarios: {petPostComments.filter((comment) => comment.petPostId === petPost.id).length}
               </p>
-              <div className="grid grid-cols-2 gap-2">
+              <div
+                className={`grid gap-2 ${canManage(petPost.createdByUserId) ? 'grid-cols-3' : 'grid-cols-2'}`}
+              >
                 <AppButton
                   block
                   onClick={() => setSelectedPetPostId(petPost.id)}
@@ -1212,12 +1395,19 @@ export function AppPetsPage() {
                 >
                   Ver detalle
                 </AppButton>
+                {canManage(petPost.createdByUserId) ? (
+                  <AppButton block onClick={() => beginEditPetPost(petPost.id)} variant="secondary">
+                    Editar
+                  </AppButton>
+                ) : null}
                 <AppButton
                   block
-                  onClick={() => handleReportPetPost(petPost.id)}
-                  variant="danger"
+                  className={reportActionClass}
+                  disabled={reportingPetPostId === petPost.id}
+                  onClick={() => void handleReportPetPost(petPost.id)}
+                  variant="secondary"
                 >
-                  Reportar
+                  {reportingPetPostId === petPost.id ? 'Enviando...' : 'Reportar'}
                 </AppButton>
               </div>
             </AppCard>
@@ -1396,6 +1586,7 @@ export function AppMarketplacePage() {
   const [editingPostId, setEditingPostId] = useState<string | null>(null)
   const [feedback, setFeedback] = useState('')
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const [reportingPostId, setReportingPostId] = useState<string | null>(null)
 
   const selectedPost = marketplacePosts.find((post) => post.id === selectedPostId) ?? null
   const editingPost = marketplacePosts.find((post) => post.id === editingPostId) ?? null
@@ -1538,13 +1729,15 @@ export function AppMarketplacePage() {
     return `https://wa.me/${normalized}`
   }
 
-  function handleReportMarketplacePost(postId: string) {
-    const result = createModerationReport({
+  async function handleReportMarketplacePost(postId: string) {
+    setReportingPostId(postId)
+    const result = await createModerationReport({
       targetType: 'marketplace_post',
       targetId: postId,
       reason: 'Contenido inapropiado en marketplace',
     })
     setFeedback(result.ok ? 'Publicacion reportada para moderacion.' : result.error ?? 'No se pudo reportar.')
+    setReportingPostId(null)
   }
 
   return (
@@ -1666,8 +1859,14 @@ export function AppMarketplacePage() {
                 </div>
               </button>
               <div className="grid grid-cols-2 gap-2">
-                <AppButton block onClick={() => handleReportMarketplacePost(post.id)} variant="danger">
-                  Reportar
+                <AppButton
+                  block
+                  className={reportActionClass}
+                  disabled={reportingPostId === post.id}
+                  onClick={() => void handleReportMarketplacePost(post.id)}
+                  variant="secondary"
+                >
+                  {reportingPostId === post.id ? 'Enviando...' : 'Reportar'}
                 </AppButton>
                 {buildWhatsappLink(post.whatsappNumber) ? (
                   <a
@@ -1733,10 +1932,12 @@ export function AppMarketplacePage() {
             <div className="mt-3 grid grid-cols-2 gap-2">
               <AppButton
                 block
-                onClick={() => handleReportMarketplacePost(selectedPost.id)}
-                variant="danger"
+                className={reportActionClass}
+                disabled={reportingPostId === selectedPost.id}
+                onClick={() => void handleReportMarketplacePost(selectedPost.id)}
+                variant="secondary"
               >
-                Reportar
+                {reportingPostId === selectedPost.id ? 'Enviando...' : 'Reportar'}
               </AppButton>
               {buildWhatsappLink(selectedPost.whatsappNumber) ? (
                 <a
