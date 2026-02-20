@@ -35,15 +35,16 @@ function incidentEmphasis(score: number) {
 export function AppHomePage() {
   const { incidents, qrPasses, auditLog, parkingReports, session } = useDemoData()
   const navigate = useNavigate()
+  const myQrPasses = qrPasses.filter((pass) => pass.createdByUserId === session?.userId)
   const activeAlerts = incidents.filter((incident) => incident.supportScore >= 3).length
-  const activeQr = qrPasses.filter((pass) => pass.status === 'active').length
+  const activeQr = myQrPasses.filter((pass) => pass.status === 'active').length
   const activeParkingReports = parkingReports.filter((report) => report.status === 'open').length
   const profileTitle = `${session?.fullName ?? 'Usuario'} - ${session?.unitNumber ?? 'Sin departamento'}`
   const menuItems = [
     { label: 'Comunicados', icon: 'CO', action: () => navigate('/app/announcements') },
     { label: 'Visitas', icon: 'VI', action: () => navigate('/app/visits') },
     { label: 'Reservaciones', icon: 'RE', action: () => navigate('/app/reservations') },
-    { label: 'Reporte Estac.', icon: 'ES', action: () => navigate('/app/parking') },
+    { label: 'Estacionamiento', icon: 'ES', action: () => navigate('/app/parking') },
     { label: 'Paquetes', icon: 'PA', action: () => navigate('/app/packages') },
     { label: 'Incidencias', icon: 'IN', action: () => navigate('/app/incidents') },
     { label: 'Perfil', icon: 'PE', action: () => navigate('/app/profile') },
@@ -123,7 +124,8 @@ export function AppVisitsPage() {
   const [copyMessage, setCopyMessage] = useState('')
   const accountDepartmentCode = normalizeDepartmentCode(session?.unitNumber ?? '').slice(0, 4)
 
-  const selectedQr = qrPasses.find((pass) => pass.id === selectedQrId) ?? null
+  const myQrPasses = qrPasses.filter((pass) => pass.createdByUserId === session?.userId)
+  const selectedQr = myQrPasses.find((pass) => pass.id === selectedQrId) ?? null
   const selectedQrPayload = useMemo(() => {
     if (!selectedQr) {
       return ''
@@ -359,7 +361,7 @@ export function AppVisitsPage() {
         {message ? <p className="text-xs text-slate-300">{message}</p> : null}
       </AppCard>
       <div className="space-y-2">
-        {qrPasses.map((pass) => (
+        {myQrPasses.map((pass) => (
           <button
             className="block w-full text-left"
             key={pass.id}
