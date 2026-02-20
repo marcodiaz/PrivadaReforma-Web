@@ -171,6 +171,7 @@ export const marketplacePostSchema = z.object({
   condition: marketplaceConditionSchema,
   status: marketplaceStatusSchema,
   contactMessage: z.string().optional(),
+  whatsappNumber: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string().optional(),
   createdByUserId: z.string(),
@@ -178,6 +179,26 @@ export const marketplacePostSchema = z.object({
 })
 
 export type MarketplacePost = z.infer<typeof marketplacePostSchema>
+
+export const moderationTargetTypeSchema = z.enum(['incident', 'pet_post', 'marketplace_post'])
+export const moderationReportStatusSchema = z.enum(['open', 'dismissed', 'actioned'])
+
+export const moderationReportSchema = z.object({
+  id: z.string(),
+  targetType: moderationTargetTypeSchema,
+  targetId: z.string(),
+  reason: z.string(),
+  details: z.string().optional(),
+  status: moderationReportStatusSchema,
+  createdAt: z.string(),
+  updatedAt: z.string().optional(),
+  createdByUserId: z.string(),
+  createdByName: z.string(),
+  handledByUserId: z.string().optional(),
+  handledNote: z.string().optional(),
+})
+
+export type ModerationReport = z.infer<typeof moderationReportSchema>
 
 export const auditLogSchema = z.object({
   id: z.string(),
@@ -338,3 +359,4 @@ export const LOCAL_POLLS: Poll[] = []
 export const LOCAL_PET_POSTS: PetPost[] = []
 export const LOCAL_PET_POST_COMMENTS: PetPostComment[] = []
 export const LOCAL_MARKETPLACE_POSTS: MarketplacePost[] = []
+export const LOCAL_MODERATION_REPORTS: ModerationReport[] = []

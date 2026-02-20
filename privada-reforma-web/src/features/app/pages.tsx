@@ -630,7 +630,7 @@ export function AppParkingPage() {
 
 export function AppIncidentsPage() {
   const location = useLocation()
-  const { incidents, updateVote, createIncident, session } = useDemoData()
+  const { incidents, updateVote, createIncident, createModerationReport, session } = useDemoData()
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [category, setCategory] = useState<Incident['category']>('other')
@@ -661,6 +661,15 @@ export function AppIncidentsPage() {
       setCategory('other')
       setPriority('medium')
     }
+  }
+
+  function handleReportIncident(incidentId: string) {
+    const result = createModerationReport({
+      targetType: 'incident',
+      targetId: incidentId,
+      reason: 'Contenido inapropiado en incidencia',
+    })
+    setMessage(result.ok ? 'Incidencia reportada para moderacion.' : result.error ?? 'No se pudo reportar.')
   }
 
   return (
@@ -769,6 +778,13 @@ export function AppIncidentsPage() {
                     variant="secondary"
                   >
                     -1 Restar
+                  </AppButton>
+                  <AppButton
+                    className="px-3 py-2 text-xs"
+                    onClick={() => handleReportIncident(incident.id)}
+                    variant="danger"
+                  >
+                    Reportar
                   </AppButton>
                 </div>
               </div>
@@ -1016,7 +1032,8 @@ export function AppPollsPage() {
 }
 
 export function AppPetsPage() {
-  const { createPetPost, createPetPostComment, petPosts, petPostComments } = useDemoData()
+  const { createPetPost, createPetPostComment, createModerationReport, petPosts, petPostComments } =
+    useDemoData()
   const [petName, setPetName] = useState('')
   const [comments, setComments] = useState('')
   const [photoUrl, setPhotoUrl] = useState('')
@@ -1083,6 +1100,15 @@ export function AppPetsPage() {
     }
   }
 
+  function handleReportPetPost(petPostId: string) {
+    const result = createModerationReport({
+      targetType: 'pet_post',
+      targetId: petPostId,
+      reason: 'Contenido inapropiado en mascotas',
+    })
+    setFeedback(result.ok ? 'Publicacion reportada para moderacion.' : result.error ?? 'No se pudo reportar.')
+  }
+
   return (
     <div className="space-y-3">
       <ModulePlaceholder
@@ -1124,13 +1150,10 @@ export function AppPetsPage() {
           <AppCard className="text-sm text-zinc-300">Aun no hay mascotas publicadas.</AppCard>
         ) : (
           petPosts.map((petPost) => (
-            <button
-              className="block w-full text-left"
+            <AppCard
+              className="space-y-2 border-zinc-800 bg-zinc-950 transition hover:border-zinc-600"
               key={petPost.id}
-              onClick={() => setSelectedPetPostId(petPost.id)}
-              type="button"
             >
-              <AppCard className="space-y-2 border-zinc-800 bg-zinc-950 transition hover:border-zinc-600">
               <div>
                 <p className="text-sm font-semibold text-zinc-100">{petPost.petName}</p>
                 <p className="text-xs text-zinc-400">
@@ -1147,8 +1170,23 @@ export function AppPetsPage() {
               <p className="text-xs font-semibold text-zinc-400">
                 Comentarios: {petPostComments.filter((comment) => comment.petPostId === petPost.id).length}
               </p>
-              </AppCard>
-            </button>
+              <div className="grid grid-cols-2 gap-2">
+                <AppButton
+                  block
+                  onClick={() => setSelectedPetPostId(petPost.id)}
+                  variant="secondary"
+                >
+                  Ver detalle
+                </AppButton>
+                <AppButton
+                  block
+                  onClick={() => handleReportPetPost(petPost.id)}
+                  variant="danger"
+                >
+                  Reportar
+                </AppButton>
+              </div>
+            </AppCard>
           ))
         )}
       </div>
@@ -1224,6 +1262,7 @@ export function AppMarketplacePage() {
     createMarketplacePost,
     updateMarketplacePost,
     deleteMarketplacePost,
+    createModerationReport,
     session,
   } = useDemoData()
   const [title, setTitle] = useState('')
@@ -1231,6 +1270,7 @@ export function AppMarketplacePage() {
   const [price, setPrice] = useState('')
   const [condition, setCondition] = useState<'new' | 'used'>('used')
   const [contactMessage, setContactMessage] = useState('')
+  const [whatsappNumber, setWhatsappNumber] = useState('')
   const [photoUrl, setPhotoUrl] = useState('')
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null)
   const [editingPostId, setEditingPostId] = useState<string | null>(null)
@@ -1274,6 +1314,7 @@ export function AppMarketplacePage() {
     setPrice('')
     setCondition('used')
     setContactMessage('')
+    setWhatsappNumber('')
     setPhotoUrl('')
   }
 
@@ -1288,6 +1329,7 @@ export function AppMarketplacePage() {
     setPrice(String(post.price))
     setCondition(post.condition)
     setContactMessage(post.contactMessage ?? '')
+    setWhatsappNumber(post.whatsappNumber ?? '')
     setPhotoUrl(post.photoUrl)
     setFeedback('')
   }
@@ -1304,6 +1346,7 @@ export function AppMarketplacePage() {
         condition,
         status: editingPost.status,
         contactMessage,
+        whatsappNumber,
       })
       setFeedback(result.ok ? 'Publicacion actualizada.' : result.error ?? 'No se pudo actualizar.')
       if (result.ok) {
@@ -1320,6 +1363,7 @@ export function AppMarketplacePage() {
       photoUrl,
       condition,
       contactMessage,
+      whatsappNumber,
     })
     setFeedback(result.ok ? 'Publicacion creada.' : result.error ?? 'No se pudo crear.')
     if (result.ok) {
@@ -1341,6 +1385,7 @@ export function AppMarketplacePage() {
       condition: target.condition,
       status: target.status === 'active' ? 'sold' : 'active',
       contactMessage: target.contactMessage,
+      whatsappNumber: target.whatsappNumber,
     })
     setFeedback(result.ok ? 'Estado actualizado.' : result.error ?? 'No se pudo actualizar estado.')
   }
@@ -1359,6 +1404,27 @@ export function AppMarketplacePage() {
 
   function canManage(postUserId: string) {
     return session?.userId === postUserId || session?.role === 'admin'
+  }
+
+  function normalizeWhatsappNumber(value: string) {
+    return value.replace(/[^\d]/g, '')
+  }
+
+  function buildWhatsappLink(value?: string) {
+    const normalized = normalizeWhatsappNumber(value ?? '')
+    if (!normalized) {
+      return null
+    }
+    return `https://wa.me/${normalized}`
+  }
+
+  function handleReportMarketplacePost(postId: string) {
+    const result = createModerationReport({
+      targetType: 'marketplace_post',
+      targetId: postId,
+      reason: 'Contenido inapropiado en marketplace',
+    })
+    setFeedback(result.ok ? 'Publicacion reportada para moderacion.' : result.error ?? 'No se pudo reportar.')
   }
 
   return (
@@ -1409,6 +1475,12 @@ export function AppMarketplacePage() {
           onChange={(event) => setContactMessage(event.target.value)}
           placeholder="Mensaje de contacto (ej. WhatsApp 55...)"
           value={contactMessage}
+        />
+        <input
+          className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+          onChange={(event) => setWhatsappNumber(event.target.value)}
+          placeholder="WhatsApp (ej. 5215512345678)"
+          value={whatsappNumber}
         />
         <label className="space-y-1">
           <span className="block text-[11px] uppercase tracking-[0.08em] text-zinc-400">Foto</span>
@@ -1473,6 +1545,25 @@ export function AppMarketplacePage() {
                   <p className="text-lg font-bold text-white">${post.price.toFixed(2)}</p>
                 </div>
               </button>
+              <div className="grid grid-cols-2 gap-2">
+                <AppButton block onClick={() => handleReportMarketplacePost(post.id)} variant="danger">
+                  Reportar
+                </AppButton>
+                {buildWhatsappLink(post.whatsappNumber) ? (
+                  <a
+                    className="inline-flex items-center justify-center rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-200"
+                    href={buildWhatsappLink(post.whatsappNumber) ?? '#'}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    WhatsApp
+                  </a>
+                ) : (
+                  <AppButton block disabled variant="secondary">
+                    Sin WhatsApp
+                  </AppButton>
+                )}
+              </div>
               {canManage(post.createdByUserId) ? (
                 <div className="grid grid-cols-3 gap-2">
                   <AppButton block onClick={() => beginEdit(post.id)} variant="secondary">
@@ -1519,6 +1610,29 @@ export function AppMarketplacePage() {
                 Contacto: {selectedPost.contactMessage}
               </p>
             ) : null}
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <AppButton
+                block
+                onClick={() => handleReportMarketplacePost(selectedPost.id)}
+                variant="danger"
+              >
+                Reportar
+              </AppButton>
+              {buildWhatsappLink(selectedPost.whatsappNumber) ? (
+                <a
+                  className="inline-flex items-center justify-center rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm font-semibold text-emerald-200"
+                  href={buildWhatsappLink(selectedPost.whatsappNumber) ?? '#'}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  Abrir WhatsApp
+                </a>
+              ) : (
+                <AppButton block disabled variant="secondary">
+                  Sin WhatsApp
+                </AppButton>
+              )}
+            </div>
           </div>
         </div>
       ) : null}

@@ -1,5 +1,12 @@
 import type { UserRole } from '../domain/auth'
-import type { Incident, MarketplacePost, PetPost, PetPostComment, Poll } from '../domain/demoData'
+import type {
+  Incident,
+  MarketplacePost,
+  ModerationReport,
+  PetPost,
+  PetPostComment,
+  Poll,
+} from '../domain/demoData'
 import type { Package } from '../domain/packages'
 import { supabase } from './client'
 
@@ -92,10 +99,26 @@ type MarketplacePostRow = {
   condition: MarketplacePost['condition']
   status: MarketplacePost['status']
   contact_message: string | null
+  whatsapp_number: string | null
   created_at: string
   updated_at: string | null
   created_by_user_id: string
   created_by_name: string
+}
+
+type ModerationReportRow = {
+  id: string
+  target_type: ModerationReport['targetType']
+  target_id: string
+  reason: string
+  details: string | null
+  status: ModerationReport['status']
+  created_at: string
+  updated_at: string | null
+  created_by_user_id: string
+  created_by_name: string
+  handled_by_user_id: string | null
+  handled_note: string | null
 }
 
 type RpcPackageTransitionRow = {
@@ -128,6 +151,10 @@ type DomainPushEventInput =
       incidentStatus: 'open' | 'acknowledged' | 'in_progress' | 'resolved'
       incidentCreatedByUserId?: string
       unitNumber?: string
+    }
+  | {
+      eventType: 'report_created'
+      reportTargetType: 'incident' | 'pet_post' | 'marketplace_post'
     }
 
 function mapPackageRow(row: PackageRow): Package {
@@ -212,10 +239,28 @@ function mapMarketplacePostRow(row: MarketplacePostRow): MarketplacePost {
     condition: row.condition,
     status: row.status,
     contactMessage: row.contact_message ?? undefined,
+    whatsappNumber: row.whatsapp_number ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at ?? undefined,
     createdByUserId: row.created_by_user_id,
     createdByName: row.created_by_name,
+  }
+}
+
+function mapModerationReportRow(row: ModerationReportRow): ModerationReport {
+  return {
+    id: row.id,
+    targetType: row.target_type,
+    targetId: row.target_id,
+    reason: row.reason,
+    details: row.details ?? undefined,
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at ?? undefined,
+    createdByUserId: row.created_by_user_id,
+    createdByName: row.created_by_name,
+    handledByUserId: row.handled_by_user_id ?? undefined,
+    handledNote: row.handled_note ?? undefined,
   }
 }
 
@@ -302,10 +347,28 @@ function mapMarketplacePostToRow(input: MarketplacePost): MarketplacePostRow {
     condition: input.condition,
     status: input.status,
     contact_message: input.contactMessage ?? null,
+    whatsapp_number: input.whatsappNumber ?? null,
     created_at: input.createdAt,
     updated_at: input.updatedAt ?? null,
     created_by_user_id: input.createdByUserId,
     created_by_name: input.createdByName,
+  }
+}
+
+function mapModerationReportToRow(input: ModerationReport): ModerationReportRow {
+  return {
+    id: input.id,
+    target_type: input.targetType,
+    target_id: input.targetId,
+    reason: input.reason,
+    details: input.details ?? null,
+    status: input.status,
+    created_at: input.createdAt,
+    updated_at: input.updatedAt ?? null,
+    created_by_user_id: input.createdByUserId,
+    created_by_name: input.createdByName,
+    handled_by_user_id: input.handledByUserId ?? null,
+    handled_note: input.handledNote ?? null,
   }
 }
 
@@ -479,7 +542,7 @@ export async function fetchMarketplacePostsFromSupabase() {
   const { data, error } = await supabase
     .from('marketplace_posts')
     .select(
-      'id, title, description, price, photo_url, condition, status, contact_message, created_at, updated_at, created_by_user_id, created_by_name',
+      'id, title, description, price, photo_url, condition, status, contact_message, whatsapp_number, created_at, updated_at, created_by_user_id, created_by_name',
     )
     .order('created_at', { ascending: false })
 
@@ -512,6 +575,7 @@ export async function updateMarketplacePostInSupabase(post: MarketplacePost) {
       condition: post.condition,
       status: post.status,
       contact_message: post.contactMessage ?? null,
+      whatsapp_number: post.whatsappNumber ?? null,
       updated_at: post.updatedAt ?? new Date().toISOString(),
     })
     .eq('id', post.id)
@@ -523,6 +587,64 @@ export async function deleteMarketplacePostInSupabase(postId: string) {
     return false
   }
   const { error } = await supabase.from('marketplace_posts').delete().eq('id', postId)
+  return !error
+}
+
+export async function deletePetPostInSupabase(postId: string) {
+  if (!supabase) {
+    return false
+  }
+  const { error } = await supabase.from('pet_posts').delete().eq('id', postId)
+  return !error
+}
+
+export async function deleteIncidentInSupabase(incidentId: string) {
+  if (!supabase) {
+    return false
+  }
+  const { error } = await supabase.from('incidents').delete().eq('id', incidentId)
+  return !error
+}
+
+export async function fetchModerationReportsFromSupabase() {
+  if (!supabase) {
+    return null
+  }
+  const { data, error } = await supabase
+    .from('moderation_reports')
+    .select(
+      'id, target_type, target_id, reason, details, status, created_at, updated_at, created_by_user_id, created_by_name, handled_by_user_id, handled_note',
+    )
+    .order('created_at', { ascending: false })
+
+  if (error || !data) {
+    return null
+  }
+
+  return data.map((row) => mapModerationReportRow(row as ModerationReportRow))
+}
+
+export async function createModerationReportInSupabase(report: ModerationReport) {
+  if (!supabase) {
+    return false
+  }
+  const { error } = await supabase.from('moderation_reports').insert(mapModerationReportToRow(report))
+  return !error
+}
+
+export async function updateModerationReportInSupabase(report: ModerationReport) {
+  if (!supabase) {
+    return false
+  }
+  const { error } = await supabase
+    .from('moderation_reports')
+    .update({
+      status: report.status,
+      updated_at: report.updatedAt ?? new Date().toISOString(),
+      handled_by_user_id: report.handledByUserId ?? null,
+      handled_note: report.handledNote ?? null,
+    })
+    .eq('id', report.id)
   return !error
 }
 

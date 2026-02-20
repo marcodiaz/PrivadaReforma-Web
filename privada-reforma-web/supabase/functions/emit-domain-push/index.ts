@@ -15,6 +15,7 @@ type EventType =
   | 'package_delivered'
   | 'incident_created'
   | 'incident_status_updated'
+  | 'report_created'
 
 type PushSubscriptionRow = {
   id: string
@@ -37,6 +38,7 @@ type Payload = {
   incidentTitle?: string
   incidentStatus?: 'open' | 'acknowledged' | 'in_progress' | 'resolved'
   incidentCreatedByUserId?: string
+  reportTargetType?: 'incident' | 'pet_post' | 'marketplace_post'
 }
 
 const corsHeaders = {
@@ -75,6 +77,9 @@ function roleAllowedForEvent(eventType: EventType, role: ManagedUserRole) {
   }
   if (eventType === 'incident_status_updated') {
     return role === 'admin' || role === 'guard' || role === 'maintenance'
+  }
+  if (eventType === 'report_created') {
+    return true
   }
   return false
 }
@@ -185,6 +190,17 @@ Deno.serve(async (req) => {
       }
     }
 
+    if (payload.eventType === 'report_created') {
+      const moderators = await adminClient
+        .from('profiles')
+        .select('user_id')
+        .in('role', ['admin', 'board_member'])
+      if (moderators.error) {
+        return json(500, { ok: false, error: moderators.error.message })
+      }
+      targetUserIds.push(...(moderators.data ?? []).map((entry) => entry.user_id))
+    }
+
     const filteredTargetUserIds = unique(targetUserIds).filter((userId) => userId !== caller.id)
     if (filteredTargetUserIds.length === 0) {
       return json(200, { ok: true, sent: 0, removed: 0, skipped: true })
@@ -196,6 +212,7 @@ Deno.serve(async (req) => {
       package_delivered: 'Paquete entregado',
       incident_created: 'Nueva incidencia',
       incident_status_updated: 'Actualizacion de incidencia',
+      report_created: 'Nuevo reporte de moderacion',
     }
 
     const bodyByEvent: Record<EventType, string> = {
@@ -208,6 +225,9 @@ Deno.serve(async (req) => {
       incident_status_updated: payload.incidentStatus
         ? `Estado actualizado a: ${payload.incidentStatus}.`
         : 'Tu incidencia tiene una nueva actualizacion.',
+      report_created: payload.reportTargetType
+        ? `Se reporto contenido tipo ${payload.reportTargetType}.`
+        : 'Se reporto contenido para revision.',
     }
 
     const urlByEvent: Record<EventType, string> = {
@@ -220,6 +240,7 @@ Deno.serve(async (req) => {
       incident_status_updated: payload.incidentId
         ? `/app/incidents?incidentId=${encodeURIComponent(payload.incidentId)}`
         : '/app/incidents',
+      report_created: '/admin/reports',
     }
 
     webpush.setVapidDetails(vapidContact, vapidPublicKey, vapidPrivateKey)

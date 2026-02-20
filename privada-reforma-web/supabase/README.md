@@ -178,3 +178,19 @@ Set before deploy:
   - unit
   - role
   - all users
+
+### Moderation reports
+
+- Route: `/admin/reports` (admin + board)
+- Report buttons are available in:
+  - incidents
+  - pet posts
+  - marketplace posts
+- Moderators can:
+  - remove report (dismiss)
+  - delete target content (marks report as actioned)
+
+### Marketplace WhatsApp deeplink
+
+- `public.marketplace_posts` now includes `whatsapp_number`
+- UI renders direct `wa.me` links when number is present

@@ -442,6 +442,119 @@ export function AdminPushPage() {
   )
 }
 
+export function AdminReportsPage() {
+  const {
+    session,
+    moderationReports,
+    incidents,
+    petPosts,
+    marketplacePosts,
+    dismissModerationReport,
+    actionModerationReportDeleteTarget,
+  } = useDemoData()
+  const [feedback, setFeedback] = useState('')
+  const [feedbackType, setFeedbackType] = useState<'error' | 'success'>('success')
+
+  const openReports = moderationReports.filter((report) => report.status === 'open')
+
+  function resolveTargetSummary(report: (typeof moderationReports)[number]) {
+    if (report.targetType === 'incident') {
+      const incident = incidents.find((entry) => entry.id === report.targetId)
+      return incident ? `Incidencia: ${incident.title}` : 'Incidencia eliminada/no encontrada'
+    }
+    if (report.targetType === 'pet_post') {
+      const petPost = petPosts.find((entry) => entry.id === report.targetId)
+      return petPost ? `Mascota: ${petPost.petName}` : 'Publicacion de mascota eliminada/no encontrada'
+    }
+    const marketPost = marketplacePosts.find((entry) => entry.id === report.targetId)
+    return marketPost ? `Marketplace: ${marketPost.title}` : 'Publicacion marketplace eliminada/no encontrada'
+  }
+
+  if (!session || !['admin', 'board'].includes(session.role)) {
+    return (
+      <AppCard className="text-sm text-[var(--color-text-muted)]">
+        Solo administradores/comite pueden moderar reportes.
+      </AppCard>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      <ModulePlaceholder
+        role="Administrador / Comite"
+        title="Reports"
+        description="Revision de contenido reportado por la comunidad."
+      />
+      {feedback ? (
+        <AppCard className={feedbackType === 'error' ? 'border-red-700' : 'border-emerald-700'}>
+          <p className={feedbackType === 'error' ? 'text-sm text-red-400' : 'text-sm text-emerald-300'}>
+            {feedback}
+          </p>
+        </AppCard>
+      ) : null}
+      {openReports.length === 0 ? (
+        <AppCard className="text-sm text-[var(--color-text-muted)]">Sin reportes abiertos.</AppCard>
+      ) : (
+        <div className="space-y-2">
+          {openReports.map((report) => (
+            <AppCard className="space-y-2 border-zinc-800 bg-zinc-950" key={report.id}>
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-sm font-semibold text-zinc-100">
+                    {report.targetType} | {resolveTargetSummary(report)}
+                  </p>
+                  <p className="text-xs text-zinc-400">
+                    Reportado por: {report.createdByName} - {new Date(report.createdAt).toLocaleString()}
+                  </p>
+                </div>
+                <span className="rounded-full bg-amber-500/15 px-2 py-1 text-[10px] font-semibold uppercase text-amber-200">
+                  Open
+                </span>
+              </div>
+              <p className="text-xs text-zinc-300">Motivo: {report.reason}</p>
+              {report.details ? <p className="text-xs text-zinc-400">Detalle: {report.details}</p> : null}
+              <div className="grid grid-cols-2 gap-2">
+                <AppButton
+                  block
+                  onClick={() => {
+                    const result = actionModerationReportDeleteTarget(report.id)
+                    if (!result.ok) {
+                      setFeedbackType('error')
+                      setFeedback(result.error ?? 'No se pudo eliminar contenido.')
+                      return
+                    }
+                    setFeedbackType('success')
+                    setFeedback('Contenido eliminado y reporte cerrado.')
+                  }}
+                  variant="danger"
+                >
+                  Eliminar contenido
+                </AppButton>
+                <AppButton
+                  block
+                  onClick={() => {
+                    const result = dismissModerationReport(report.id)
+                    if (!result.ok) {
+                      setFeedbackType('error')
+                      setFeedback(result.error ?? 'No se pudo descartar reporte.')
+                      return
+                    }
+                    setFeedbackType('success')
+                    setFeedback('Reporte descartado.')
+                  }}
+                  variant="secondary"
+                >
+                  Remover reporte
+                </AppButton>
+              </div>
+            </AppCard>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function localizeAdminError(raw?: string): string {
   if (!raw?.trim()) return 'No fue posible completar la operacion.'
   const lower = raw.toLowerCase()

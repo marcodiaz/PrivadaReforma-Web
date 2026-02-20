@@ -35,6 +35,7 @@ import {
   AdminMaintenancePage,
   AdminPackagesPage,
   AdminPushPage,
+  AdminReportsPage,
   AdminUsersPage,
   AdminVisitsPage,
 } from '../features/admin/pages'
@@ -90,6 +91,7 @@ export const router = createBrowserRouter([
       { path: 'dashboard', element: <AdminDashboardPage /> },
       { path: 'users', element: <AdminUsersPage /> },
       { path: 'push', element: <AdminPushPage /> },
+      { path: 'reports', element: <AdminReportsPage /> },
       { path: 'debts', element: <AdminDebtsPage /> },
       { path: 'visits', element: <AdminVisitsPage /> },
       { path: 'packages', element: <AdminPackagesPage /> },

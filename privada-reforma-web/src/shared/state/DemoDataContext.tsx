@@ -13,6 +13,7 @@ import {
   LOCAL_OFFLINE_QUEUE,
   LOCAL_PARKING_REPORTS,
   LOCAL_MARKETPLACE_POSTS,
+  LOCAL_MODERATION_REPORTS,
   LOCAL_PET_POST_COMMENTS,
   LOCAL_PET_POSTS,
   LOCAL_POLLS,
@@ -27,7 +28,11 @@ import {
   marketplacePostSchema,
   marketplaceConditionSchema,
   marketplaceStatusSchema,
+  moderationReportSchema,
+  moderationReportStatusSchema,
+  moderationTargetTypeSchema,
   type MarketplacePost,
+  type ModerationReport,
   type PetPostComment,
   type PetPost,
   pollSchema,
@@ -51,8 +56,11 @@ import {
   createPetPostCommentInSupabase,
   createPetPostInSupabase,
   createMarketplacePostInSupabase,
+  createModerationReportInSupabase,
   createPollInSupabase,
   deleteMarketplacePostInSupabase,
+  deletePetPostInSupabase,
+  deleteIncidentInSupabase,
   deletePollInSupabase,
   deliverPackageInSupabase,
   emitDomainPushEvent,
@@ -62,11 +70,13 @@ import {
   fetchPetPostsFromSupabase,
   fetchPetPostCommentsFromSupabase,
   fetchMarketplacePostsFromSupabase,
+  fetchModerationReportsFromSupabase,
   fetchPollsFromSupabase,
   markPackageReadyInSupabase,
   registerPackageInSupabase,
   updateIncidentInSupabase,
   updateMarketplacePostInSupabase,
+  updateModerationReportInSupabase,
   votePollInSupabase,
   voteIncidentInSupabase,
 } from '../supabase/data'
@@ -121,6 +131,7 @@ type DemoDataContextValue = {
   petPosts: PetPost[]
   petPostComments: PetPostComment[]
   marketplacePosts: MarketplacePost[]
+  moderationReports: ModerationReport[]
   offlineQueue: OfflineQueueEvent[]
   remoteDataLoading: boolean
   isOnline: boolean
@@ -173,6 +184,7 @@ type DemoDataContextValue = {
     photoUrl: string
     condition: MarketplacePost['condition']
     contactMessage?: string
+    whatsappNumber?: string
   }) => { ok: boolean; error?: string }
   updateMarketplacePost: (input: {
     postId: string
@@ -183,8 +195,17 @@ type DemoDataContextValue = {
     condition: MarketplacePost['condition']
     status: MarketplacePost['status']
     contactMessage?: string
+    whatsappNumber?: string
   }) => { ok: boolean; error?: string }
   deleteMarketplacePost: (postId: string) => { ok: boolean; error?: string }
+  createModerationReport: (input: {
+    targetType: ModerationReport['targetType']
+    targetId: string
+    reason: string
+    details?: string
+  }) => { ok: boolean; error?: string }
+  dismissModerationReport: (reportId: string) => { ok: boolean; error?: string }
+  actionModerationReportDeleteTarget: (reportId: string) => { ok: boolean; error?: string }
   createParkingReport: (input: { description: string }) => { ok: boolean; error?: string }
   updateParkingReportStatus: (input: {
     reportId: string
@@ -343,6 +364,9 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
   const [marketplacePosts, setMarketplacePosts] = useState<MarketplacePost[]>(() =>
     safeReadArray(storageKeys.marketplacePosts, marketplacePostSchema.array(), LOCAL_MARKETPLACE_POSTS)
   )
+  const [moderationReports, setModerationReports] = useState<ModerationReport[]>(() =>
+    safeReadArray(storageKeys.moderationReports, moderationReportSchema.array(), LOCAL_MODERATION_REPORTS)
+  )
   const [offlineQueue, setOfflineQueue] = useState<OfflineQueueEvent[]>(() =>
     safeReadArray(storageKeys.offlineQueue, offlineQueueSchema.array(), LOCAL_OFFLINE_QUEUE)
   )
@@ -465,6 +489,19 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
         })
         .catch(() => undefined)
 
+      const loadModerationReports = withTimeout(
+        fetchModerationReportsFromSupabase(),
+        REMOTE_BOOTSTRAP_TIMEOUT_MS,
+        'moderation_reports'
+      )
+        .then((remoteReports) => {
+          if (!isMounted || !remoteReports) {
+            return
+          }
+          setModerationReports(remoteReports)
+        })
+        .catch(() => undefined)
+
       await Promise.allSettled([
         loadPackages,
         loadIncidents,
@@ -472,6 +509,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
         loadPets,
         loadPetComments,
         loadMarketplace,
+        loadModerationReports,
       ])
       if (isMounted) {
         setRemoteDataLoading(false)
@@ -500,6 +538,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       setItem(storageKeys.petPosts, petPosts)
       setItem(storageKeys.petPostComments, petPostComments)
       setItem(storageKeys.marketplacePosts, marketplacePosts)
+      setItem(storageKeys.moderationReports, moderationReports)
     }, 300)
     return () => {
       if (persistTimerRef.current !== null) {
@@ -518,6 +557,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     petPosts,
     petPostComments,
     marketplacePosts,
+    moderationReports,
   ])
 
   useEffect(() => {
@@ -576,6 +616,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     setPetPosts(LOCAL_PET_POSTS)
     setPetPostComments(LOCAL_PET_POST_COMMENTS)
     setMarketplacePosts(LOCAL_MARKETPLACE_POSTS)
+    setModerationReports(LOCAL_MODERATION_REPORTS)
     removeItem(storageKeys.incidents)
     removeItem(storageKeys.qrPasses)
     removeItem(storageKeys.packages)
@@ -587,6 +628,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     removeItem(storageKeys.petPosts)
     removeItem(storageKeys.petPostComments)
     removeItem(storageKeys.marketplacePosts)
+    removeItem(storageKeys.moderationReports)
   }
 
   function dismissSyncToast() {
@@ -1190,6 +1232,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     photoUrl: string
     condition: MarketplacePost['condition']
     contactMessage?: string
+    whatsappNumber?: string
   }) {
     if (!session) {
       return { ok: false, error: 'Sesion requerida.' }
@@ -1198,6 +1241,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     const description = input.description.trim()
     const photoUrl = input.photoUrl.trim()
     const contactMessage = input.contactMessage?.trim()
+    const whatsappNumber = input.whatsappNumber?.trim()
     if (!title) {
       return { ok: false, error: 'Titulo obligatorio.' }
     }
@@ -1223,6 +1267,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       condition: input.condition,
       status: 'active',
       contactMessage: contactMessage || undefined,
+      whatsappNumber: whatsappNumber || undefined,
       createdAt: new Date().toISOString(),
       createdByUserId: session.userId,
       createdByName: session.fullName,
@@ -1243,6 +1288,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     condition: MarketplacePost['condition']
     status: MarketplacePost['status']
     contactMessage?: string
+    whatsappNumber?: string
   }) {
     if (!session) {
       return { ok: false, error: 'Sesion requerida.' }
@@ -1260,6 +1306,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     const description = input.description.trim()
     const photoUrl = input.photoUrl.trim()
     const contactMessage = input.contactMessage?.trim()
+    const whatsappNumber = input.whatsappNumber?.trim()
     if (!title) {
       return { ok: false, error: 'Titulo obligatorio.' }
     }
@@ -1288,6 +1335,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       condition: input.condition,
       status: input.status,
       contactMessage: contactMessage || undefined,
+      whatsappNumber: whatsappNumber || undefined,
       updatedAt: new Date().toISOString(),
     }
     setMarketplacePosts((previous) =>
@@ -1313,6 +1361,142 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     setMarketplacePosts((previous) => previous.filter((entry) => entry.id !== postId))
     if (isSupabaseConfigured && isOnline) {
       void deleteMarketplacePostInSupabase(postId)
+    }
+    return { ok: true }
+  }
+
+  function createModerationReport(input: {
+    targetType: ModerationReport['targetType']
+    targetId: string
+    reason: string
+    details?: string
+  }) {
+    if (!session) {
+      return { ok: false, error: 'Sesion requerida.' }
+    }
+    if (!moderationTargetTypeSchema.safeParse(input.targetType).success) {
+      return { ok: false, error: 'Tipo de reporte invalido.' }
+    }
+    const targetId = input.targetId.trim()
+    const reason = input.reason.trim()
+    const details = input.details?.trim()
+    if (!targetId) {
+      return { ok: false, error: 'Objetivo de reporte invalido.' }
+    }
+    if (!reason) {
+      return { ok: false, error: 'Motivo obligatorio.' }
+    }
+
+    const alreadyOpen = moderationReports.some(
+      (report) =>
+        report.targetType === input.targetType &&
+        report.targetId === targetId &&
+        report.status === 'open' &&
+        report.createdByUserId === session.userId
+    )
+    if (alreadyOpen) {
+      return { ok: false, error: 'Ya tienes un reporte abierto para este contenido.' }
+    }
+
+    const report: ModerationReport = {
+      id: randomId('report'),
+      targetType: input.targetType,
+      targetId,
+      reason,
+      details: details || undefined,
+      status: 'open',
+      createdAt: new Date().toISOString(),
+      createdByUserId: session.userId,
+      createdByName: session.fullName,
+    }
+    setModerationReports((previous) => [report, ...previous])
+
+    if (isSupabaseConfigured && isOnline) {
+      void createModerationReportInSupabase(report).then((ok) => {
+        if (ok) {
+          void emitDomainPushEvent({
+            eventType: 'report_created',
+            reportTargetType: report.targetType,
+          })
+        }
+      })
+    }
+    return { ok: true }
+  }
+
+  function dismissModerationReport(reportId: string) {
+    if (!session || !['admin', 'board'].includes(session.role)) {
+      return { ok: false, error: 'Solo admin/comite puede cerrar reportes.' }
+    }
+    const target = moderationReports.find((report) => report.id === reportId)
+    if (!target) {
+      return { ok: false, error: 'Reporte no encontrado.' }
+    }
+    const updatedReport: ModerationReport = {
+      ...target,
+      status: 'dismissed',
+      updatedAt: new Date().toISOString(),
+      handledByUserId: session.userId,
+      handledNote: 'Reporte descartado por moderacion.',
+    }
+    setModerationReports((previous) =>
+      previous.map((report) => (report.id === reportId ? updatedReport : report))
+    )
+    if (isSupabaseConfigured && isOnline) {
+      void updateModerationReportInSupabase(updatedReport)
+    }
+    return { ok: true }
+  }
+
+  function actionModerationReportDeleteTarget(reportId: string) {
+    if (!session || !['admin', 'board'].includes(session.role)) {
+      return { ok: false, error: 'Solo admin/comite puede moderar contenido.' }
+    }
+    const report = moderationReports.find((entry) => entry.id === reportId)
+    if (!report) {
+      return { ok: false, error: 'Reporte no encontrado.' }
+    }
+    if (!moderationReportStatusSchema.safeParse(report.status).success) {
+      return { ok: false, error: 'Estado de reporte invalido.' }
+    }
+    if (report.status !== 'open') {
+      return { ok: false, error: 'El reporte ya fue atendido.' }
+    }
+
+    if (report.targetType === 'incident') {
+      setIncidents((previous) => previous.filter((incident) => incident.id !== report.targetId))
+      if (isSupabaseConfigured && isOnline) {
+        void deleteIncidentInSupabase(report.targetId)
+      }
+    } else if (report.targetType === 'pet_post') {
+      setPetPosts((previous) => previous.filter((post) => post.id !== report.targetId))
+      setPetPostComments((previous) =>
+        previous.filter((comment) => comment.petPostId !== report.targetId)
+      )
+      if (isSupabaseConfigured && isOnline) {
+        void deletePetPostInSupabase(report.targetId)
+      }
+    } else if (report.targetType === 'marketplace_post') {
+      setMarketplacePosts((previous) => previous.filter((post) => post.id !== report.targetId))
+      if (isSupabaseConfigured && isOnline) {
+        void deleteMarketplacePostInSupabase(report.targetId)
+      }
+    } else {
+      return { ok: false, error: 'Tipo de contenido no soportado para moderacion.' }
+    }
+
+    const updatedReport: ModerationReport = {
+      ...report,
+      status: 'actioned',
+      updatedAt: new Date().toISOString(),
+      handledByUserId: session.userId,
+      handledNote: 'Contenido eliminado por moderacion.',
+    }
+    setModerationReports((previous) =>
+      previous.map((entry) => (entry.id === reportId ? updatedReport : entry))
+    )
+    if (isSupabaseConfigured && isOnline) {
+      void updateModerationReportInSupabase(updatedReport)
     }
     return { ok: true }
   }
@@ -1659,6 +1843,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     petPosts,
     petPostComments,
     marketplacePosts,
+    moderationReports,
     remoteDataLoading,
     offlineQueue,
     isOnline,
@@ -1687,6 +1872,9 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     createMarketplacePost,
     updateMarketplacePost,
     deleteMarketplacePost,
+    createModerationReport,
+    dismissModerationReport,
+    actionModerationReportDeleteTarget,
     createParkingReport,
     updateParkingReportStatus,
     getAssignedParkingForUnit,
