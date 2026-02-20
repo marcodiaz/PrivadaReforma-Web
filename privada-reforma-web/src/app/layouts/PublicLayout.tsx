@@ -1,6 +1,5 @@
-import { Navigate, Outlet } from 'react-router-dom'
+import { Outlet } from 'react-router-dom'
 import { useDemoData } from '../../shared/state/DemoDataContext'
-import { getRoleLandingPath } from '../../shared/domain/auth'
 
 function AuthLoadingShell() {
   return (
@@ -13,14 +12,10 @@ function AuthLoadingShell() {
 }
 
 export function PublicLayout() {
-  const { authLoading, session } = useDemoData()
+  const { authLoading } = useDemoData()
 
   if (authLoading) {
     return <AuthLoadingShell />
-  }
-
-  if (session) {
-    return <Navigate to={getRoleLandingPath(session.role)} replace />
   }
 
   return (

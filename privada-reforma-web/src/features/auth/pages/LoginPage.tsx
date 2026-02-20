@@ -31,7 +31,11 @@ export function LoginPage() {
     const flowError = hashParams.get('error_description') ?? searchParams.get('error_description')
 
     if (flowError) {
-      setErrorMessage(decodeURIComponent(flowError))
+      try {
+        setErrorMessage(decodeURIComponent(flowError))
+      } catch {
+        setErrorMessage(flowError)
+      }
     }
     if (flowType === 'invite' || flowType === 'recovery') {
       setNeedsPasswordSetup(true)
@@ -204,7 +208,7 @@ export function LoginPage() {
   }
 
   if (session) {
-    return null
+    return <AppCard className="text-sm text-[var(--color-text-muted)]">Redirigiendo...</AppCard>
   }
 
   return (

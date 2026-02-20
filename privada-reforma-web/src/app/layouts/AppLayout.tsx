@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useDemoData } from '../../shared/state/DemoDataContext'
 import { getRoleLandingPath } from '../../shared/domain/auth'
@@ -9,6 +10,7 @@ type NavItem = {
 }
 
 type AdminSection = 'ops' | 'moderation' | 'finance'
+const ADMIN_SECTION_STORAGE_KEY = 'admin_nav_section_v1'
 
 const residentNav: NavItem[] = [
   { to: '/app/home', label: 'Inicio' },
@@ -55,6 +57,26 @@ function resolveAdminSection(pathname: string): AdminSection {
     return 'finance'
   }
   return 'ops'
+}
+
+function readStoredAdminSection(): AdminSection | null {
+  try {
+    const value = localStorage.getItem(ADMIN_SECTION_STORAGE_KEY)
+    if (value === 'ops' || value === 'moderation' || value === 'finance') {
+      return value
+    }
+  } catch {
+    // no-op
+  }
+  return null
+}
+
+function writeStoredAdminSection(section: AdminSection) {
+  try {
+    localStorage.setItem(ADMIN_SECTION_STORAGE_KEY, section)
+  } catch {
+    // no-op
+  }
 }
 
 function resolveTitle(pathname: string): string {
@@ -106,6 +128,24 @@ export function AppLayout() {
   const shouldShowTopPackages = ['resident', 'tenant', 'board'].includes(session?.role ?? '')
   const navItemWidth = isAdmin ? 'min-w-[112px]' : 'min-w-[92px]'
 
+  useEffect(() => {
+    if (!isAdmin) {
+      return
+    }
+    writeStoredAdminSection(activeAdminSection)
+  }, [activeAdminSection, isAdmin])
+
+  useEffect(() => {
+    if (!isAdmin || pathname !== '/admin/dashboard') {
+      return
+    }
+    const storedSection = readStoredAdminSection()
+    if (!storedSection || storedSection === 'ops') {
+      return
+    }
+    navigate(adminNavBySection[storedSection][0].to, { replace: true })
+  }, [isAdmin, navigate, pathname])
+
   return (
     <div className="min-h-dvh bg-[var(--color-bg)]">
       <header className="sticky top-0 z-10 border-b border-[var(--color-border)] bg-black/95 px-4 pb-3 pt-3 shadow-lg backdrop-blur">
@@ -149,7 +189,10 @@ export function AppLayout() {
                       ? 'border-zinc-400 text-zinc-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]'
                       : 'border-zinc-800 text-slate-400'
                   }`}
-                  onClick={() => navigate(adminNavBySection[section][0].to)}
+                  onClick={() => {
+                    writeStoredAdminSection(section)
+                    navigate(adminNavBySection[section][0].to)
+                  }}
                   type="button"
                 >
                   {adminSectionLabels[section]}
