@@ -5,7 +5,7 @@ import { getRoleLandingPath } from '../../shared/domain/auth'
 type NavItem = {
   to: string
   label: string
-  kind?: 'packages'
+  kind?: 'packages' | 'reports'
 }
 
 const residentNav: NavItem[] = [
@@ -20,7 +20,7 @@ const adminNav: NavItem[] = [
   { to: '/admin/dashboard', label: 'Panel' },
   { to: '/admin/users', label: 'Usuarios' },
   { to: '/admin/push', label: 'Push' },
-  { to: '/admin/reports', label: 'Reports' },
+  { to: '/admin/reports', label: 'Reports', kind: 'reports' },
   { to: '/admin/packages', label: 'Paquetes', kind: 'packages' },
   { to: '/admin/debts', label: 'Adeudos' },
   { to: '/admin/finance', label: 'Finanzas' },
@@ -48,7 +48,7 @@ function AuthLoadingShell() {
 export function AppLayout() {
   const { pathname } = useLocation()
   const navigate = useNavigate()
-  const { authLoading, getHeldPackageCountForUser, logout, session } = useDemoData()
+  const { authLoading, getHeldPackageCountForUser, logout, moderationReports, session } = useDemoData()
 
   if (authLoading) {
     return <AuthLoadingShell />
@@ -71,7 +71,9 @@ export function AppLayout() {
   const isAdmin = pathname.startsWith('/admin')
   const navItems = isAdmin ? adminNav : residentNav
   const heldPackages = getHeldPackageCountForUser()
+  const openReports = moderationReports.filter((report) => report.status === 'open').length
   const shouldShowTopPackages = ['resident', 'tenant', 'board'].includes(session?.role ?? '')
+  const navItemWidth = isAdmin ? 'min-w-[108px]' : 'min-w-[92px]'
 
   return (
     <div className="min-h-dvh bg-[var(--color-bg)]">
@@ -105,31 +107,33 @@ export function AppLayout() {
         <Outlet />
       </main>
 
-      <nav className="fixed bottom-0 left-0 right-0 border-t border-slate-700 bg-slate-950/95 px-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2 backdrop-blur">
-        <ul
-          className="mx-auto grid w-full max-w-md gap-1"
-          style={{ gridTemplateColumns: `repeat(${navItems.length}, minmax(0, 1fr))` }}
-        >
+      <nav className="fixed bottom-0 left-0 right-0 border-t border-slate-700 bg-slate-950/95 px-2 pb-[calc(0.65rem+env(safe-area-inset-bottom))] pt-2 backdrop-blur">
+        <ul className="mx-auto flex w-full max-w-md gap-2 overflow-x-auto pb-1">
           {navItems.map((item) => (
-            <li key={item.to}>
+            <li className={`${navItemWidth} shrink-0`} key={item.to}>
               <NavLink
                 to={item.to}
                 className={({ isActive }) =>
-                  `block rounded-xl border px-2 py-2 text-center text-xs font-medium transition-colors ${
+                  `relative block rounded-xl border px-2 py-2 text-center text-xs font-medium transition-colors ${
                     isActive
                       ? 'border-zinc-400 text-zinc-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]'
                       : 'border-transparent text-slate-400'
                   }`
                 }
               >
-                <span className="inline-flex items-center justify-center gap-1">
+                <span className="inline-flex items-center justify-center gap-1 whitespace-nowrap">
                   <span>{item.label}</span>
-                  {item.kind === 'packages' && heldPackages > 0 ? (
-                    <span className="rounded-full border border-amber-300/60 bg-gradient-to-b from-amber-300 to-orange-400 px-1.5 py-0.5 text-[10px] font-extrabold leading-none text-zinc-950 shadow-[0_0_10px_rgba(251,191,36,0.65)]">
-                      {heldPackages}
-                    </span>
-                  ) : null}
                 </span>
+                {item.kind === 'packages' && heldPackages > 0 ? (
+                  <span className="absolute -right-1 -top-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-zinc-900 bg-white px-1 text-[10px] font-black leading-none text-zinc-900 shadow-[0_0_14px_rgba(255,255,255,0.85)]">
+                    {heldPackages}
+                  </span>
+                ) : null}
+                {item.kind === 'reports' && openReports > 0 ? (
+                  <span className="absolute -right-1 -top-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-zinc-900 bg-white px-1 text-[10px] font-black leading-none text-zinc-900 shadow-[0_0_14px_rgba(255,255,255,0.85)]">
+                    ★
+                  </span>
+                ) : null}
               </NavLink>
             </li>
           ))}

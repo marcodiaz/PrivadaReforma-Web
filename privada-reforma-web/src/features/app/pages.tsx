@@ -635,6 +635,7 @@ export function AppParkingPage() {
 export function AppIncidentsPage() {
   const location = useLocation()
   const { incidents, updateVote, createIncident, createModerationReport, session } = useDemoData()
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [category, setCategory] = useState<Incident['category']>('other')
@@ -664,6 +665,7 @@ export function AppIncidentsPage() {
       setDescription('')
       setCategory('other')
       setPriority('medium')
+      setIsCreateModalOpen(false)
     }
   }
 
@@ -683,47 +685,17 @@ export function AppIncidentsPage() {
         title="Incidencias"
         description="Voto comunitario +1/-1 con score unico por usuario."
       />
-      <AppCard className="space-y-2">
-        <p className="text-sm font-semibold">Nueva incidencia</p>
-        <input
-          className="w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
-          onChange={(event) => setTitle(event.target.value)}
-          placeholder="Titulo"
-          value={title}
-        />
-        <textarea
-          className="w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
-          onChange={(event) => setDescription(event.target.value)}
-          placeholder="Descripcion"
-          rows={3}
-          value={description}
-        />
-        <div className="grid grid-cols-2 gap-2">
-          <select
-            className="w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
-            onChange={(event) => setCategory(event.target.value as Incident['category'])}
-            value={category}
-          >
-            <option value="noise">Ruido</option>
-            <option value="pets">Mascotas</option>
-            <option value="rules">Reglamento</option>
-            <option value="other">Otro</option>
-          </select>
-          <select
-            className="w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
-            onChange={(event) => setPriority(event.target.value as Incident['priority'])}
-            value={priority}
-          >
-            <option value="low">Baja</option>
-            <option value="medium">Media</option>
-            <option value="high">Alta</option>
-          </select>
-        </div>
-        <AppButton block onClick={handleCreateIncident}>
-          Crear incidencia
-        </AppButton>
-        {message ? <p className="text-xs text-[var(--color-text-muted)]">{message}</p> : null}
-      </AppCard>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-zinc-200">Incidencias de la comunidad</p>
+        <button
+          className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-zinc-700 bg-zinc-900 text-xl font-semibold leading-none text-zinc-100 transition hover:border-zinc-500"
+          onClick={() => setIsCreateModalOpen(true)}
+          type="button"
+        >
+          +
+        </button>
+      </div>
+      {message ? <p className="text-xs text-[var(--color-text-muted)]">{message}</p> : null}
       {communalAlert ? (
         <AppCard className="border-[var(--color-brand)]/40 bg-emerald-50">
           <p className="text-sm text-emerald-800">
@@ -796,6 +768,61 @@ export function AppIncidentsPage() {
           )
         })}
       </div>
+      {isCreateModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 sm:items-center">
+          <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-950 p-3 shadow-2xl">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <p className="text-sm font-semibold text-zinc-100">Nueva incidencia</p>
+              <AppButton
+                className="px-2 py-1 text-xs"
+                onClick={() => setIsCreateModalOpen(false)}
+                variant="secondary"
+              >
+                Cerrar
+              </AppButton>
+            </div>
+            <div className="space-y-3">
+              <input
+                className="w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
+                onChange={(event) => setTitle(event.target.value)}
+                placeholder="Titulo"
+                value={title}
+              />
+              <textarea
+                className="w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
+                onChange={(event) => setDescription(event.target.value)}
+                placeholder="Descripcion"
+                rows={3}
+                value={description}
+              />
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <select
+                  className="w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
+                  onChange={(event) => setCategory(event.target.value as Incident['category'])}
+                  value={category}
+                >
+                  <option value="noise">Ruido</option>
+                  <option value="pets">Mascotas</option>
+                  <option value="rules">Reglamento</option>
+                  <option value="other">Otro</option>
+                </select>
+                <select
+                  className="w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
+                  onChange={(event) => setPriority(event.target.value as Incident['priority'])}
+                  value={priority}
+                >
+                  <option value="low">Baja</option>
+                  <option value="medium">Media</option>
+                  <option value="high">Alta</option>
+                </select>
+              </div>
+              <AppButton block onClick={handleCreateIncident}>
+                Crear incidencia
+              </AppButton>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -885,7 +912,7 @@ export function AppPollsPage() {
         title="Votaciones"
         description="Crea encuestas publicas y participa con un voto por usuario."
       />
-      <AppCard className="space-y-2 border-zinc-800 bg-zinc-950">
+      <AppCard className="space-y-3 border-zinc-800 bg-zinc-950">
         <p className="text-sm font-semibold text-zinc-100">Nueva votacion</p>
         <input
           className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
@@ -893,7 +920,7 @@ export function AppPollsPage() {
           placeholder="Titulo de la votacion"
           value={title}
         />
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <AppButton
             block
             onClick={() => setMode('yes_no')}
@@ -918,7 +945,7 @@ export function AppPollsPage() {
             value={optionsText}
           />
         ) : null}
-        <label className="space-y-1">
+        <label className="flex flex-col gap-2">
           <span className="block text-[11px] uppercase tracking-[0.08em] text-zinc-400">
             Duracion
           </span>
@@ -936,9 +963,11 @@ export function AppPollsPage() {
             <option value={7}>7 dias</option>
           </select>
         </label>
-        <AppButton block onClick={handleCreatePoll}>
-          Publicar votacion
-        </AppButton>
+        <div className="pt-1">
+          <AppButton block onClick={handleCreatePoll}>
+            Publicar votacion
+          </AppButton>
+        </div>
         {feedback ? <p className="text-xs text-zinc-300">{feedback}</p> : null}
       </AppCard>
       <div className="space-y-2">
