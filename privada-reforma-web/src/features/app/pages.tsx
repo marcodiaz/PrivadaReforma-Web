@@ -1779,6 +1779,8 @@ export function AppProfilePage() {
   const [savingDisplayName, setSavingDisplayName] = useState(false)
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [showNewPassword, setShowNewPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [passwordMessage, setPasswordMessage] = useState('')
   const [savingPassword, setSavingPassword] = useState(false)
   const pushSupported = isWebPushSupported()
@@ -1952,20 +1954,38 @@ export function AppProfilePage() {
         </div>
         <div className="space-y-2 rounded-xl border border-zinc-800 bg-zinc-900 p-3">
           <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">Cambiar contrasena</p>
-          <input
-            className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
-            onChange={(event) => setNewPassword(event.target.value)}
-            placeholder="Nueva contrasena"
-            type="password"
-            value={newPassword}
-          />
-          <input
-            className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
-            onChange={(event) => setConfirmPassword(event.target.value)}
-            placeholder="Confirmar nueva contrasena"
-            type="password"
-            value={confirmPassword}
-          />
+          <div className="relative">
+            <input
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 pr-16 text-sm text-zinc-100"
+              onChange={(event) => setNewPassword(event.target.value)}
+              placeholder="Nueva contrasena"
+              type={showNewPassword ? 'text' : 'password'}
+              value={newPassword}
+            />
+            <button
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs font-medium text-zinc-200"
+              onClick={() => setShowNewPassword((previous) => !previous)}
+              type="button"
+            >
+              {showNewPassword ? 'Ocultar' : 'Ver'}
+            </button>
+          </div>
+          <div className="relative">
+            <input
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 pr-16 text-sm text-zinc-100"
+              onChange={(event) => setConfirmPassword(event.target.value)}
+              placeholder="Confirmar nueva contrasena"
+              type={showConfirmPassword ? 'text' : 'password'}
+              value={confirmPassword}
+            />
+            <button
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs font-medium text-zinc-200"
+              onClick={() => setShowConfirmPassword((previous) => !previous)}
+              type="button"
+            >
+              {showConfirmPassword ? 'Ocultar' : 'Ver'}
+            </button>
+          </div>
           <AppButton block disabled={savingPassword} onClick={() => void handleUpdatePassword()}>
             {savingPassword ? 'Guardando...' : 'Actualizar contrasena'}
           </AppButton>
