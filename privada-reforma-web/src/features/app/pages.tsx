@@ -108,8 +108,7 @@ export function AppHomePage() {
 
 export function AppVisitsPage() {
   const { qrPasses, createQrPass, deleteQrPass, debtMode, session } = useDemoData()
-  const [visitorName, setVisitorName] = useState('MARCO')
-  const [unitId, setUnitId] = useState('1141')
+  const [visitorName, setVisitorName] = useState('')
   const [accessType, setAccessType] = useState<'temporal' | 'time_limit'>('temporal')
   const [timeLimit, setTimeLimit] = useState<'week' | 'month' | 'permanent'>('week')
   const [maxUses, setMaxUses] = useState(1)
@@ -122,6 +121,7 @@ export function AppVisitsPage() {
   const [message, setMessage] = useState('')
   const [selectedQrId, setSelectedQrId] = useState<string | null>(null)
   const [copyMessage, setCopyMessage] = useState('')
+  const accountUnitNumber = session?.unitNumber?.trim() ?? ''
   const accountDepartmentCode = normalizeDepartmentCode(session?.unitNumber ?? '').slice(0, 4)
 
   const myQrPasses = qrPasses.filter((pass) => pass.createdByUserId === session?.userId)
@@ -161,9 +161,13 @@ export function AppVisitsPage() {
 
   function handleCreateQr() {
     const normalizedVisitorName = visitorName.trim().toUpperCase()
+    if (!accountUnitNumber) {
+      setMessage('Tu cuenta no tiene unidad/departamento asignado.')
+      return
+    }
     const result = createQrPass({
       label: `Visita: ${normalizedVisitorName || 'VISITANTE'}`,
-      unitId,
+      unitId: accountUnitNumber,
       departmentCode: accountDepartmentCode,
       visitorName: normalizedVisitorName,
       maxUses,
@@ -239,21 +243,10 @@ export function AppVisitsPage() {
           </span>
           <input
             className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100"
-            onChange={(event) => setUnitId(event.target.value)}
-            placeholder="11-41"
-            value={unitId}
-          />
-        </label>
-        <label className="space-y-1">
-          <span className="block text-[11px] uppercase tracking-[0.08em] text-zinc-400">
-            Codigo departamento
-          </span>
-          <input
-            className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100"
             disabled
             placeholder="Sin departamento"
             readOnly
-            value={accountDepartmentCode}
+            value={accountUnitNumber}
           />
         </label>
         <div className="grid grid-cols-2 gap-2">

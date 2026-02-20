@@ -20,12 +20,12 @@ function packageStatusChip(status: Package['status']) {
 
 function packageStatusText(status: Package['status']) {
   if (status === 'stored') {
-    return 'Waiting at lobby'
+    return 'En resguardo'
   }
   if (status === 'ready_for_pickup') {
-    return 'You requested pickup'
+    return 'Recoleccion solicitada'
   }
-  return 'Delivered'
+  return 'Entregado'
 }
 
 function readFileAsDataUrl(file: Blob) {
@@ -113,7 +113,7 @@ export function AppPackagesPage() {
       />
       <AppCard>
         <p className="text-xs uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
-          Packages held
+          Paquetes en resguardo
         </p>
         <p className="text-2xl font-semibold">{heldCount}</p>
       </AppCard>
@@ -149,25 +149,29 @@ export function AppPackagesPage() {
                 pathOrUrl={entry.photoUrl}
               />
               {entry.carrier ? (
-                <p className="text-xs text-[var(--color-text-muted)]">Carrier: {entry.carrier}</p>
+                <p className="text-xs text-[var(--color-text-muted)]">
+                  Paqueteria: {entry.carrier}
+                </p>
               ) : null}
               {entry.notes ? (
                 <p className="text-xs text-[var(--color-text-muted)]">Notas: {entry.notes}</p>
               ) : null}
               {entry.status === 'stored' && session?.role !== 'board' ? (
                 <AppButton block onClick={() => handleReady(entry.id)}>
-                  I'm coming to pick up
+                  Voy por el paquete
                 </AppButton>
               ) : null}
               {entry.status === 'ready_for_pickup' ? (
-                <p className="text-xs font-semibold text-emerald-700">Show this to the guard.</p>
+                <p className="text-xs font-semibold text-emerald-700">
+                  Muestra esto al guardia.
+                </p>
               ) : null}
             </AppCard>
           ))
         )}
       </div>
       <AppButton block onClick={() => setShowHistory((current) => !current)} variant="secondary">
-        {showHistory ? 'Hide delivered history' : 'Show delivered history'}
+        {showHistory ? 'Ocultar historial de entregas' : 'Mostrar historial de entregas'}
       </AppButton>
       {showHistory ? (
         <div className="space-y-2">
@@ -224,7 +228,7 @@ export function GuardPackagesPage() {
       if (isSupabaseConfigured && navigator.onLine) {
         const objectPath = await uploadPackagePhoto(compressedBlob)
         setPhotoUrl(objectPath)
-        setFeedback('Upload photo completo. Imagen privada lista para guardar.')
+        setFeedback('Foto subida correctamente. Imagen privada lista para guardar.')
         return
       }
 
@@ -267,7 +271,9 @@ export function GuardPackagesPage() {
         description="Registro y entrega segura con confirmacion previa del residente."
       />
       <AppCard className="border-slate-700 bg-slate-900 text-slate-100">
-        <p className="text-xs uppercase tracking-[0.08em] text-slate-400">Held packages</p>
+        <p className="text-xs uppercase tracking-[0.08em] text-slate-400">
+          Paquetes en resguardo
+        </p>
         <p className="text-2xl font-semibold">{heldCount}</p>
       </AppCard>
       <div className="grid grid-cols-2 gap-2">
@@ -276,14 +282,14 @@ export function GuardPackagesPage() {
           onClick={() => setActiveTab('register')}
           variant={activeTab === 'register' ? 'primary' : 'secondary'}
         >
-          Register package
+          Registrar paquete
         </AppButton>
         <AppButton
           block
           onClick={() => setActiveTab('held')}
           variant={activeTab === 'held' ? 'primary' : 'secondary'}
         >
-          Held packages
+          Paquetes en resguardo
         </AppButton>
       </div>
       {feedback ? (
@@ -304,7 +310,7 @@ export function GuardPackagesPage() {
             value={unitNumber}
           />
           <label className="block text-xs text-slate-300">
-            Upload photo (requerida)
+            Subir foto (requerida)
             <input
               accept="image/*"
               className="mt-1 block w-full text-xs"
@@ -315,13 +321,13 @@ export function GuardPackagesPage() {
           <input
             className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
             onChange={(event) => setPhotoUrl(event.target.value)}
-            placeholder="o pega object path/dataURL manual"
+            placeholder="o pega object path/dataURL manualmente"
             value={photoUrl}
           />
           <input
             className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
             onChange={(event) => setCarrier(event.target.value)}
-            placeholder="Carrier (opcional)"
+            placeholder="Paqueteria (opcional)"
             value={carrier}
           />
           <textarea
@@ -343,14 +349,14 @@ export function GuardPackagesPage() {
               onClick={() => setStatusFilter('stored')}
               variant={statusFilter === 'stored' ? 'primary' : 'secondary'}
             >
-              Stored
+              En resguardo
             </AppButton>
             <AppButton
               block
               onClick={() => setStatusFilter('ready_for_pickup')}
               variant={statusFilter === 'ready_for_pickup' ? 'primary' : 'secondary'}
             >
-              Ready
+              Listo para entrega
             </AppButton>
           </div>
           {packages.length === 0 ? (
@@ -373,7 +379,7 @@ export function GuardPackagesPage() {
                   <span
                     className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase ${packageStatusChip(entry.status)}`}
                   >
-                    {entry.status}
+                    {packageStatusText(entry.status)}
                   </span>
                 </div>
                 <PackagePhoto
@@ -384,13 +390,15 @@ export function GuardPackagesPage() {
                 {entry.status === 'stored' ? (
                   <div className="space-y-1">
                     <AppButton block disabled variant="secondary">
-                      Deliver package
+                      Entregar paquete
                     </AppButton>
-                    <p className="text-xs text-amber-300">Waiting for resident confirmation.</p>
+                    <p className="text-xs text-amber-300">
+                      Esperando confirmacion del residente.
+                    </p>
                   </div>
                 ) : (
                   <AppButton block onClick={() => handleDeliver(entry.id)}>
-                    Deliver package
+                    Entregar paquete
                   </AppButton>
                 )}
               </AppCard>
@@ -419,23 +427,23 @@ export function AdminPackagesPage() {
       />
       <AppCard>
         <p className="text-xs uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
-          Held packages
+          Paquetes en resguardo
         </p>
         <p className="text-2xl font-semibold">{getHeldPackageCountGlobal()}</p>
       </AppCard>
       <div className="grid grid-cols-2 gap-2">
         <AppButton block onClick={() => setStatusFilter('all')} variant="secondary">
-          All
+          Todos
         </AppButton>
         <select
           className="w-full rounded-xl border border-[var(--color-border)] bg-white px-3 py-3 text-sm text-slate-900"
           onChange={(event) => setStatusFilter(event.target.value as 'all' | Package['status'])}
           value={statusFilter}
         >
-          <option value="all">all</option>
-          <option value="stored">stored</option>
-          <option value="ready_for_pickup">ready_for_pickup</option>
-          <option value="delivered">delivered</option>
+          <option value="all">Todos</option>
+          <option value="stored">En resguardo</option>
+          <option value="ready_for_pickup">Listo para entrega</option>
+          <option value="delivered">Entregado</option>
         </select>
       </div>
       <div className="space-y-2">
@@ -443,7 +451,7 @@ export function AdminPackagesPage() {
           <AppCard key={entry.id}>
             <p className="text-sm font-semibold">Unidad {entry.unitNumber}</p>
             <p className="text-xs text-[var(--color-text-muted)]">
-              {entry.status} - {new Date(entry.createdAt).toLocaleString()}
+              {packageStatusText(entry.status)} - {new Date(entry.createdAt).toLocaleString()}
             </p>
           </AppCard>
         ))}

@@ -82,7 +82,7 @@ export function AppLayout() {
             <h1 className="text-base font-semibold text-white">{resolveTitle(pathname)}</h1>
             {shouldShowTopPackages ? (
               <p className="mt-1 text-xs font-semibold text-zinc-400">
-                Packages: {heldPackages}
+                Paquetes: {heldPackages}
               </p>
             ) : null}
           </div>
@@ -123,7 +123,7 @@ export function AppLayout() {
                 <span className="inline-flex items-center justify-center gap-1">
                   <span>{item.label}</span>
                   {item.kind === 'packages' && heldPackages > 0 ? (
-                    <span className="rounded-full bg-zinc-700/70 px-1.5 py-0.5 text-[10px] font-bold leading-none text-zinc-100">
+                    <span className="rounded-full border border-amber-300/60 bg-gradient-to-b from-amber-300 to-orange-400 px-1.5 py-0.5 text-[10px] font-extrabold leading-none text-zinc-950 shadow-[0_0_10px_rgba(251,191,36,0.65)]">
                       {heldPackages}
                     </span>
                   ) : null}

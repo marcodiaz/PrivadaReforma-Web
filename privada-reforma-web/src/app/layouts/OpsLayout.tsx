@@ -104,7 +104,7 @@ export function OpsLayout() {
                 <span className="inline-flex items-center gap-1">
                   <span>{item.label}</span>
                   {item.to === '/guard/packages' && heldPackages > 0 ? (
-                    <span className="rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] font-bold leading-none">
+                    <span className="rounded-full border border-amber-300/70 bg-gradient-to-b from-amber-300 to-orange-400 px-1.5 py-0.5 text-[10px] font-extrabold leading-none text-zinc-950 shadow-[0_0_10px_rgba(251,191,36,0.65)]">
                       {heldPackages}
                     </span>
                   ) : null}
