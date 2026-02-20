@@ -12,6 +12,7 @@ import {
   LOCAL_INCIDENTS,
   LOCAL_OFFLINE_QUEUE,
   LOCAL_PARKING_REPORTS,
+  LOCAL_MARKETPLACE_POSTS,
   LOCAL_PET_POST_COMMENTS,
   LOCAL_PET_POSTS,
   LOCAL_POLLS,
@@ -23,6 +24,10 @@ import {
   type Incident,
   petPostSchema,
   petPostCommentSchema,
+  marketplacePostSchema,
+  marketplaceConditionSchema,
+  marketplaceStatusSchema,
+  type MarketplacePost,
   type PetPostComment,
   type PetPost,
   pollSchema,
@@ -45,18 +50,23 @@ import {
   createIncidentInSupabase,
   createPetPostCommentInSupabase,
   createPetPostInSupabase,
+  createMarketplacePostInSupabase,
   createPollInSupabase,
+  deleteMarketplacePostInSupabase,
   deletePollInSupabase,
   deliverPackageInSupabase,
+  emitDomainPushEvent,
   endPollInSupabase,
   fetchIncidentsFromSupabase,
   fetchPackagesFromSupabase,
   fetchPetPostsFromSupabase,
   fetchPetPostCommentsFromSupabase,
+  fetchMarketplacePostsFromSupabase,
   fetchPollsFromSupabase,
   markPackageReadyInSupabase,
   registerPackageInSupabase,
   updateIncidentInSupabase,
+  updateMarketplacePostInSupabase,
   votePollInSupabase,
   voteIncidentInSupabase,
 } from '../supabase/data'
@@ -110,6 +120,7 @@ type DemoDataContextValue = {
   polls: Poll[]
   petPosts: PetPost[]
   petPostComments: PetPostComment[]
+  marketplacePosts: MarketplacePost[]
   offlineQueue: OfflineQueueEvent[]
   remoteDataLoading: boolean
   isOnline: boolean
@@ -155,6 +166,25 @@ type DemoDataContextValue = {
     ok: boolean
     error?: string
   }
+  createMarketplacePost: (input: {
+    title: string
+    description: string
+    price: number
+    photoUrl: string
+    condition: MarketplacePost['condition']
+    contactMessage?: string
+  }) => { ok: boolean; error?: string }
+  updateMarketplacePost: (input: {
+    postId: string
+    title: string
+    description: string
+    price: number
+    photoUrl: string
+    condition: MarketplacePost['condition']
+    status: MarketplacePost['status']
+    contactMessage?: string
+  }) => { ok: boolean; error?: string }
+  deleteMarketplacePost: (postId: string) => { ok: boolean; error?: string }
   createParkingReport: (input: { description: string }) => { ok: boolean; error?: string }
   updateParkingReportStatus: (input: {
     reportId: string
@@ -310,6 +340,9 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
   const [petPostComments, setPetPostComments] = useState<PetPostComment[]>(() =>
     safeReadArray(storageKeys.petPostComments, petPostCommentSchema.array(), LOCAL_PET_POST_COMMENTS)
   )
+  const [marketplacePosts, setMarketplacePosts] = useState<MarketplacePost[]>(() =>
+    safeReadArray(storageKeys.marketplacePosts, marketplacePostSchema.array(), LOCAL_MARKETPLACE_POSTS)
+  )
   const [offlineQueue, setOfflineQueue] = useState<OfflineQueueEvent[]>(() =>
     safeReadArray(storageKeys.offlineQueue, offlineQueueSchema.array(), LOCAL_OFFLINE_QUEUE)
   )
@@ -419,7 +452,27 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
         })
         .catch(() => undefined)
 
-      await Promise.allSettled([loadPackages, loadIncidents, loadPolls, loadPets, loadPetComments])
+      const loadMarketplace = withTimeout(
+        fetchMarketplacePostsFromSupabase(),
+        REMOTE_BOOTSTRAP_TIMEOUT_MS,
+        'marketplace_posts'
+      )
+        .then((remoteMarketplacePosts) => {
+          if (!isMounted || !remoteMarketplacePosts) {
+            return
+          }
+          setMarketplacePosts(remoteMarketplacePosts)
+        })
+        .catch(() => undefined)
+
+      await Promise.allSettled([
+        loadPackages,
+        loadIncidents,
+        loadPolls,
+        loadPets,
+        loadPetComments,
+        loadMarketplace,
+      ])
       if (isMounted) {
         setRemoteDataLoading(false)
       }
@@ -446,13 +499,26 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       setItem(storageKeys.polls, polls)
       setItem(storageKeys.petPosts, petPosts)
       setItem(storageKeys.petPostComments, petPostComments)
+      setItem(storageKeys.marketplacePosts, marketplacePosts)
     }, 300)
     return () => {
       if (persistTimerRef.current !== null) {
         window.clearTimeout(persistTimerRef.current)
       }
     }
-  }, [incidents, qrPasses, packages, auditLog, offlineQueue, reservations, parkingReports, polls, petPosts, petPostComments])
+  }, [
+    incidents,
+    qrPasses,
+    packages,
+    auditLog,
+    offlineQueue,
+    reservations,
+    parkingReports,
+    polls,
+    petPosts,
+    petPostComments,
+    marketplacePosts,
+  ])
 
   useEffect(() => {
     if (!isOnline || !session || !isSupabaseConfigured || flushingOfflineQueueRef.current) {
@@ -509,6 +575,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     setPolls(LOCAL_POLLS)
     setPetPosts(LOCAL_PET_POSTS)
     setPetPostComments(LOCAL_PET_POST_COMMENTS)
+    setMarketplacePosts(LOCAL_MARKETPLACE_POSTS)
     removeItem(storageKeys.incidents)
     removeItem(storageKeys.qrPasses)
     removeItem(storageKeys.packages)
@@ -519,6 +586,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     removeItem(storageKeys.polls)
     removeItem(storageKeys.petPosts)
     removeItem(storageKeys.petPostComments)
+    removeItem(storageKeys.marketplacePosts)
   }
 
   function dismissSyncToast() {
@@ -590,7 +658,14 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
         void createIncidentInSupabase(nextIncident).then((ok) => {
           if (!ok) {
             enqueueDomainEvent('incident_create', { incident: nextIncident })
+            return
           }
+          void emitDomainPushEvent({
+            eventType: 'incident_created',
+            incidentId: nextIncident.id,
+            incidentTitle: nextIncident.title,
+            unitNumber: nextIncident.unitNumber,
+          })
         })
       }
     }
@@ -616,50 +691,67 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
   }
 
   function acknowledgeIncident(incidentId: string) {
-    let nextIncident: Incident | null = null
-    setIncidents((previous) => {
-      const next = previous.map((incident) =>
-        incident.id === incidentId
-          ? {
-              ...incident,
-              status: 'acknowledged' as const,
-              acknowledgedAt: incident.acknowledgedAt ?? new Date().toISOString(),
-            }
-          : incident
-      )
-      nextIncident = next.find((entry) => entry.id === incidentId) ?? null
-      return next
-    })
-    if (nextIncident && isSupabaseConfigured) {
+    const currentIncident = incidents.find((entry) => entry.id === incidentId)
+    if (!currentIncident) {
+      return
+    }
+    const updatedIncident: Incident = {
+      ...currentIncident,
+      status: 'acknowledged',
+      acknowledgedAt: currentIncident.acknowledgedAt ?? new Date().toISOString(),
+    }
+    setIncidents((previous) =>
+      previous.map((incident) => (incident.id === incidentId ? updatedIncident : incident))
+    )
+    if (isSupabaseConfigured) {
       if (!isOnline) {
-        enqueueDomainEvent('incident_update', { incident: nextIncident })
+        enqueueDomainEvent('incident_update', { incident: updatedIncident })
       } else {
-        void updateIncidentInSupabase(nextIncident).then((ok) => {
+        void updateIncidentInSupabase(updatedIncident).then((ok) => {
           if (!ok) {
-            enqueueDomainEvent('incident_update', { incident: nextIncident })
+            enqueueDomainEvent('incident_update', { incident: updatedIncident })
+            return
           }
+          void emitDomainPushEvent({
+            eventType: 'incident_status_updated',
+            incidentId: updatedIncident.id,
+            incidentStatus: updatedIncident.status,
+            incidentCreatedByUserId: updatedIncident.createdByUserId,
+            unitNumber: updatedIncident.unitNumber,
+          })
         })
       }
     }
   }
 
   function markIncidentInProgress(incidentId: string) {
-    let nextIncident: Incident | null = null
-    setIncidents((previous) => {
-      const next = previous.map((incident) =>
-        incident.id === incidentId ? { ...incident, status: 'in_progress' as const } : incident
-      )
-      nextIncident = next.find((entry) => entry.id === incidentId) ?? null
-      return next
-    })
-    if (nextIncident && isSupabaseConfigured) {
+    const currentIncident = incidents.find((entry) => entry.id === incidentId)
+    if (!currentIncident) {
+      return
+    }
+    const updatedIncident: Incident = {
+      ...currentIncident,
+      status: 'in_progress',
+    }
+    setIncidents((previous) =>
+      previous.map((incident) => (incident.id === incidentId ? updatedIncident : incident))
+    )
+    if (isSupabaseConfigured) {
       if (!isOnline) {
-        enqueueDomainEvent('incident_update', { incident: nextIncident })
+        enqueueDomainEvent('incident_update', { incident: updatedIncident })
       } else {
-        void updateIncidentInSupabase(nextIncident).then((ok) => {
+        void updateIncidentInSupabase(updatedIncident).then((ok) => {
           if (!ok) {
-            enqueueDomainEvent('incident_update', { incident: nextIncident })
+            enqueueDomainEvent('incident_update', { incident: updatedIncident })
+            return
           }
+          void emitDomainPushEvent({
+            eventType: 'incident_status_updated',
+            incidentId: updatedIncident.id,
+            incidentStatus: updatedIncident.status,
+            incidentCreatedByUserId: updatedIncident.createdByUserId,
+            unitNumber: updatedIncident.unitNumber,
+          })
         })
       }
     }
@@ -671,34 +763,40 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     if (!cleanNote && !cleanPhotoUrl) {
       return false
     }
-    let nextIncident: Incident | null = null
-    setIncidents((previous) => {
-      const next = previous.map((incident) =>
-        incident.id === incidentId
-          ? {
-              ...incident,
-              guardActions: [
-                ...incident.guardActions,
-                {
-                  at: new Date().toISOString(),
-                  note: cleanNote,
-                  photoUrl: cleanPhotoUrl,
-                },
-              ],
-            }
-          : incident
-      )
-      nextIncident = next.find((entry) => entry.id === incidentId) ?? null
-      return next
-    })
-    if (nextIncident && isSupabaseConfigured) {
+    const currentIncident = incidents.find((entry) => entry.id === incidentId)
+    if (!currentIncident) {
+      return false
+    }
+    const updatedIncident: Incident = {
+      ...currentIncident,
+      guardActions: [
+        ...currentIncident.guardActions,
+        {
+          at: new Date().toISOString(),
+          note: cleanNote,
+          photoUrl: cleanPhotoUrl,
+        },
+      ],
+    }
+    setIncidents((previous) =>
+      previous.map((incident) => (incident.id === incidentId ? updatedIncident : incident))
+    )
+    if (isSupabaseConfigured) {
       if (!isOnline) {
-        enqueueDomainEvent('incident_update', { incident: nextIncident })
+        enqueueDomainEvent('incident_update', { incident: updatedIncident })
       } else {
-        void updateIncidentInSupabase(nextIncident).then((ok) => {
+        void updateIncidentInSupabase(updatedIncident).then((ok) => {
           if (!ok) {
-            enqueueDomainEvent('incident_update', { incident: nextIncident })
+            enqueueDomainEvent('incident_update', { incident: updatedIncident })
+            return
           }
+          void emitDomainPushEvent({
+            eventType: 'incident_status_updated',
+            incidentId: updatedIncident.id,
+            incidentStatus: updatedIncident.status,
+            incidentCreatedByUserId: updatedIncident.createdByUserId,
+            unitNumber: updatedIncident.unitNumber,
+          })
         })
       }
     }
@@ -706,61 +804,61 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
   }
 
   function resolveIncident(incidentId: string, input?: { note?: string; photoUrl?: string }) {
-    let resolved = false
-    let message = 'No se pudo resolver.'
+    const currentIncident = incidents.find((entry) => entry.id === incidentId)
+    if (!currentIncident) {
+      return { ok: false, message: 'No se pudo resolver.' }
+    }
+
     const cleanNote = input?.note?.trim()
     const cleanPhotoUrl = input?.photoUrl?.trim()
 
-    let nextIncident: Incident | null = null
-    setIncidents((previous) => {
-      const next = previous.map((incident) => {
-        if (incident.id !== incidentId) {
-          return incident
-        }
+    const nextGuardActions =
+      cleanNote || cleanPhotoUrl
+        ? [
+            ...currentIncident.guardActions,
+            {
+              at: new Date().toISOString(),
+              note: cleanNote,
+              photoUrl: cleanPhotoUrl,
+            },
+          ]
+        : currentIncident.guardActions
 
-        const nextGuardActions =
-          cleanNote || cleanPhotoUrl
-            ? [
-                ...incident.guardActions,
-                {
-                  at: new Date().toISOString(),
-                  note: cleanNote,
-                  photoUrl: cleanPhotoUrl,
-                },
-              ]
-            : incident.guardActions
+    const candidate: Incident = { ...currentIncident, guardActions: nextGuardActions }
+    if (!canResolveIncident(candidate)) {
+      return { ok: false, message: 'Para terminar necesitas comentario o evidencia.' }
+    }
 
-        const candidate = { ...incident, guardActions: nextGuardActions }
-        if (!canResolveIncident(candidate)) {
-          message = 'Para terminar necesitas comentario o evidencia.'
-          return incident
-        }
+    const updatedIncident: Incident = {
+      ...candidate,
+      status: 'resolved',
+      resolvedAt: new Date().toISOString(),
+    }
+    setIncidents((previous) =>
+      previous.map((incident) => (incident.id === incidentId ? updatedIncident : incident))
+    )
 
-        resolved = true
-        message = 'Incidencia marcada como terminada.'
-        return {
-          ...candidate,
-          status: 'resolved' as const,
-          resolvedAt: new Date().toISOString(),
-        }
-      })
-      nextIncident = next.find((entry) => entry.id === incidentId) ?? null
-      return next
-    })
-
-    if (resolved && nextIncident && isSupabaseConfigured) {
+    if (isSupabaseConfigured) {
       if (!isOnline) {
-        enqueueDomainEvent('incident_update', { incident: nextIncident })
+        enqueueDomainEvent('incident_update', { incident: updatedIncident })
       } else {
-        void updateIncidentInSupabase(nextIncident).then((ok) => {
+        void updateIncidentInSupabase(updatedIncident).then((ok) => {
           if (!ok) {
-            enqueueDomainEvent('incident_update', { incident: nextIncident })
+            enqueueDomainEvent('incident_update', { incident: updatedIncident })
+            return
           }
+          void emitDomainPushEvent({
+            eventType: 'incident_status_updated',
+            incidentId: updatedIncident.id,
+            incidentStatus: updatedIncident.status,
+            incidentCreatedByUserId: updatedIncident.createdByUserId,
+            unitNumber: updatedIncident.unitNumber,
+          })
         })
       }
     }
 
-    return { ok: resolved, message }
+    return { ok: true, message: 'Incidencia marcada como terminada.' }
   }
 
   function createQrPass(input: CreateQrInput) {
@@ -1085,6 +1183,140 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     return { ok: true }
   }
 
+  function createMarketplacePost(input: {
+    title: string
+    description: string
+    price: number
+    photoUrl: string
+    condition: MarketplacePost['condition']
+    contactMessage?: string
+  }) {
+    if (!session) {
+      return { ok: false, error: 'Sesion requerida.' }
+    }
+    const title = input.title.trim()
+    const description = input.description.trim()
+    const photoUrl = input.photoUrl.trim()
+    const contactMessage = input.contactMessage?.trim()
+    if (!title) {
+      return { ok: false, error: 'Titulo obligatorio.' }
+    }
+    if (!description) {
+      return { ok: false, error: 'Descripcion obligatoria.' }
+    }
+    if (!photoUrl) {
+      return { ok: false, error: 'Foto obligatoria.' }
+    }
+    if (!Number.isFinite(input.price) || input.price < 0) {
+      return { ok: false, error: 'Precio invalido.' }
+    }
+    if (!marketplaceConditionSchema.safeParse(input.condition).success) {
+      return { ok: false, error: 'Condicion invalida.' }
+    }
+
+    const post: MarketplacePost = {
+      id: randomId('market'),
+      title,
+      description,
+      price: Number(input.price.toFixed(2)),
+      photoUrl,
+      condition: input.condition,
+      status: 'active',
+      contactMessage: contactMessage || undefined,
+      createdAt: new Date().toISOString(),
+      createdByUserId: session.userId,
+      createdByName: session.fullName,
+    }
+    setMarketplacePosts((previous) => [post, ...previous])
+    if (isSupabaseConfigured && isOnline) {
+      void createMarketplacePostInSupabase(post)
+    }
+    return { ok: true }
+  }
+
+  function updateMarketplacePost(input: {
+    postId: string
+    title: string
+    description: string
+    price: number
+    photoUrl: string
+    condition: MarketplacePost['condition']
+    status: MarketplacePost['status']
+    contactMessage?: string
+  }) {
+    if (!session) {
+      return { ok: false, error: 'Sesion requerida.' }
+    }
+
+    const currentPost = marketplacePosts.find((entry) => entry.id === input.postId)
+    if (!currentPost) {
+      return { ok: false, error: 'Publicacion no encontrada.' }
+    }
+    if (currentPost.createdByUserId !== session.userId && session.role !== 'admin') {
+      return { ok: false, error: 'Solo el autor o admin puede editar.' }
+    }
+
+    const title = input.title.trim()
+    const description = input.description.trim()
+    const photoUrl = input.photoUrl.trim()
+    const contactMessage = input.contactMessage?.trim()
+    if (!title) {
+      return { ok: false, error: 'Titulo obligatorio.' }
+    }
+    if (!description) {
+      return { ok: false, error: 'Descripcion obligatoria.' }
+    }
+    if (!photoUrl) {
+      return { ok: false, error: 'Foto obligatoria.' }
+    }
+    if (!Number.isFinite(input.price) || input.price < 0) {
+      return { ok: false, error: 'Precio invalido.' }
+    }
+    if (!marketplaceConditionSchema.safeParse(input.condition).success) {
+      return { ok: false, error: 'Condicion invalida.' }
+    }
+    if (!marketplaceStatusSchema.safeParse(input.status).success) {
+      return { ok: false, error: 'Estado invalido.' }
+    }
+
+    const updatedPost: MarketplacePost = {
+      ...currentPost,
+      title,
+      description,
+      price: Number(input.price.toFixed(2)),
+      photoUrl,
+      condition: input.condition,
+      status: input.status,
+      contactMessage: contactMessage || undefined,
+      updatedAt: new Date().toISOString(),
+    }
+    setMarketplacePosts((previous) =>
+      previous.map((entry) => (entry.id === input.postId ? updatedPost : entry))
+    )
+    if (isSupabaseConfigured && isOnline) {
+      void updateMarketplacePostInSupabase(updatedPost)
+    }
+    return { ok: true }
+  }
+
+  function deleteMarketplacePost(postId: string) {
+    if (!session) {
+      return { ok: false, error: 'Sesion requerida.' }
+    }
+    const target = marketplacePosts.find((entry) => entry.id === postId)
+    if (!target) {
+      return { ok: false, error: 'Publicacion no encontrada.' }
+    }
+    if (target.createdByUserId !== session.userId && session.role !== 'admin') {
+      return { ok: false, error: 'Solo el autor o admin puede eliminar.' }
+    }
+    setMarketplacePosts((previous) => previous.filter((entry) => entry.id !== postId))
+    if (isSupabaseConfigured && isOnline) {
+      void deleteMarketplacePostInSupabase(postId)
+    }
+    return { ok: true }
+  }
+
   function createParkingReport(input: { description: string }) {
     if (!session) {
       return { ok: false, error: 'Sesion requerida.' }
@@ -1292,7 +1524,12 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
         void registerPackageInSupabase(result.created).then((ok) => {
           if (!ok) {
             enqueueDomainEvent('package_register', { package: result.created })
+            return
           }
+          void emitDomainPushEvent({
+            eventType: 'package_registered',
+            unitNumber: result.created.unitNumber,
+          })
         })
       }
     }
@@ -1329,7 +1566,12 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
         void markPackageReadyInSupabase(packageId).then((ok) => {
           if (!ok) {
             enqueueDomainEvent('package_mark_ready', { packageId })
+            return
           }
+          void emitDomainPushEvent({
+            eventType: 'package_ready',
+            unitNumber: target.unitNumber,
+          })
         })
       }
     }
@@ -1342,6 +1584,10 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     }
     if (!canRegisterOrDeliverPackage(session.role)) {
       return { ok: false, error: 'Solo guardia puede entregar paquetes.' }
+    }
+    const target = packages.find((entry) => entry.id === packageId)
+    if (!target) {
+      return { ok: false, error: 'Paquete no encontrado.' }
     }
 
     const result = deliverPackageTransition(packages, packageId, session.userId)
@@ -1356,7 +1602,12 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
         void deliverPackageInSupabase(packageId).then((ok) => {
           if (!ok) {
             enqueueDomainEvent('package_deliver', { packageId })
+            return
           }
+          void emitDomainPushEvent({
+            eventType: 'package_delivered',
+            unitNumber: target.unitNumber,
+          })
         })
       }
     }
@@ -1407,6 +1658,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     polls,
     petPosts,
     petPostComments,
+    marketplacePosts,
     remoteDataLoading,
     offlineQueue,
     isOnline,
@@ -1432,6 +1684,9 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     deletePoll,
     createPetPost,
     createPetPostComment,
+    createMarketplacePost,
+    updateMarketplacePost,
+    deleteMarketplacePost,
     createParkingReport,
     updateParkingReportStatus,
     getAssignedParkingForUnit,

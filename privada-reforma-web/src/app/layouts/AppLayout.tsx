@@ -19,6 +19,7 @@ const residentNav: NavItem[] = [
 const adminNav: NavItem[] = [
   { to: '/admin/dashboard', label: 'Panel' },
   { to: '/admin/users', label: 'Usuarios' },
+  { to: '/admin/push', label: 'Push' },
   { to: '/admin/packages', label: 'Paquetes', kind: 'packages' },
   { to: '/admin/debts', label: 'Adeudos' },
   { to: '/admin/finance', label: 'Finanzas' },

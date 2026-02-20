@@ -10,6 +10,7 @@ import {
 import type { Session, User } from '@supabase/supabase-js'
 import type { UserRole } from '../domain/auth'
 import type { AppSession } from '../domain/demoData'
+import { unsubscribeThisDeviceFromPush } from '../push/webPush'
 import { isSupabaseConfigured, supabase } from '../supabase/client'
 
 type ProfileRole = 'admin' | 'resident' | 'tenant' | 'guard' | 'board_member' | 'maintenance'
@@ -311,8 +312,13 @@ export function SupabaseAuthProvider({ children }: PropsWithChildren) {
         return { ok: true }
       },
       async signOut() {
-        if (!supabase) {
+        if (!supabase || !supabaseSession) {
           return
+        }
+        try {
+          await unsubscribeThisDeviceFromPush(supabaseSession.user.id)
+        } catch (error) {
+          devLog('push unsubscribe on signOut failed', error)
         }
         const result = await supabase.auth.signOut()
         if (result.error) {

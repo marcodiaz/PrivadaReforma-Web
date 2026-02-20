@@ -2,3 +2,12 @@ project_id = "nmsxkgryxnhmoqwmcgfj"
 
 [functions.admin-create-user]
 verify_jwt = false
+
+[functions.send-user-push]
+verify_jwt = false
+
+[functions.emit-domain-push]
+verify_jwt = false
+
+[functions.admin-send-push]
+verify_jwt = false

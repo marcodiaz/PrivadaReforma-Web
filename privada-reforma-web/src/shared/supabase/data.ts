@@ -1,5 +1,5 @@
 import type { UserRole } from '../domain/auth'
-import type { Incident, PetPost, PetPostComment, Poll } from '../domain/demoData'
+import type { Incident, MarketplacePost, PetPost, PetPostComment, Poll } from '../domain/demoData'
 import type { Package } from '../domain/packages'
 import { supabase } from './client'
 
@@ -83,9 +83,52 @@ type PetPostCommentRow = {
   created_by_name: string
 }
 
+type MarketplacePostRow = {
+  id: string
+  title: string
+  description: string
+  price: number
+  photo_url: string
+  condition: MarketplacePost['condition']
+  status: MarketplacePost['status']
+  contact_message: string | null
+  created_at: string
+  updated_at: string | null
+  created_by_user_id: string
+  created_by_name: string
+}
+
 type RpcPackageTransitionRow = {
   id: string
 }
+
+type PushSubscriptionUpsertInput = {
+  userId: string
+  endpoint: string
+  p256dh: string
+  auth: string
+  expirationTime: string | null
+  userAgent: string | null
+}
+
+type DomainPushEventInput =
+  | {
+      eventType: 'package_registered' | 'package_ready' | 'package_delivered'
+      unitNumber: string
+    }
+  | {
+      eventType: 'incident_created'
+      incidentId: string
+      incidentTitle?: string
+      unitNumber?: string
+    }
+  | {
+      eventType: 'incident_status_updated'
+      incidentId: string
+      incidentStatus: 'open' | 'acknowledged' | 'in_progress' | 'resolved'
+      incidentCreatedByUserId?: string
+      unitNumber?: string
+    }
 
 function mapPackageRow(row: PackageRow): Package {
   return {
@@ -159,6 +202,23 @@ function mapPetPostCommentRow(row: PetPostCommentRow): PetPostComment {
   }
 }
 
+function mapMarketplacePostRow(row: MarketplacePostRow): MarketplacePost {
+  return {
+    id: row.id,
+    title: row.title,
+    description: row.description,
+    price: Number(row.price),
+    photoUrl: row.photo_url,
+    condition: row.condition,
+    status: row.status,
+    contactMessage: row.contact_message ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at ?? undefined,
+    createdByUserId: row.created_by_user_id,
+    createdByName: row.created_by_name,
+  }
+}
+
 function mapPackageToRow(input: Package): PackageRow {
   return {
     id: input.id,
@@ -227,6 +287,23 @@ function mapPetPostCommentToRow(input: PetPostComment): PetPostCommentRow {
     pet_post_id: input.petPostId,
     message: input.message,
     created_at: input.createdAt,
+    created_by_user_id: input.createdByUserId,
+    created_by_name: input.createdByName,
+  }
+}
+
+function mapMarketplacePostToRow(input: MarketplacePost): MarketplacePostRow {
+  return {
+    id: input.id,
+    title: input.title,
+    description: input.description,
+    price: input.price,
+    photo_url: input.photoUrl,
+    condition: input.condition,
+    status: input.status,
+    contact_message: input.contactMessage ?? null,
+    created_at: input.createdAt,
+    updated_at: input.updatedAt ?? null,
     created_by_user_id: input.createdByUserId,
     created_by_name: input.createdByName,
   }
@@ -394,6 +471,61 @@ export async function createPetPostCommentInSupabase(comment: PetPostComment) {
   return !error
 }
 
+export async function fetchMarketplacePostsFromSupabase() {
+  if (!supabase) {
+    return null
+  }
+
+  const { data, error } = await supabase
+    .from('marketplace_posts')
+    .select(
+      'id, title, description, price, photo_url, condition, status, contact_message, created_at, updated_at, created_by_user_id, created_by_name',
+    )
+    .order('created_at', { ascending: false })
+
+  if (error || !data) {
+    return null
+  }
+
+  return data.map((row) => mapMarketplacePostRow(row as MarketplacePostRow))
+}
+
+export async function createMarketplacePostInSupabase(post: MarketplacePost) {
+  if (!supabase) {
+    return false
+  }
+  const { error } = await supabase.from('marketplace_posts').insert(mapMarketplacePostToRow(post))
+  return !error
+}
+
+export async function updateMarketplacePostInSupabase(post: MarketplacePost) {
+  if (!supabase) {
+    return false
+  }
+  const { error } = await supabase
+    .from('marketplace_posts')
+    .update({
+      title: post.title,
+      description: post.description,
+      price: post.price,
+      photo_url: post.photoUrl,
+      condition: post.condition,
+      status: post.status,
+      contact_message: post.contactMessage ?? null,
+      updated_at: post.updatedAt ?? new Date().toISOString(),
+    })
+    .eq('id', post.id)
+  return !error
+}
+
+export async function deleteMarketplacePostInSupabase(postId: string) {
+  if (!supabase) {
+    return false
+  }
+  const { error } = await supabase.from('marketplace_posts').delete().eq('id', postId)
+  return !error
+}
+
 export async function registerPackageInSupabase(pkg: Package) {
   if (!supabase) {
     return false
@@ -499,6 +631,83 @@ export async function uploadPackagePhoto(file: Blob) {
   }
 
   return path
+}
+
+export async function upsertPushSubscription(input: PushSubscriptionUpsertInput) {
+  if (!supabase) {
+    return false
+  }
+  const { error } = await supabase.from('push_subscriptions').upsert(
+    {
+      user_id: input.userId,
+      endpoint: input.endpoint,
+      p256dh: input.p256dh,
+      auth: input.auth,
+      expiration_time: input.expirationTime,
+      user_agent: input.userAgent,
+      enabled: true,
+      last_seen_at: new Date().toISOString(),
+    },
+    { onConflict: 'endpoint' }
+  )
+  return !error
+}
+
+export async function removePushSubscriptionByEndpoint(input: { endpoint: string; userId: string }) {
+  if (!supabase) {
+    return false
+  }
+  const { error } = await supabase
+    .from('push_subscriptions')
+    .delete()
+    .eq('endpoint', input.endpoint)
+    .eq('user_id', input.userId)
+  return !error
+}
+
+export async function sendPushTestToUser(input: { userId: string }) {
+  if (!supabase) {
+    return { ok: false, error: 'Supabase no esta configurado.' }
+  }
+  const { data, error } = await supabase.functions.invoke('send-user-push', {
+    body: {
+      userId: input.userId,
+      title: 'Privada Reforma',
+      body: 'Notificacion de prueba enviada desde tu perfil.',
+      url: '/app/profile',
+      tag: 'push-test',
+      data: { source: 'profile_test_button' },
+    },
+  })
+  if (error) {
+    return { ok: false, error: error.message }
+  }
+  const ok = Boolean((data as { ok?: boolean } | null)?.ok)
+  if (!ok) {
+    const message =
+      (data as { error?: string } | null)?.error ?? 'No fue posible enviar notificacion de prueba.'
+    return { ok: false, error: message }
+  }
+  return { ok: true }
+}
+
+export async function emitDomainPushEvent(input: DomainPushEventInput) {
+  if (!supabase) {
+    return { ok: false, error: 'Supabase no esta configurado.' }
+  }
+  const { data, error } = await supabase.functions.invoke('emit-domain-push', {
+    body: input,
+  })
+  if (error) {
+    return { ok: false, error: error.message }
+  }
+  const ok = Boolean((data as { ok?: boolean } | null)?.ok)
+  if (!ok) {
+    const message =
+      (data as { error?: string } | null)?.error ?? 'No fue posible emitir notificacion.'
+    return { ok: false, error: message }
+  }
+  return { ok: true }
 }
 
 export async function uploadPetPhoto(file: Blob) {

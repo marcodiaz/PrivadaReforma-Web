@@ -123,3 +123,58 @@ Edge Function:
    - `supabase functions deploy admin-create-user`
 
 No extra frontend env var is required beyond `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`.
+
+## Web Push Notifications (Per User)
+
+### New DB table
+
+- `public.push_subscriptions`
+  - stores one row per browser/device subscription endpoint
+  - RLS: authenticated users can only manage their own rows (`user_id = auth.uid()`)
+
+### Frontend env var
+
+- `VITE_WEB_PUSH_PUBLIC_KEY=<your-vapid-public-key>`
+
+### Function secrets
+
+Set before deploy:
+
+- `SUPABASE_URL=https://<project-ref>.supabase.co`
+- `SUPABASE_SERVICE_ROLE_KEY=<service-role-key>`
+- `WEB_PUSH_VAPID_PUBLIC_KEY=<vapid-public-key>`
+- `WEB_PUSH_VAPID_PRIVATE_KEY=<vapid-private-key>`
+- `WEB_PUSH_CONTACT_EMAIL=<team-email@example.com>`
+
+### Deploy
+
+- `supabase functions deploy send-user-push`
+- `supabase functions deploy emit-domain-push`
+- `supabase functions deploy admin-send-push`
+
+### In-app test flow
+
+1. Login with target user.
+2. Go to `/app/profile`.
+3. Click **Activar en este dispositivo** (grant browser permission).
+4. Click **Enviar prueba**.
+5. Browser should receive notification from service worker, and clicking it opens app route from payload.
+
+### Automatic domain events enabled
+
+- Package flow:
+  - guard registers package -> notifies `resident/tenant` of target unit
+  - resident marks ready -> notifies `guard/admin/maintenance`
+  - guard marks delivered -> notifies `resident/tenant` of target unit
+- Incident flow:
+  - create incident -> notifies `guard/admin/board_member`
+  - incident status updates -> notifies incident creator
+
+### Admin manual send console
+
+- Route: `/admin/push`
+- Targets supported:
+  - specific user
+  - unit
+  - role
+  - all users

@@ -1,6 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useDemoData } from '../../shared/state/DemoDataContext'
-import { adminCreateOrInviteUser, type ManagedUserRole } from '../../shared/supabase/admin'
+import {
+  adminCreateOrInviteUser,
+  adminSendTargetedPush,
+  fetchManagedProfiles,
+  type AdminPushTargetMode,
+  type ManagedProfile,
+  type ManagedUserRole,
+} from '../../shared/supabase/admin'
 import { AppButton, AppCard, ModulePlaceholder } from '../../shared/ui'
 export { AdminPackagesPage } from '../packages/pages'
 
@@ -182,6 +189,259 @@ export function AdminUsersPage() {
   )
 }
 
+export function AdminPushPage() {
+  const { session } = useDemoData()
+  const [targetMode, setTargetMode] = useState<AdminPushTargetMode>('user')
+  const [targetUserId, setTargetUserId] = useState('')
+  const [targetUnit, setTargetUnit] = useState('')
+  const [targetRole, setTargetRole] = useState<ManagedUserRole>('resident')
+  const [includeCaller, setIncludeCaller] = useState(false)
+  const [title, setTitle] = useState('Privada Reforma')
+  const [body, setBody] = useState('')
+  const [url, setUrl] = useState('/app/home')
+  const [tag, setTag] = useState('admin-manual')
+  const [profiles, setProfiles] = useState<ManagedProfile[]>([])
+  const [loadingProfiles, setLoadingProfiles] = useState(false)
+  const [sending, setSending] = useState(false)
+  const [feedback, setFeedback] = useState('')
+  const [feedbackType, setFeedbackType] = useState<'error' | 'success'>('success')
+
+  const roles: ManagedUserRole[] = [
+    'resident',
+    'tenant',
+    'guard',
+    'board_member',
+    'maintenance',
+    'admin',
+  ]
+
+  const unitOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          profiles
+            .map((profile) => profile.unitNumber?.trim() ?? '')
+            .filter((value) => value.length > 0),
+        ),
+      ).sort((a, b) => a.localeCompare(b)),
+    [profiles],
+  )
+
+  useEffect(() => {
+    if (!session || session.role !== 'admin') {
+      return
+    }
+    setLoadingProfiles(true)
+    void fetchManagedProfiles()
+      .then((rows) => {
+        if (rows) {
+          setProfiles(rows)
+        }
+      })
+      .finally(() => setLoadingProfiles(false))
+  }, [session])
+
+  async function handleSend() {
+    const trimmedBody = body.trim()
+    if (!trimmedBody) {
+      setFeedbackType('error')
+      setFeedback('Mensaje obligatorio.')
+      return
+    }
+    if (targetMode === 'user' && !targetUserId.trim()) {
+      setFeedbackType('error')
+      setFeedback('Selecciona un usuario destino.')
+      return
+    }
+    if (targetMode === 'unit' && !targetUnit.trim()) {
+      setFeedbackType('error')
+      setFeedback('Selecciona una unidad destino.')
+      return
+    }
+
+    setSending(true)
+    setFeedback('')
+    const result = await adminSendTargetedPush({
+      targetMode,
+      userId: targetMode === 'user' ? targetUserId.trim() : undefined,
+      unitNumber: targetMode === 'unit' ? targetUnit.trim() : undefined,
+      role: targetMode === 'role' ? targetRole : undefined,
+      includeCaller,
+      title: title.trim() || undefined,
+      body: trimmedBody,
+      url: url.trim() || undefined,
+      tag: tag.trim() || undefined,
+    })
+    setSending(false)
+
+    if (!result.ok) {
+      setFeedbackType('error')
+      setFeedback(localizePushError(result.error))
+      return
+    }
+
+    setFeedbackType('success')
+    setFeedback(
+      `Enviado. Suscripciones notificadas: ${result.sent ?? 0}. Destinos: ${result.targetUsers ?? 0}. Eliminadas por vencimiento: ${result.removed ?? 0}.`,
+    )
+    setBody('')
+  }
+
+  if (!session || session.role !== 'admin') {
+    return (
+      <AppCard className="text-sm text-[var(--color-text-muted)]">
+        Solo administradores pueden enviar notificaciones push masivas.
+      </AppCard>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      <ModulePlaceholder
+        role="Administrador"
+        title="Push Notifications"
+        description="Envio manual por usuario, unidad, rol o global."
+      />
+      <AppCard className="space-y-2">
+        <label className="block text-xs text-[var(--color-text-muted)]">
+          Destino
+          <select
+            className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm text-[var(--color-text)]"
+            onChange={(event) => setTargetMode(event.target.value as AdminPushTargetMode)}
+            value={targetMode}
+          >
+            <option value="user">Usuario especifico</option>
+            <option value="unit">Unidad especifica</option>
+            <option value="role">Rol especifico</option>
+            <option value="all">Todos los usuarios</option>
+          </select>
+        </label>
+
+        {targetMode === 'user' ? (
+          <label className="block text-xs text-[var(--color-text-muted)]">
+            Usuario
+            <select
+              className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm text-[var(--color-text)]"
+              onChange={(event) => setTargetUserId(event.target.value)}
+              value={targetUserId}
+            >
+              <option value="">Selecciona usuario</option>
+              {profiles.map((profile) => (
+                <option key={profile.userId} value={profile.userId}>
+                  {profile.role} | {profile.unitNumber ?? 'sin unidad'} | {profile.userId.slice(0, 8)}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+
+        {targetMode === 'unit' ? (
+          <label className="block text-xs text-[var(--color-text-muted)]">
+            Unidad
+            <select
+              className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm text-[var(--color-text)]"
+              onChange={(event) => setTargetUnit(event.target.value)}
+              value={targetUnit}
+            >
+              <option value="">Selecciona unidad</option>
+              {unitOptions.map((unitNumber) => (
+                <option key={unitNumber} value={unitNumber}>
+                  {unitNumber}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+
+        {targetMode === 'role' ? (
+          <label className="block text-xs text-[var(--color-text-muted)]">
+            Rol
+            <select
+              className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm text-[var(--color-text)]"
+              onChange={(event) => setTargetRole(event.target.value as ManagedUserRole)}
+              value={targetRole}
+            >
+              {roles.map((entry) => (
+                <option key={entry} value={entry}>
+                  {entry}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+
+        <label className="block text-xs text-[var(--color-text-muted)]">
+          Titulo
+          <input
+            className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-muted)]"
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder="Privada Reforma"
+            type="text"
+            value={title}
+          />
+        </label>
+        <label className="block text-xs text-[var(--color-text-muted)]">
+          Mensaje
+          <textarea
+            className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-muted)]"
+            onChange={(event) => setBody(event.target.value)}
+            placeholder="Escribe el contenido de la notificacion."
+            rows={3}
+            value={body}
+          />
+        </label>
+        <label className="block text-xs text-[var(--color-text-muted)]">
+          URL destino
+          <input
+            className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-muted)]"
+            onChange={(event) => setUrl(event.target.value)}
+            placeholder="/app/home"
+            type="text"
+            value={url}
+          />
+        </label>
+        <label className="block text-xs text-[var(--color-text-muted)]">
+          Tag
+          <input
+            className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-muted)]"
+            onChange={(event) => setTag(event.target.value)}
+            placeholder="admin-manual"
+            type="text"
+            value={tag}
+          />
+        </label>
+        <label className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
+          <input
+            checked={includeCaller}
+            onChange={(event) => setIncludeCaller(event.target.checked)}
+            type="checkbox"
+          />
+          Incluir mi propio usuario como destino
+        </label>
+
+        <AppButton block disabled={sending || loadingProfiles} onClick={() => void handleSend()}>
+          {sending ? 'Enviando...' : 'Enviar notificacion'}
+        </AppButton>
+
+        {loadingProfiles ? (
+          <p className="text-xs text-[var(--color-text-muted)]">Cargando perfiles...</p>
+        ) : null}
+        {feedback ? (
+          <p
+            className={
+              feedbackType === 'error'
+                ? 'text-xs text-red-600'
+                : 'text-xs text-[var(--color-text-muted)]'
+            }
+          >
+            {feedback}
+          </p>
+        ) : null}
+      </AppCard>
+    </div>
+  )
+}
+
 function localizeAdminError(raw?: string): string {
   if (!raw?.trim()) return 'No fue posible completar la operacion.'
   const lower = raw.toLowerCase()
@@ -213,6 +473,26 @@ function localizeAdminError(raw?: string): string {
   }
 
   return `No se pudo completar la operacion: ${raw}`
+}
+
+function localizePushError(raw?: string): string {
+  if (!raw?.trim()) return 'No fue posible enviar notificaciones.'
+  const lower = raw.toLowerCase()
+
+  if (lower.includes('only admins')) {
+    return 'Solo administradores pueden enviar notificaciones masivas.'
+  }
+  if (lower.includes('missing bearer') || lower.includes('invalid session')) {
+    return 'Sesion invalida. Cierra sesion y vuelve a entrar.'
+  }
+  if (lower.includes('vapid')) {
+    return 'Faltan llaves VAPID en los secrets de Supabase Functions.'
+  }
+  if (lower.includes('targetmode') || lower.includes('required')) {
+    return 'Faltan campos obligatorios de destino o mensaje.'
+  }
+
+  return `No fue posible enviar: ${raw}`
 }
 
 export function AdminDebtsPage() {

@@ -11,7 +11,14 @@ import {
   normalizeDepartmentCode,
 } from '../access/qrLogic'
 import { isSupabaseConfigured } from '../../shared/supabase/client'
-import { uploadPetPhoto } from '../../shared/supabase/data'
+import { sendPushTestToUser, uploadPetPhoto } from '../../shared/supabase/data'
+import {
+  getNotificationPermissionState,
+  isWebPushConfigured,
+  isWebPushSupported,
+  subscribeThisDeviceToPush,
+  unsubscribeThisDeviceFromPush,
+} from '../../shared/push/webPush'
 export { AppPackagesPage } from '../packages/pages'
 
 function priorityBadge(priority: Incident['priority']) {
@@ -35,7 +42,17 @@ function incidentEmphasis(score: number) {
 }
 
 export function AppHomePage() {
-  const { incidents, qrPasses, auditLog, parkingReports, polls, petPosts, remoteDataLoading, session } =
+  const {
+    incidents,
+    qrPasses,
+    auditLog,
+    parkingReports,
+    polls,
+    petPosts,
+    marketplacePosts,
+    remoteDataLoading,
+    session,
+  } =
     useDemoData()
   const navigate = useNavigate()
   const myQrPasses = qrPasses.filter((pass) => pass.createdByUserId === session?.userId)
@@ -44,6 +61,7 @@ export function AppHomePage() {
   const activeParkingReports = parkingReports.filter((report) => report.status === 'open').length
   const activePolls = polls.length
   const activePetPosts = petPosts.length
+  const activeMarketPosts = marketplacePosts.filter((post) => post.status === 'active').length
   const profileTitle = `${session?.fullName ?? 'Usuario'} - ${session?.unitNumber ?? 'Sin departamento'}`
   const menuItems = [
     { label: 'Comunicados', icon: 'CO', action: () => navigate('/app/announcements') },
@@ -52,6 +70,7 @@ export function AppHomePage() {
     { label: 'Estacionamiento', icon: 'ES', action: () => navigate('/app/parking') },
     { label: 'Votaciones', icon: 'VO', action: () => navigate('/app/polls') },
     { label: 'Mascotas', icon: 'MA', action: () => navigate('/app/pets') },
+    { label: 'Marketplace', icon: 'MK', action: () => navigate('/app/marketplace') },
     { label: 'Paquetes', icon: 'PA', action: () => navigate('/app/packages') },
     { label: 'Incidencias', icon: 'IN', action: () => navigate('/app/incidents') },
     { label: 'Perfil', icon: 'PE', action: () => navigate('/app/profile') },
@@ -103,6 +122,12 @@ export function AppHomePage() {
           <AppCard className="rounded-xl border-zinc-800 bg-zinc-950 p-3 text-center transition hover:border-zinc-500">
             <p className="text-[11px] uppercase text-slate-400">Mascotas</p>
             <p className="text-2xl font-bold text-white">{activePetPosts}</p>
+          </AppCard>
+        </button>
+        <button onClick={() => navigate('/app/marketplace')} type="button">
+          <AppCard className="rounded-xl border-zinc-800 bg-zinc-950 p-3 text-center transition hover:border-zinc-500">
+            <p className="text-[11px] uppercase text-slate-400">Marketplace</p>
+            <p className="text-2xl font-bold text-white">{activeMarketPosts}</p>
           </AppCard>
         </button>
       </div>
@@ -1193,6 +1218,314 @@ export function AppPetsPage() {
   )
 }
 
+export function AppMarketplacePage() {
+  const {
+    marketplacePosts,
+    createMarketplacePost,
+    updateMarketplacePost,
+    deleteMarketplacePost,
+    session,
+  } = useDemoData()
+  const [title, setTitle] = useState('')
+  const [description, setDescription] = useState('')
+  const [price, setPrice] = useState('')
+  const [condition, setCondition] = useState<'new' | 'used'>('used')
+  const [contactMessage, setContactMessage] = useState('')
+  const [photoUrl, setPhotoUrl] = useState('')
+  const [selectedPostId, setSelectedPostId] = useState<string | null>(null)
+  const [editingPostId, setEditingPostId] = useState<string | null>(null)
+  const [feedback, setFeedback] = useState('')
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
+
+  const selectedPost = marketplacePosts.find((post) => post.id === selectedPostId) ?? null
+  const editingPost = marketplacePosts.find((post) => post.id === editingPostId) ?? null
+
+  async function handlePhotoUpload(file: File | null) {
+    if (!file) {
+      return
+    }
+    setUploadingPhoto(true)
+    setFeedback('')
+    try {
+      if (isSupabaseConfigured && navigator.onLine) {
+        const objectPath = await uploadPetPhoto(file)
+        setPhotoUrl(objectPath)
+        setFeedback('Foto cargada correctamente.')
+      } else {
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve(String(reader.result))
+          reader.onerror = () => reject(new Error('No fue posible leer la foto.'))
+          reader.readAsDataURL(file)
+        })
+        setPhotoUrl(dataUrl)
+        setFeedback('Foto guardada localmente (modo sin red).')
+      }
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : 'No se pudo cargar la foto.')
+    } finally {
+      setUploadingPhoto(false)
+    }
+  }
+
+  function resetForm() {
+    setTitle('')
+    setDescription('')
+    setPrice('')
+    setCondition('used')
+    setContactMessage('')
+    setPhotoUrl('')
+  }
+
+  function beginEdit(postId: string) {
+    const post = marketplacePosts.find((entry) => entry.id === postId)
+    if (!post) {
+      return
+    }
+    setEditingPostId(post.id)
+    setTitle(post.title)
+    setDescription(post.description)
+    setPrice(String(post.price))
+    setCondition(post.condition)
+    setContactMessage(post.contactMessage ?? '')
+    setPhotoUrl(post.photoUrl)
+    setFeedback('')
+  }
+
+  function handleSubmitPost() {
+    const parsedPrice = Number(price)
+    if (editingPost) {
+      const result = updateMarketplacePost({
+        postId: editingPost.id,
+        title,
+        description,
+        price: parsedPrice,
+        photoUrl,
+        condition,
+        status: editingPost.status,
+        contactMessage,
+      })
+      setFeedback(result.ok ? 'Publicacion actualizada.' : result.error ?? 'No se pudo actualizar.')
+      if (result.ok) {
+        setEditingPostId(null)
+        resetForm()
+      }
+      return
+    }
+
+    const result = createMarketplacePost({
+      title,
+      description,
+      price: parsedPrice,
+      photoUrl,
+      condition,
+      contactMessage,
+    })
+    setFeedback(result.ok ? 'Publicacion creada.' : result.error ?? 'No se pudo crear.')
+    if (result.ok) {
+      resetForm()
+    }
+  }
+
+  function handleToggleSold(postId: string) {
+    const target = marketplacePosts.find((entry) => entry.id === postId)
+    if (!target) {
+      return
+    }
+    const result = updateMarketplacePost({
+      postId: target.id,
+      title: target.title,
+      description: target.description,
+      price: target.price,
+      photoUrl: target.photoUrl,
+      condition: target.condition,
+      status: target.status === 'active' ? 'sold' : 'active',
+      contactMessage: target.contactMessage,
+    })
+    setFeedback(result.ok ? 'Estado actualizado.' : result.error ?? 'No se pudo actualizar estado.')
+  }
+
+  function handleDeletePost(postId: string) {
+    const result = deleteMarketplacePost(postId)
+    setFeedback(result.ok ? 'Publicacion eliminada.' : result.error ?? 'No se pudo eliminar.')
+    if (result.ok && selectedPostId === postId) {
+      setSelectedPostId(null)
+    }
+    if (result.ok && editingPostId === postId) {
+      setEditingPostId(null)
+      resetForm()
+    }
+  }
+
+  function canManage(postUserId: string) {
+    return session?.userId === postUserId || session?.role === 'admin'
+  }
+
+  return (
+    <div className="space-y-3">
+      <ModulePlaceholder
+        role="Comunidad"
+        title="Marketplace"
+        description="Compra y venta entre vecinos de la privada."
+      />
+      <AppCard className="space-y-3 border-zinc-800 bg-zinc-950">
+        <p className="text-sm font-semibold text-zinc-100">
+          {editingPost ? 'Editar publicacion' : 'Nueva publicacion'}
+        </p>
+        <input
+          className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+          onChange={(event) => setTitle(event.target.value)}
+          placeholder="Titulo del articulo"
+          value={title}
+        />
+        <textarea
+          className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+          onChange={(event) => setDescription(event.target.value)}
+          placeholder="Descripcion"
+          rows={3}
+          value={description}
+        />
+        <div className="grid grid-cols-2 gap-2">
+          <input
+            className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+            min="0"
+            onChange={(event) => setPrice(event.target.value)}
+            placeholder="Precio MXN"
+            step="0.01"
+            type="number"
+            value={price}
+          />
+          <select
+            className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+            onChange={(event) => setCondition(event.target.value as 'new' | 'used')}
+            value={condition}
+          >
+            <option value="used">Usado</option>
+            <option value="new">Nuevo</option>
+          </select>
+        </div>
+        <input
+          className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+          onChange={(event) => setContactMessage(event.target.value)}
+          placeholder="Mensaje de contacto (ej. WhatsApp 55...)"
+          value={contactMessage}
+        />
+        <label className="space-y-1">
+          <span className="block text-[11px] uppercase tracking-[0.08em] text-zinc-400">Foto</span>
+          <input
+            accept="image/*"
+            className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 file:mr-3 file:rounded-lg file:border-0 file:bg-zinc-800 file:px-3 file:py-1 file:text-xs file:font-semibold file:text-zinc-100"
+            onChange={(event) => void handlePhotoUpload(event.target.files?.[0] ?? null)}
+            type="file"
+          />
+        </label>
+        <AppButton block disabled={uploadingPhoto} onClick={handleSubmitPost}>
+          {uploadingPhoto
+            ? 'Subiendo foto...'
+            : editingPost
+              ? 'Guardar cambios'
+              : 'Publicar en marketplace'}
+        </AppButton>
+        {editingPost ? (
+          <AppButton
+            block
+            onClick={() => {
+              setEditingPostId(null)
+              resetForm()
+            }}
+            variant="secondary"
+          >
+            Cancelar edicion
+          </AppButton>
+        ) : null}
+        {feedback ? <p className="text-xs text-zinc-300">{feedback}</p> : null}
+      </AppCard>
+
+      <div className="space-y-2">
+        {marketplacePosts.length === 0 ? (
+          <AppCard className="text-sm text-zinc-300">Aun no hay publicaciones.</AppCard>
+        ) : (
+          marketplacePosts.map((post) => (
+            <AppCard className="space-y-2 border-zinc-800 bg-zinc-950" key={post.id}>
+              <button className="w-full text-left" onClick={() => setSelectedPostId(post.id)} type="button">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-semibold text-zinc-100">{post.title}</p>
+                    <span
+                      className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase ${
+                        post.status === 'active'
+                          ? 'bg-emerald-500/20 text-emerald-200'
+                          : 'bg-zinc-700 text-zinc-200'
+                      }`}
+                    >
+                      {post.status === 'active' ? 'Disponible' : 'Vendido'}
+                    </span>
+                  </div>
+                  <PetPhoto
+                    alt={`Producto ${post.title}`}
+                    className="h-36 w-full rounded-xl border border-zinc-700 object-cover"
+                    pathOrUrl={post.photoUrl}
+                  />
+                  <p className="text-xs text-zinc-400">
+                    Publicado por: {post.createdByName} | Condicion:{' '}
+                    {post.condition === 'new' ? 'Nuevo' : 'Usado'}
+                  </p>
+                  <p className="text-lg font-bold text-white">${post.price.toFixed(2)}</p>
+                </div>
+              </button>
+              {canManage(post.createdByUserId) ? (
+                <div className="grid grid-cols-3 gap-2">
+                  <AppButton block onClick={() => beginEdit(post.id)} variant="secondary">
+                    Editar
+                  </AppButton>
+                  <AppButton block onClick={() => handleToggleSold(post.id)} variant="secondary">
+                    {post.status === 'active' ? 'Marcar vendido' : 'Reactivar'}
+                  </AppButton>
+                  <AppButton block onClick={() => handleDeletePost(post.id)} variant="danger">
+                    Eliminar
+                  </AppButton>
+                </div>
+              ) : null}
+            </AppCard>
+          ))
+        )}
+      </div>
+
+      {selectedPost ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/55 p-4 sm:items-center">
+          <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-950 p-3 shadow-2xl">
+            <div className="mb-3 flex items-start justify-between gap-2">
+              <div>
+                <p className="text-base font-semibold text-zinc-100">{selectedPost.title}</p>
+                <p className="text-xs text-zinc-400">
+                  {selectedPost.condition === 'new' ? 'Nuevo' : 'Usado'} |{' '}
+                  {selectedPost.status === 'active' ? 'Disponible' : 'Vendido'}
+                </p>
+              </div>
+              <AppButton className="px-2 py-1 text-xs" onClick={() => setSelectedPostId(null)} variant="secondary">
+                Cerrar
+              </AppButton>
+            </div>
+            <PetPhoto
+              alt={`Producto ${selectedPost.title}`}
+              className="mb-2 h-44 w-full rounded-xl border border-zinc-700 object-cover"
+              pathOrUrl={selectedPost.photoUrl}
+            />
+            <p className="mb-1 text-xl font-bold text-white">${selectedPost.price.toFixed(2)}</p>
+            <p className="mb-2 text-sm text-zinc-300">{selectedPost.description}</p>
+            <p className="text-xs text-zinc-400">Vendedor: {selectedPost.createdByName}</p>
+            {selectedPost.contactMessage ? (
+              <p className="mt-2 rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-2 text-xs text-zinc-300">
+                Contacto: {selectedPost.contactMessage}
+              </p>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 export function AppFinancePage() {
   return (
     <ModulePlaceholder
@@ -1205,6 +1538,84 @@ export function AppFinancePage() {
 
 export function AppProfilePage() {
   const { session } = useDemoData()
+  const [pushMessage, setPushMessage] = useState('')
+  const [busyAction, setBusyAction] = useState<'enable' | 'disable' | 'test' | null>(null)
+  const [permission, setPermission] = useState(getNotificationPermissionState())
+  const pushSupported = isWebPushSupported()
+  const pushConfigured = isWebPushConfigured()
+
+  function refreshPermission() {
+    setPermission(getNotificationPermissionState())
+  }
+
+  useEffect(() => {
+    refreshPermission()
+  }, [])
+
+  async function handleEnablePush() {
+    if (!session?.userId) {
+      setPushMessage('No hay sesion activa.')
+      return
+    }
+    setBusyAction('enable')
+    setPushMessage('')
+    try {
+      const result = await subscribeThisDeviceToPush(session.userId)
+      if (!result.ok) {
+        setPushMessage(result.error ?? 'No fue posible activar notificaciones.')
+      } else {
+        setPushMessage('Notificaciones activadas para este dispositivo.')
+      }
+    } catch (error) {
+      setPushMessage(error instanceof Error ? error.message : 'Error inesperado al activar push.')
+    } finally {
+      refreshPermission()
+      setBusyAction(null)
+    }
+  }
+
+  async function handleDisablePush() {
+    if (!session?.userId) {
+      setPushMessage('No hay sesion activa.')
+      return
+    }
+    setBusyAction('disable')
+    setPushMessage('')
+    try {
+      const result = await unsubscribeThisDeviceFromPush(session.userId)
+      if (!result.ok) {
+        setPushMessage(result.error ?? 'No fue posible desactivar notificaciones.')
+      } else {
+        setPushMessage('Notificaciones desactivadas en este dispositivo.')
+      }
+    } catch (error) {
+      setPushMessage(error instanceof Error ? error.message : 'Error inesperado al desactivar push.')
+    } finally {
+      refreshPermission()
+      setBusyAction(null)
+    }
+  }
+
+  async function handleSendPushTest() {
+    if (!session?.userId) {
+      setPushMessage('No hay sesion activa.')
+      return
+    }
+    setBusyAction('test')
+    setPushMessage('')
+    try {
+      const result = await sendPushTestToUser({ userId: session.userId })
+      if (!result.ok) {
+        setPushMessage(result.error ?? 'No fue posible enviar notificacion de prueba.')
+      } else {
+        setPushMessage('Notificacion de prueba enviada. Revisa este dispositivo.')
+      }
+    } catch (error) {
+      setPushMessage(error instanceof Error ? error.message : 'Error inesperado al enviar prueba.')
+    } finally {
+      setBusyAction(null)
+    }
+  }
 
   return (
     <div className="space-y-3">
@@ -1225,6 +1636,39 @@ export function AppProfilePage() {
         <div>
           <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">Departamento</p>
           <p className="text-sm font-semibold text-zinc-100">{session?.unitNumber ?? '-'}</p>
+        </div>
+        <div className="space-y-2 rounded-xl border border-zinc-800 bg-zinc-900 p-3">
+          <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">Notificaciones push</p>
+          <p className="text-xs text-zinc-300">
+            Soporte: {pushSupported ? 'Si' : 'No'} | Configuracion: {pushConfigured ? 'Lista' : 'Falta clave'} |
+            Permiso: {permission}
+          </p>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <AppButton
+              block
+              disabled={!pushSupported || !pushConfigured || busyAction !== null}
+              onClick={() => void handleEnablePush()}
+              variant="secondary"
+            >
+              {busyAction === 'enable' ? 'Activando...' : 'Activar en este dispositivo'}
+            </AppButton>
+            <AppButton
+              block
+              disabled={!pushSupported || busyAction !== null}
+              onClick={() => void handleDisablePush()}
+              variant="secondary"
+            >
+              {busyAction === 'disable' ? 'Desactivando...' : 'Desactivar en este dispositivo'}
+            </AppButton>
+            <AppButton
+              block
+              disabled={!pushSupported || !pushConfigured || busyAction !== null}
+              onClick={() => void handleSendPushTest()}
+            >
+              {busyAction === 'test' ? 'Enviando...' : 'Enviar prueba'}
+            </AppButton>
+          </div>
+          {pushMessage ? <p className="text-xs text-zinc-300">{pushMessage}</p> : null}
         </div>
       </AppCard>
     </div>

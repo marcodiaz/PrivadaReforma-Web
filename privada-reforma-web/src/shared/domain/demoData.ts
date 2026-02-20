@@ -159,6 +159,26 @@ export const petPostCommentSchema = z.object({
 
 export type PetPostComment = z.infer<typeof petPostCommentSchema>
 
+export const marketplaceConditionSchema = z.enum(['new', 'used'])
+export const marketplaceStatusSchema = z.enum(['active', 'sold'])
+
+export const marketplacePostSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  description: z.string(),
+  price: z.number().nonnegative(),
+  photoUrl: z.string(),
+  condition: marketplaceConditionSchema,
+  status: marketplaceStatusSchema,
+  contactMessage: z.string().optional(),
+  createdAt: z.string(),
+  updatedAt: z.string().optional(),
+  createdByUserId: z.string(),
+  createdByName: z.string(),
+})
+
+export type MarketplacePost = z.infer<typeof marketplacePostSchema>
+
 export const auditLogSchema = z.object({
   id: z.string(),
   at: z.string(),
@@ -317,3 +337,4 @@ export const LOCAL_PARKING_REPORTS: ParkingReport[] = []
 export const LOCAL_POLLS: Poll[] = []
 export const LOCAL_PET_POSTS: PetPost[] = []
 export const LOCAL_PET_POST_COMMENTS: PetPostComment[] = []
+export const LOCAL_MARKETPLACE_POSTS: MarketplacePost[] = []
