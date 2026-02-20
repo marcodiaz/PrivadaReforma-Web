@@ -11,11 +11,15 @@ import {
   LOCAL_AUDIT_LOG,
   LOCAL_INCIDENTS,
   LOCAL_OFFLINE_QUEUE,
+  LOCAL_PARKING_REPORTS,
   LOCAL_QR_PASSES,
+  LOCAL_RESERVATIONS,
   auditLogSchema,
   type AppSession,
   type AuditLogEntry,
   type Incident,
+  parkingReportSchema,
+  type ParkingReport,
   incidentCategorySchema,
   incidentPrioritySchema,
   incidentSchema,
@@ -24,6 +28,8 @@ import {
   qrPassSchema,
   type QrPass,
   qrPassTypeSchema,
+  reservationSchema,
+  type Reservation,
 } from '../domain/demoData'
 import { getItem, migrateIfNeeded, removeItem, setItem, storageKeys } from '../storage/storage'
 import {
@@ -81,6 +87,8 @@ type DemoDataContextValue = {
   qrPasses: QrPass[]
   packages: Package[]
   auditLog: AuditLogEntry[]
+  reservations: Reservation[]
+  parkingReports: ParkingReport[]
   offlineQueue: OfflineQueueEvent[]
   isOnline: boolean
   syncToast: string | null
@@ -105,6 +113,18 @@ type DemoDataContextValue = {
   ) => { ok: boolean; message: string }
   createQrPass: (input: CreateQrInput) => { ok: boolean; error?: string }
   deleteQrPass: (qrId: string) => void
+  createReservation: (input: { amenity: string; reservationDate: string }) => {
+    ok: boolean
+    error?: string
+  }
+  getActiveReservations: () => Reservation[]
+  createParkingReport: (input: { description: string }) => { ok: boolean; error?: string }
+  updateParkingReportStatus: (input: {
+    reportId: string
+    status: 'owner_notified' | 'tow_truck_notified'
+    guardNote?: string
+  }) => { ok: boolean; error?: string }
+  getAssignedParkingForUnit: (unitNumber?: string) => string
   handleGuardScanDecision: (input: {
     departmentCode: string
     sequenceCode: string
@@ -160,6 +180,34 @@ function getEffectiveQrStatus(pass: QrPass, now = new Date()): QrPass['status'] 
   return pass.status
 }
 
+function isFridayOrSaturday(dateValue: string) {
+  const date = new Date(`${dateValue}T12:00:00`)
+  if (Number.isNaN(date.getTime())) {
+    return false
+  }
+  const day = date.getDay()
+  return day === 5 || day === 6
+}
+
+function getAssignedParkingForUnit(unitNumber?: string) {
+  const normalized = (unitNumber ?? '').trim().toUpperCase()
+  if (!normalized) {
+    return 'E-SIN-DEPTO'
+  }
+  return `E-${normalized.replace(/\s+/g, '')}`
+}
+
+function isReservationActive(reservation: Reservation, now = new Date()) {
+  if (reservation.status !== 'active') {
+    return false
+  }
+  const reservationDate = new Date(`${reservation.reservationDate}T23:59:59`)
+  if (Number.isNaN(reservationDate.getTime())) {
+    return false
+  }
+  return reservationDate >= now
+}
+
 export function DemoDataProvider({ children }: PropsWithChildren) {
   migrateIfNeeded()
   const {
@@ -180,6 +228,12 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
   )
   const [auditLog, setAuditLog] = useState<AuditLogEntry[]>(() =>
     safeReadArray(storageKeys.auditLog, auditLogSchema.array(), LOCAL_AUDIT_LOG)
+  )
+  const [reservations, setReservations] = useState<Reservation[]>(() =>
+    safeReadArray(storageKeys.reservations, reservationSchema.array(), LOCAL_RESERVATIONS)
+  )
+  const [parkingReports, setParkingReports] = useState<ParkingReport[]>(() =>
+    safeReadArray(storageKeys.parkingReports, parkingReportSchema.array(), LOCAL_PARKING_REPORTS)
   )
   const [offlineQueue, setOfflineQueue] = useState<OfflineQueueEvent[]>(() =>
     safeReadArray(storageKeys.offlineQueue, offlineQueueSchema.array(), LOCAL_OFFLINE_QUEUE)
@@ -258,13 +312,15 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       setItem(storageKeys.packages, packages)
       setItem(storageKeys.auditLog, auditLog)
       setItem(storageKeys.offlineQueue, offlineQueue)
+      setItem(storageKeys.reservations, reservations)
+      setItem(storageKeys.parkingReports, parkingReports)
     }, 300)
     return () => {
       if (persistTimerRef.current !== null) {
         window.clearTimeout(persistTimerRef.current)
       }
     }
-  }, [incidents, qrPasses, packages, auditLog, offlineQueue])
+  }, [incidents, qrPasses, packages, auditLog, offlineQueue, reservations, parkingReports])
 
   useEffect(() => {
     if (!isOnline || !session || !isSupabaseConfigured || flushingOfflineQueueRef.current) {
@@ -316,11 +372,15 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     setPackages(LOCAL_PACKAGES)
     setAuditLog(LOCAL_AUDIT_LOG)
     setOfflineQueue(LOCAL_OFFLINE_QUEUE)
+    setReservations(LOCAL_RESERVATIONS)
+    setParkingReports(LOCAL_PARKING_REPORTS)
     removeItem(storageKeys.incidents)
     removeItem(storageKeys.qrPasses)
     removeItem(storageKeys.packages)
     removeItem(storageKeys.auditLog)
     removeItem(storageKeys.offlineQueue)
+    removeItem(storageKeys.reservations)
+    removeItem(storageKeys.parkingReports)
   }
 
   function dismissSyncToast() {
@@ -644,6 +704,119 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     setQrPasses((previous) => previous.filter((pass) => pass.id !== qrId))
   }
 
+  function createReservation(input: { amenity: string; reservationDate: string }) {
+    if (!session) {
+      return { ok: false, error: 'Sesion requerida.' }
+    }
+    if (!['resident', 'tenant', 'board', 'admin'].includes(session.role)) {
+      return { ok: false, error: 'Solo residentes/comite pueden reservar.' }
+    }
+    if (!session.unitNumber?.trim()) {
+      return { ok: false, error: 'Tu cuenta no tiene departamento asignado.' }
+    }
+    if (!isFridayOrSaturday(input.reservationDate)) {
+      return { ok: false, error: 'Solo se permite reservar viernes o sabado.' }
+    }
+    const amenity = input.amenity.trim()
+    if (!amenity) {
+      return { ok: false, error: 'Selecciona una amenidad.' }
+    }
+
+    const alreadyBooked = reservations.some(
+      (reservation) =>
+        reservation.status === 'active' &&
+        reservation.amenity.toLowerCase() === amenity.toLowerCase() &&
+        reservation.reservationDate === input.reservationDate
+    )
+    if (alreadyBooked) {
+      return {
+        ok: false,
+        error: 'La amenidad ya tiene una reservacion activa para esa fecha.',
+      }
+    }
+
+    const nextReservation: Reservation = {
+      id: randomId('res'),
+      unitNumber: session.unitNumber,
+      amenity,
+      reservationDate: input.reservationDate,
+      fee: 5000,
+      status: 'active',
+      createdAt: new Date().toISOString(),
+      createdByUserId: session.userId,
+    }
+    setReservations((previous) =>
+      [...previous, nextReservation].sort((a, b) =>
+        a.reservationDate.localeCompare(b.reservationDate)
+      )
+    )
+    return { ok: true }
+  }
+
+  function getActiveReservations() {
+    return reservations.filter((reservation) => isReservationActive(reservation))
+  }
+
+  function createParkingReport(input: { description: string }) {
+    if (!session) {
+      return { ok: false, error: 'Sesion requerida.' }
+    }
+    if (!['resident', 'tenant', 'board', 'admin'].includes(session.role)) {
+      return { ok: false, error: 'Solo residentes/comite pueden reportar estacionamiento.' }
+    }
+    if (!session.unitNumber?.trim()) {
+      return { ok: false, error: 'Tu cuenta no tiene departamento asignado.' }
+    }
+
+    const description = input.description.trim()
+    if (!description) {
+      return { ok: false, error: 'Agrega una descripcion del reporte.' }
+    }
+
+    const report: ParkingReport = {
+      id: randomId('park'),
+      unitNumber: session.unitNumber,
+      parkingSpot: getAssignedParkingForUnit(session.unitNumber),
+      description,
+      status: 'open',
+      createdAt: new Date().toISOString(),
+      createdByUserId: session.userId,
+    }
+    setParkingReports((previous) => [report, ...previous])
+    return { ok: true }
+  }
+
+  function updateParkingReportStatus(input: {
+    reportId: string
+    status: 'owner_notified' | 'tow_truck_notified'
+    guardNote?: string
+  }) {
+    if (!session || session.role !== 'guard') {
+      return { ok: false, error: 'Solo guardia puede atender reportes.' }
+    }
+    const note = input.guardNote?.trim()
+    let found = false
+    setParkingReports((previous) =>
+      previous.map((report) => {
+        if (report.id !== input.reportId) {
+          return report
+        }
+        found = true
+        return {
+          ...report,
+          status: input.status,
+          guardNote: note || report.guardNote,
+          handledByGuardUserId: session.userId,
+          updatedAt: new Date().toISOString(),
+        }
+      })
+    )
+    if (!found) {
+      return { ok: false, error: 'Reporte no encontrado.' }
+    }
+    return { ok: true }
+  }
+
   function logAudit(entry: Omit<AuditLogEntry, 'id' | 'at'>) {
     setAuditLog((previous) => [
       ...previous,
@@ -901,6 +1074,8 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     qrPasses,
     packages,
     auditLog,
+    reservations,
+    parkingReports,
     offlineQueue,
     isOnline,
     syncToast,
@@ -917,6 +1092,11 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     resolveIncident,
     createQrPass,
     deleteQrPass,
+    createReservation,
+    getActiveReservations,
+    createParkingReport,
+    updateParkingReportStatus,
+    getAssignedParkingForUnit,
     handleGuardScanDecision,
     enqueueManualOfflineValidation,
     registerPackage,

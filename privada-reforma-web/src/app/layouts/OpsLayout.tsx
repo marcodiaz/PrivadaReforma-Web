@@ -5,6 +5,7 @@ import { getRoleLandingPath } from '../../shared/domain/auth'
 const opsNav = [
   { to: '/guard/scan', label: 'Escanear' },
   { to: '/guard/packages', label: 'Paquetes' },
+  { to: '/guard/parking', label: 'Parking' },
   { to: '/guard/logbook', label: 'Bitacora' },
   { to: '/guard/incidents', label: 'Incidencia' },
   { to: '/guard/offline', label: 'Offline' },
@@ -21,7 +22,8 @@ function AuthLoadingShell() {
 }
 
 export function OpsLayout() {
-  const { authLoading, getHeldPackageCountGlobal, isOnline, logout, session } = useDemoData()
+  const { authLoading, getHeldPackageCountGlobal, isOnline, logout, parkingReports, session } =
+    useDemoData()
   const navigate = useNavigate()
 
   if (authLoading) {
@@ -37,6 +39,7 @@ export function OpsLayout() {
   }
 
   const heldPackages = getHeldPackageCountGlobal()
+  const pendingParkingReports = parkingReports.filter((report) => report.status === 'open').length
 
   return (
     <div className="min-h-dvh bg-slate-950 text-white">
@@ -48,6 +51,9 @@ export function OpsLayout() {
             </p>
             <h1 className="text-base font-semibold">Control de acceso</h1>
             <p className="text-xs text-slate-400">Paquetes en resguardo: {heldPackages}</p>
+            <p className="text-xs text-slate-400">
+              Reportes de parking pendientes: {pendingParkingReports}
+            </p>
           </div>
           <div className="flex items-center gap-2">
             <span

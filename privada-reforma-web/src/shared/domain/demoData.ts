@@ -74,6 +74,42 @@ export const qrPassSchema = z.object({
 
 export type QrPass = z.infer<typeof qrPassSchema>
 
+export const reservationStatusSchema = z.enum(['active', 'cancelled'])
+
+export const reservationSchema = z.object({
+  id: z.string(),
+  unitNumber: z.string(),
+  amenity: z.string(),
+  reservationDate: z.string(),
+  fee: z.number().int().nonnegative(),
+  status: reservationStatusSchema,
+  createdAt: z.string(),
+  createdByUserId: z.string(),
+})
+
+export type Reservation = z.infer<typeof reservationSchema>
+
+export const parkingReportStatusSchema = z.enum([
+  'open',
+  'owner_notified',
+  'tow_truck_notified',
+])
+
+export const parkingReportSchema = z.object({
+  id: z.string(),
+  unitNumber: z.string(),
+  parkingSpot: z.string(),
+  description: z.string(),
+  status: parkingReportStatusSchema,
+  createdAt: z.string(),
+  createdByUserId: z.string(),
+  guardNote: z.string().optional(),
+  updatedAt: z.string().optional(),
+  handledByGuardUserId: z.string().optional(),
+})
+
+export type ParkingReport = z.infer<typeof parkingReportSchema>
+
 export const auditLogSchema = z.object({
   id: z.string(),
   at: z.string(),
@@ -138,38 +174,7 @@ export const LOCAL_ACCOUNTS: LocalAccount[] = [
   },
 ]
 
-export const LOCAL_QR_PASSES: QrPass[] = [
-  {
-    id: 'qr-single-1',
-    label: 'Visita temporal: plomero',
-    unitId: '1141',
-    createdByUserId: 'acc-resident-1',
-    visitorName: 'PLOMERO',
-    maxUses: 1,
-    maxPersons: 1,
-    type: 'single_use',
-    endAt: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(),
-    status: 'active',
-    qrValue: 'PRIV-QR-1141-0001',
-    displayCode: '1141-0001',
-  },
-  {
-    id: 'qr-window-1',
-    label: 'Persona de confianza: Maria (nana)',
-    unitId: '1141',
-    createdByUserId: 'acc-resident-1',
-    visitorName: 'MARIA',
-    maxUses: 30,
-    maxPersons: 1,
-    type: 'time_window',
-    startAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
-    endAt: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
-    visitorPhotoUrl: 'https://example.com/maria-nana.jpg',
-    status: 'active',
-    qrValue: 'PRIV-QR-1141-0002',
-    displayCode: '1141-0002',
-  },
-]
+export const LOCAL_QR_PASSES: QrPass[] = []
 
 export const LOCAL_INCIDENTS: Incident[] = [
   {
@@ -247,3 +252,16 @@ export const LOCAL_INCIDENTS: Incident[] = [
 
 export const LOCAL_AUDIT_LOG: AuditLogEntry[] = []
 export const LOCAL_OFFLINE_QUEUE: OfflineQueueEvent[] = []
+export const LOCAL_RESERVATIONS: Reservation[] = [
+  {
+    id: 'res-20260307-1122',
+    unitNumber: '11-22',
+    amenity: 'Terraza',
+    reservationDate: '2026-03-07',
+    fee: 5000,
+    status: 'active',
+    createdAt: new Date('2026-02-20T12:00:00-08:00').toISOString(),
+    createdByUserId: 'acc-resident-1',
+  },
+]
+export const LOCAL_PARKING_REPORTS: ParkingReport[] = []
