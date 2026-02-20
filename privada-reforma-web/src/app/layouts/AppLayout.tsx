@@ -13,7 +13,6 @@ const residentNav: NavItem[] = [
   { to: '/app/visits', label: 'Visitas' },
   { to: '/app/packages', label: 'Paquetes', kind: 'packages' },
   { to: '/app/incidents', label: 'Incidencias' },
-  { to: '/app/pool', label: 'Alberca' },
   { to: '/app/profile', label: 'Perfil' },
 ]
 
@@ -34,13 +33,23 @@ function resolveTitle(pathname: string): string {
   return 'Residencia'
 }
 
+function AuthLoadingShell() {
+  return (
+    <div className="min-h-dvh bg-[var(--color-bg)] px-4 pb-8 pt-6">
+      <div className="mx-auto flex w-full max-w-md items-center justify-center rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-6">
+        <p className="text-sm text-[var(--color-text-muted)]">Validando sesion...</p>
+      </div>
+    </div>
+  )
+}
+
 export function AppLayout() {
   const { pathname } = useLocation()
   const navigate = useNavigate()
   const { authLoading, getHeldPackageCountForUser, logout, session } = useDemoData()
 
   if (authLoading) {
-    return null
+    return <AuthLoadingShell />
   }
 
   if (!session) {
@@ -79,8 +88,8 @@ export function AppLayout() {
           </div>
           <button
             className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-zinc-100"
-            onClick={() => {
-              logout()
+            onClick={async () => {
+              await logout()
               navigate('/login')
             }}
             type="button"
@@ -104,17 +113,17 @@ export function AppLayout() {
               <NavLink
                 to={item.to}
                 className={({ isActive }) =>
-                  `block rounded-xl px-2 py-2 text-center text-xs font-medium ${
+                  `block rounded-xl border px-2 py-2 text-center text-xs font-medium transition-colors ${
                     isActive
-                      ? 'bg-white text-black'
-                      : 'text-slate-400'
+                      ? 'border-zinc-400 bg-zinc-100 text-zinc-900'
+                      : 'border-transparent text-slate-400'
                   }`
                 }
               >
                 <span className="inline-flex items-center justify-center gap-1">
                   <span>{item.label}</span>
                   {item.kind === 'packages' && heldPackages > 0 ? (
-                    <span className="rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] font-bold leading-none">
+                    <span className="rounded-full bg-zinc-700/70 px-1.5 py-0.5 text-[10px] font-bold leading-none text-zinc-100">
                       {heldPackages}
                     </span>
                   ) : null}

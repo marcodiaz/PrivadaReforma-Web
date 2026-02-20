@@ -10,12 +10,22 @@ const opsNav = [
   { to: '/guard/offline', label: 'Offline' },
 ]
 
+function AuthLoadingShell() {
+  return (
+    <div className="min-h-dvh bg-slate-950 px-4 pb-8 pt-6">
+      <div className="mx-auto flex w-full max-w-md items-center justify-center rounded-2xl border border-slate-800 bg-slate-900 p-6">
+        <p className="text-sm text-slate-300">Validando sesion...</p>
+      </div>
+    </div>
+  )
+}
+
 export function OpsLayout() {
   const { authLoading, getHeldPackageCountGlobal, isOnline, logout, session } = useDemoData()
   const navigate = useNavigate()
 
   if (authLoading) {
-    return null
+    return <AuthLoadingShell />
   }
 
   if (!session) {
@@ -49,8 +59,8 @@ export function OpsLayout() {
             </span>
             <button
               className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-100"
-              onClick={() => {
-                logout()
+              onClick={async () => {
+                await logout()
                 navigate('/login')
               }}
               type="button"
