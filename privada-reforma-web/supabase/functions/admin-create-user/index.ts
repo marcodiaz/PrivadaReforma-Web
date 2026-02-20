@@ -63,16 +63,17 @@ Deno.serve(async (req) => {
 
     const roleResult = await adminClient
       .from('profiles')
-      .select('role')
+      .select('role, unit_number')
       .eq('user_id', caller.id)
-      .maybeSingle<{ role: ManagedUserRole }>()
+      .maybeSingle<{ role: ManagedUserRole; unit_number: string | null }>()
 
     if (roleResult.error) {
       return json(500, { ok: false, error: roleResult.error.message })
     }
-    if (roleResult.data?.role !== 'admin') {
-      return json(403, { ok: false, error: 'Only admins can manage users.' })
-    }
+    const callerRole = roleResult.data?.role
+    const callerUnitNumber = roleResult.data?.unit_number?.trim() ?? null
+    const callerIsAdmin = callerRole === 'admin'
+    const callerIsResident = callerRole === 'resident'
 
     const payload = (await req.json()) as Payload
     const email = payload.email?.trim().toLowerCase()
@@ -83,6 +84,24 @@ Deno.serve(async (req) => {
 
     if (!email || !role || !mode) {
       return json(400, { ok: false, error: 'Missing required fields.' })
+    }
+
+    if (!callerIsAdmin) {
+      if (!callerIsResident) {
+        return json(403, { ok: false, error: 'Only admins or residents can manage users.' })
+      }
+      if (mode !== 'invite') {
+        return json(403, { ok: false, error: 'Residents can only invite tenants.' })
+      }
+      if (role !== 'tenant') {
+        return json(403, { ok: false, error: 'Residents can only invite tenant role.' })
+      }
+      if (!callerUnitNumber) {
+        return json(403, { ok: false, error: 'Resident caller has no unit assigned.' })
+      }
+      if (!unitNumber || unitNumber !== callerUnitNumber) {
+        return json(403, { ok: false, error: 'Residents can only invite tenant for own unit.' })
+      }
     }
 
     const allowedRoles: ManagedUserRole[] = [

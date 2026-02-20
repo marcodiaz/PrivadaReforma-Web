@@ -19,6 +19,7 @@ import {
   subscribeThisDeviceToPush,
   unsubscribeThisDeviceFromPush,
 } from '../../shared/push/webPush'
+import { adminCreateOrInviteUser } from '../../shared/supabase/admin'
 export { AppPackagesPage } from '../packages/pages'
 
 function priorityBadge(priority: Incident['priority']) {
@@ -71,6 +72,9 @@ export function AppHomePage() {
     { label: 'Votaciones', icon: 'VO', action: () => navigate('/app/polls') },
     { label: 'Mascotas', icon: 'MA', action: () => navigate('/app/pets') },
     { label: 'Marketplace', icon: 'MK', action: () => navigate('/app/marketplace') },
+    ...(session?.role === 'resident'
+      ? [{ label: 'Agregar Inquilino', icon: 'TI', action: () => navigate('/app/add-tenant') }]
+      : []),
     { label: 'Paquetes', icon: 'PA', action: () => navigate('/app/packages') },
     { label: 'Incidencias', icon: 'IN', action: () => navigate('/app/incidents') },
     { label: 'Perfil', icon: 'PE', action: () => navigate('/app/profile') },
@@ -1252,6 +1256,92 @@ export function AppPetsPage() {
           </div>
         </div>
       ) : null}
+    </div>
+  )
+}
+
+export function AppAddTenantPage() {
+  const { session } = useDemoData()
+  const [email, setEmail] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [feedback, setFeedback] = useState('')
+  const [feedbackType, setFeedbackType] = useState<'error' | 'success'>('success')
+
+  async function handleInviteTenant() {
+    if (!session) {
+      setFeedbackType('error')
+      setFeedback('Sesion requerida.')
+      return
+    }
+    if (session.role !== 'resident') {
+      setFeedbackType('error')
+      setFeedback('Solo residentes pueden invitar inquilinos desde esta pantalla.')
+      return
+    }
+    if (!session.unitNumber?.trim()) {
+      setFeedbackType('error')
+      setFeedback('Tu cuenta no tiene unidad asignada.')
+      return
+    }
+    if (!email.trim()) {
+      setFeedbackType('error')
+      setFeedback('Correo requerido.')
+      return
+    }
+
+    setLoading(true)
+    const result = await adminCreateOrInviteUser({
+      mode: 'invite',
+      email,
+      role: 'tenant',
+      unitNumber: session.unitNumber.trim(),
+    })
+    setLoading(false)
+
+    if (!result.ok) {
+      setFeedbackType('error')
+      setFeedback(result.error ?? 'No se pudo enviar invitacion.')
+      return
+    }
+
+    setFeedbackType('success')
+    setFeedback(`Invitacion enviada a ${result.email ?? email}.`)
+    setEmail('')
+  }
+
+  if (!session || session.role !== 'resident') {
+    return (
+      <AppCard className="text-sm text-zinc-300">
+        Solo residentes pueden invitar inquilinos desde esta pantalla.
+      </AppCard>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      <ModulePlaceholder
+        role="Residente"
+        title="Agregar Inquilino"
+        description="Invita un inquilino para tu misma unidad."
+      />
+      <AppCard className="space-y-3 border-zinc-800 bg-zinc-950">
+        <p className="text-xs text-zinc-400">Unidad asignada: {session.unitNumber ?? '-'}</p>
+        <input
+          className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+          onChange={(event) => setEmail(event.target.value)}
+          placeholder="Correo del inquilino"
+          type="email"
+          value={email}
+        />
+        <AppButton block disabled={loading} onClick={() => void handleInviteTenant()}>
+          {loading ? 'Enviando invitacion...' : 'Invitar inquilino'}
+        </AppButton>
+        {feedback ? (
+          <p className={feedbackType === 'error' ? 'text-xs text-red-400' : 'text-xs text-zinc-300'}>
+            {feedback}
+          </p>
+        ) : null}
+      </AppCard>
     </div>
   )
 }

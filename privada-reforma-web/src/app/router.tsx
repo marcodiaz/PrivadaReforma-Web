@@ -7,6 +7,7 @@ import {
   AppAnnouncementsPage,
   AppFinancePage,
   AppHomePage,
+  AppAddTenantPage,
   AppIncidentsPage,
   AppParkingPage,
   AppPetsPage,
@@ -56,6 +57,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="home" replace /> },
       { path: 'home', element: <AppHomePage /> },
+      { path: 'add-tenant', element: <AppAddTenantPage /> },
       { path: 'visits', element: <AppVisitsPage /> },
       { path: 'packages', element: <AppPackagesPage /> },
       { path: 'pool', element: <Navigate to="/app/reservations" replace /> },
