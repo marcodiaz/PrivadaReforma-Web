@@ -1,5 +1,5 @@
 import type { UserRole } from '../domain/auth'
-import type { Incident } from '../domain/demoData'
+import type { Incident, Poll } from '../domain/demoData'
 import type { Package } from '../domain/packages'
 import { supabase } from './client'
 
@@ -36,6 +36,28 @@ type IncidentRow = {
   support_score: number
   votes: Incident['votes']
   guard_actions: Incident['guardActions']
+}
+
+type PollOptionRow = {
+  id: string
+  label: string
+}
+
+type PollVoteRow = {
+  userId: string
+  userName: string
+  optionId: string
+  votedAt: string
+}
+
+type PollRow = {
+  id: string
+  title: string
+  options: PollOptionRow[]
+  votes: PollVoteRow[]
+  created_at: string
+  created_by_user_id: string
+  created_by_name: string
 }
 
 type RpcPackageTransitionRow = {
@@ -77,6 +99,18 @@ function mapIncidentRow(row: IncidentRow): Incident {
   }
 }
 
+function mapPollRow(row: PollRow): Poll {
+  return {
+    id: row.id,
+    title: row.title,
+    options: row.options ?? [],
+    votes: row.votes ?? [],
+    createdAt: row.created_at,
+    createdByUserId: row.created_by_user_id,
+    createdByName: row.created_by_name,
+  }
+}
+
 function mapPackageToRow(input: Package): PackageRow {
   return {
     id: input.id,
@@ -110,6 +144,18 @@ function mapIncidentToRow(input: Incident): IncidentRow {
     support_score: input.supportScore,
     votes: input.votes,
     guard_actions: input.guardActions,
+  }
+}
+
+function mapPollToRow(input: Poll): PollRow {
+  return {
+    id: input.id,
+    title: input.title,
+    options: input.options,
+    votes: input.votes,
+    created_at: input.createdAt,
+    created_by_user_id: input.createdByUserId,
+    created_by_name: input.createdByName,
   }
 }
 
@@ -164,6 +210,54 @@ export async function fetchIncidentsFromSupabase(_input: { role: UserRole; unitN
   }
 
   return data.map((row) => mapIncidentRow(row as IncidentRow))
+}
+
+export async function fetchPollsFromSupabase() {
+  if (!supabase) {
+    return null
+  }
+
+  const { data, error } = await supabase
+    .from('polls')
+    .select('id, title, options, votes, created_at, created_by_user_id, created_by_name')
+    .order('created_at', { ascending: false })
+
+  if (error || !data) {
+    return null
+  }
+
+  return data.map((row) => mapPollRow(row as PollRow))
+}
+
+export async function createPollInSupabase(poll: Poll) {
+  if (!supabase) {
+    return false
+  }
+  const { error } = await supabase.from('polls').insert(mapPollToRow(poll))
+  return !error
+}
+
+export async function votePollInSupabase(input: { pollId: string; optionId: string }) {
+  if (!supabase) {
+    return false
+  }
+  const { data, error } = await supabase.rpc('polls_vote', {
+    p_poll_id: input.pollId,
+    p_option_id: input.optionId,
+  })
+  if (error) {
+    return false
+  }
+  const rows = data as { id: string }[] | null
+  return Boolean(rows && rows.length > 0)
+}
+
+export async function deletePollInSupabase(pollId: string) {
+  if (!supabase) {
+    return false
+  }
+  const { error } = await supabase.from('polls').delete().eq('id', pollId)
+  return !error
 }
 
 export async function registerPackageInSupabase(pkg: Package) {

@@ -37,12 +37,16 @@ import {
 import { getItem, migrateIfNeeded, removeItem, setItem, storageKeys } from '../storage/storage'
 import {
   createIncidentInSupabase,
+  createPollInSupabase,
+  deletePollInSupabase,
   deliverPackageInSupabase,
   fetchIncidentsFromSupabase,
   fetchPackagesFromSupabase,
+  fetchPollsFromSupabase,
   markPackageReadyInSupabase,
   registerPackageInSupabase,
   updateIncidentInSupabase,
+  votePollInSupabase,
   voteIncidentInSupabase,
 } from '../supabase/data'
 import { isSupabaseConfigured } from '../supabase/client'
@@ -290,9 +294,10 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     let isMounted = true
 
     void (async () => {
-      const [remotePackages, remoteIncidents] = await Promise.all([
+      const [remotePackages, remoteIncidents, remotePolls] = await Promise.all([
         fetchPackagesFromSupabase({ role: session.role, unitNumber: session.unitNumber }),
         fetchIncidentsFromSupabase({ role: session.role, unitNumber: session.unitNumber }),
+        fetchPollsFromSupabase(),
       ])
 
       if (!isMounted) {
@@ -304,6 +309,9 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       }
       if (remoteIncidents) {
         setIncidents(remoteIncidents)
+      }
+      if (remotePolls) {
+        setPolls(remotePolls)
       }
     })()
 
@@ -793,6 +801,9 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     }
 
     setPolls((previous) => [poll, ...previous])
+    if (isSupabaseConfigured && isOnline) {
+      void createPollInSupabase(poll)
+    }
     return { ok: true }
   }
 
@@ -831,6 +842,9 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     if (!updated) {
       return { ok: false, error: 'Votacion no encontrada.' }
     }
+    if (isSupabaseConfigured && isOnline) {
+      void votePollInSupabase({ pollId, optionId })
+    }
     return { ok: true }
   }
 
@@ -843,6 +857,9 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       return { ok: false, error: 'Votacion no encontrada.' }
     }
     setPolls((previous) => previous.filter((poll) => poll.id !== pollId))
+    if (isSupabaseConfigured && isOnline) {
+      void deletePollInSupabase(pollId)
+    }
     return { ok: true }
   }
 
