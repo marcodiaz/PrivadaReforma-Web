@@ -1,5 +1,5 @@
 import type { UserRole } from '../domain/auth'
-import type { Incident, PetPost, Poll } from '../domain/demoData'
+import type { Incident, PetPost, PetPostComment, Poll } from '../domain/demoData'
 import type { Package } from '../domain/packages'
 import { supabase } from './client'
 
@@ -74,6 +74,15 @@ type PetPostRow = {
   created_by_name: string
 }
 
+type PetPostCommentRow = {
+  id: string
+  pet_post_id: string
+  message: string
+  created_at: string
+  created_by_user_id: string
+  created_by_name: string
+}
+
 type RpcPackageTransitionRow = {
   id: string
 }
@@ -139,6 +148,17 @@ function mapPetPostRow(row: PetPostRow): PetPost {
   }
 }
 
+function mapPetPostCommentRow(row: PetPostCommentRow): PetPostComment {
+  return {
+    id: row.id,
+    petPostId: row.pet_post_id,
+    message: row.message,
+    createdAt: row.created_at,
+    createdByUserId: row.created_by_user_id,
+    createdByName: row.created_by_name,
+  }
+}
+
 function mapPackageToRow(input: Package): PackageRow {
   return {
     id: input.id,
@@ -195,6 +215,17 @@ function mapPetPostToRow(input: PetPost): PetPostRow {
     pet_name: input.petName,
     photo_url: input.photoUrl,
     comments: input.comments,
+    created_at: input.createdAt,
+    created_by_user_id: input.createdByUserId,
+    created_by_name: input.createdByName,
+  }
+}
+
+function mapPetPostCommentToRow(input: PetPostComment): PetPostCommentRow {
+  return {
+    id: input.id,
+    pet_post_id: input.petPostId,
+    message: input.message,
     created_at: input.createdAt,
     created_by_user_id: input.createdByUserId,
     created_by_name: input.createdByName,
@@ -335,6 +366,31 @@ export async function createPetPostInSupabase(petPost: PetPost) {
     return false
   }
   const { error } = await supabase.from('pet_posts').insert(mapPetPostToRow(petPost))
+  return !error
+}
+
+export async function fetchPetPostCommentsFromSupabase() {
+  if (!supabase) {
+    return null
+  }
+
+  const { data, error } = await supabase
+    .from('pet_post_comments')
+    .select('id, pet_post_id, message, created_at, created_by_user_id, created_by_name')
+    .order('created_at', { ascending: true })
+
+  if (error || !data) {
+    return null
+  }
+
+  return data.map((row) => mapPetPostCommentRow(row as PetPostCommentRow))
+}
+
+export async function createPetPostCommentInSupabase(comment: PetPostComment) {
+  if (!supabase) {
+    return false
+  }
+  const { error } = await supabase.from('pet_post_comments').insert(mapPetPostCommentToRow(comment))
   return !error
 }
 

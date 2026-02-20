@@ -148,6 +148,17 @@ export const petPostSchema = z.object({
 
 export type PetPost = z.infer<typeof petPostSchema>
 
+export const petPostCommentSchema = z.object({
+  id: z.string(),
+  petPostId: z.string(),
+  message: z.string(),
+  createdAt: z.string(),
+  createdByUserId: z.string(),
+  createdByName: z.string(),
+})
+
+export type PetPostComment = z.infer<typeof petPostCommentSchema>
+
 export const auditLogSchema = z.object({
   id: z.string(),
   at: z.string(),
@@ -305,3 +316,4 @@ export const LOCAL_RESERVATIONS: Reservation[] = [
 export const LOCAL_PARKING_REPORTS: ParkingReport[] = []
 export const LOCAL_POLLS: Poll[] = []
 export const LOCAL_PET_POSTS: PetPost[] = []
+export const LOCAL_PET_POST_COMMENTS: PetPostComment[] = []

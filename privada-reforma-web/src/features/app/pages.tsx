@@ -991,12 +991,17 @@ export function AppPollsPage() {
 }
 
 export function AppPetsPage() {
-  const { createPetPost, petPosts } = useDemoData()
+  const { createPetPost, createPetPostComment, petPosts, petPostComments } = useDemoData()
   const [petName, setPetName] = useState('')
   const [comments, setComments] = useState('')
   const [photoUrl, setPhotoUrl] = useState('')
+  const [selectedPetPostId, setSelectedPetPostId] = useState<string | null>(null)
+  const [newCommentText, setNewCommentText] = useState('')
   const [feedback, setFeedback] = useState('')
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
+
+  const selectedPetPost = petPosts.find((post) => post.id === selectedPetPostId) ?? null
+  const selectedPetComments = petPostComments.filter((comment) => comment.petPostId === selectedPetPostId)
 
   async function handleFileChange(file: File | null) {
     if (!file) {
@@ -1035,6 +1040,21 @@ export function AppPetsPage() {
       setPetName('')
       setComments('')
       setPhotoUrl('')
+      setSelectedPetPostId(null)
+      setNewCommentText('')
+    }
+  }
+
+  function handleCreatePetComment() {
+    if (!selectedPetPostId) {
+      return
+    }
+    const result = createPetPostComment({ petPostId: selectedPetPostId, message: newCommentText })
+    setFeedback(
+      result.ok ? 'Comentario publicado.' : result.error ?? 'No se pudo publicar comentario.'
+    )
+    if (result.ok) {
+      setNewCommentText('')
     }
   }
 
@@ -1079,7 +1099,13 @@ export function AppPetsPage() {
           <AppCard className="text-sm text-zinc-300">Aun no hay mascotas publicadas.</AppCard>
         ) : (
           petPosts.map((petPost) => (
-            <AppCard className="space-y-2 border-zinc-800 bg-zinc-950" key={petPost.id}>
+            <button
+              className="block w-full text-left"
+              key={petPost.id}
+              onClick={() => setSelectedPetPostId(petPost.id)}
+              type="button"
+            >
+              <AppCard className="space-y-2 border-zinc-800 bg-zinc-950 transition hover:border-zinc-600">
               <div>
                 <p className="text-sm font-semibold text-zinc-100">{petPost.petName}</p>
                 <p className="text-xs text-zinc-400">
@@ -1093,10 +1119,76 @@ export function AppPetsPage() {
                 pathOrUrl={petPost.photoUrl}
               />
               <p className="text-sm text-zinc-300">{petPost.comments}</p>
-            </AppCard>
+              <p className="text-xs font-semibold text-zinc-400">
+                Comentarios: {petPostComments.filter((comment) => comment.petPostId === petPost.id).length}
+              </p>
+              </AppCard>
+            </button>
           ))
         )}
       </div>
+      {selectedPetPost ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/55 p-4 sm:items-center">
+          <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-950 p-3 shadow-2xl">
+            <div className="mb-3 flex items-start justify-between gap-2">
+              <div>
+                <p className="text-base font-semibold text-zinc-100">{selectedPetPost.petName}</p>
+                <p className="text-xs text-zinc-400">
+                  Publicado por: {selectedPetPost.createdByName}
+                </p>
+              </div>
+              <AppButton
+                className="px-2 py-1 text-xs"
+                onClick={() => {
+                  setSelectedPetPostId(null)
+                  setNewCommentText('')
+                }}
+                variant="secondary"
+              >
+                Cerrar
+              </AppButton>
+            </div>
+            <PetPhoto
+              alt={`Mascota ${selectedPetPost.petName}`}
+              className="mb-2 h-40 w-full rounded-xl border border-zinc-700 object-cover"
+              pathOrUrl={selectedPetPost.photoUrl}
+            />
+            <p className="mb-3 text-sm text-zinc-300">{selectedPetPost.comments}</p>
+            <div className="mb-3 space-y-2 rounded-xl border border-zinc-800 bg-zinc-900 p-2">
+              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-400">
+                Comentarios
+              </p>
+              {selectedPetComments.length === 0 ? (
+                <p className="text-xs text-zinc-500">Sin comentarios todavia.</p>
+              ) : (
+                <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
+                  {selectedPetComments.map((comment) => (
+                    <div className="rounded-lg border border-zinc-800 bg-zinc-950 px-2 py-2" key={comment.id}>
+                      <p className="text-xs font-semibold text-zinc-300">{comment.createdByName}</p>
+                      <p className="text-sm text-zinc-200">{comment.message}</p>
+                      <p className="text-[10px] text-zinc-500">
+                        {new Date(comment.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="space-y-2">
+              <textarea
+                className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                onChange={(event) => setNewCommentText(event.target.value)}
+                placeholder="Escribe un comentario..."
+                rows={2}
+                value={newCommentText}
+              />
+              <AppButton block onClick={handleCreatePetComment}>
+                Comentar
+              </AppButton>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

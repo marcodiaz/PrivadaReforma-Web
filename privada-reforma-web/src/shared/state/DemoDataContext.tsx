@@ -12,6 +12,7 @@ import {
   LOCAL_INCIDENTS,
   LOCAL_OFFLINE_QUEUE,
   LOCAL_PARKING_REPORTS,
+  LOCAL_PET_POST_COMMENTS,
   LOCAL_PET_POSTS,
   LOCAL_POLLS,
   LOCAL_QR_PASSES,
@@ -21,6 +22,8 @@ import {
   type AuditLogEntry,
   type Incident,
   petPostSchema,
+  petPostCommentSchema,
+  type PetPostComment,
   type PetPost,
   pollSchema,
   type Poll,
@@ -40,6 +43,7 @@ import {
 import { getItem, migrateIfNeeded, removeItem, setItem, storageKeys } from '../storage/storage'
 import {
   createIncidentInSupabase,
+  createPetPostCommentInSupabase,
   createPetPostInSupabase,
   createPollInSupabase,
   deletePollInSupabase,
@@ -48,6 +52,7 @@ import {
   fetchIncidentsFromSupabase,
   fetchPackagesFromSupabase,
   fetchPetPostsFromSupabase,
+  fetchPetPostCommentsFromSupabase,
   fetchPollsFromSupabase,
   markPackageReadyInSupabase,
   registerPackageInSupabase,
@@ -104,6 +109,7 @@ type DemoDataContextValue = {
   parkingReports: ParkingReport[]
   polls: Poll[]
   petPosts: PetPost[]
+  petPostComments: PetPostComment[]
   offlineQueue: OfflineQueueEvent[]
   remoteDataLoading: boolean
   isOnline: boolean
@@ -142,6 +148,10 @@ type DemoDataContextValue = {
   endPoll: (pollId: string) => { ok: boolean; error?: string }
   deletePoll: (pollId: string) => { ok: boolean; error?: string }
   createPetPost: (input: { petName: string; photoUrl: string; comments: string }) => {
+    ok: boolean
+    error?: string
+  }
+  createPetPostComment: (input: { petPostId: string; message: string }) => {
     ok: boolean
     error?: string
   }
@@ -297,6 +307,9 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
   const [petPosts, setPetPosts] = useState<PetPost[]>(() =>
     safeReadArray(storageKeys.petPosts, petPostSchema.array(), LOCAL_PET_POSTS)
   )
+  const [petPostComments, setPetPostComments] = useState<PetPostComment[]>(() =>
+    safeReadArray(storageKeys.petPostComments, petPostCommentSchema.array(), LOCAL_PET_POST_COMMENTS)
+  )
   const [offlineQueue, setOfflineQueue] = useState<OfflineQueueEvent[]>(() =>
     safeReadArray(storageKeys.offlineQueue, offlineQueueSchema.array(), LOCAL_OFFLINE_QUEUE)
   )
@@ -393,7 +406,20 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
         })
         .catch(() => undefined)
 
-      await Promise.allSettled([loadPackages, loadIncidents, loadPolls, loadPets])
+      const loadPetComments = withTimeout(
+        fetchPetPostCommentsFromSupabase(),
+        REMOTE_BOOTSTRAP_TIMEOUT_MS,
+        'pet_post_comments'
+      )
+        .then((remotePetComments) => {
+          if (!isMounted || !remotePetComments) {
+            return
+          }
+          setPetPostComments(remotePetComments)
+        })
+        .catch(() => undefined)
+
+      await Promise.allSettled([loadPackages, loadIncidents, loadPolls, loadPets, loadPetComments])
       if (isMounted) {
         setRemoteDataLoading(false)
       }
@@ -419,13 +445,14 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       setItem(storageKeys.parkingReports, parkingReports)
       setItem(storageKeys.polls, polls)
       setItem(storageKeys.petPosts, petPosts)
+      setItem(storageKeys.petPostComments, petPostComments)
     }, 300)
     return () => {
       if (persistTimerRef.current !== null) {
         window.clearTimeout(persistTimerRef.current)
       }
     }
-  }, [incidents, qrPasses, packages, auditLog, offlineQueue, reservations, parkingReports, polls, petPosts])
+  }, [incidents, qrPasses, packages, auditLog, offlineQueue, reservations, parkingReports, polls, petPosts, petPostComments])
 
   useEffect(() => {
     if (!isOnline || !session || !isSupabaseConfigured || flushingOfflineQueueRef.current) {
@@ -481,6 +508,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     setParkingReports(LOCAL_PARKING_REPORTS)
     setPolls(LOCAL_POLLS)
     setPetPosts(LOCAL_PET_POSTS)
+    setPetPostComments(LOCAL_PET_POST_COMMENTS)
     removeItem(storageKeys.incidents)
     removeItem(storageKeys.qrPasses)
     removeItem(storageKeys.packages)
@@ -490,6 +518,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     removeItem(storageKeys.parkingReports)
     removeItem(storageKeys.polls)
     removeItem(storageKeys.petPosts)
+    removeItem(storageKeys.petPostComments)
   }
 
   function dismissSyncToast() {
@@ -1020,6 +1049,42 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     return { ok: true }
   }
 
+  function createPetPostComment(input: { petPostId: string; message: string }) {
+    if (!session) {
+      return { ok: false, error: 'Sesion requerida.' }
+    }
+    const petPostId = input.petPostId.trim()
+    const message = input.message.trim()
+    if (!petPostId) {
+      return { ok: false, error: 'Mascota no valida.' }
+    }
+    if (!message) {
+      return { ok: false, error: 'Comentario obligatorio.' }
+    }
+    if (message.length > 500) {
+      return { ok: false, error: 'Comentario demasiado largo (max 500 caracteres).' }
+    }
+    const postExists = petPosts.some((post) => post.id === petPostId)
+    if (!postExists) {
+      return { ok: false, error: 'Publicacion de mascota no encontrada.' }
+    }
+
+    const nextComment: PetPostComment = {
+      id: randomId('pet-comment'),
+      petPostId,
+      message,
+      createdAt: new Date().toISOString(),
+      createdByUserId: session.userId,
+      createdByName: session.fullName,
+    }
+
+    setPetPostComments((previous) => [...previous, nextComment])
+    if (isSupabaseConfigured && isOnline) {
+      void createPetPostCommentInSupabase(nextComment)
+    }
+    return { ok: true }
+  }
+
   function createParkingReport(input: { description: string }) {
     if (!session) {
       return { ok: false, error: 'Sesion requerida.' }
@@ -1341,6 +1406,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     parkingReports,
     polls,
     petPosts,
+    petPostComments,
     remoteDataLoading,
     offlineQueue,
     isOnline,
@@ -1365,6 +1431,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     endPoll,
     deletePoll,
     createPetPost,
+    createPetPostComment,
     createParkingReport,
     updateParkingReportStatus,
     getAssignedParkingForUnit,
