@@ -128,6 +128,8 @@ export const pollSchema = z.object({
   options: z.array(pollOptionSchema).min(2),
   votes: z.array(pollVoteSchema),
   createdAt: z.string(),
+  endsAt: z.string().optional(),
+  endedAt: z.string().optional(),
   createdByUserId: z.string(),
   createdByName: z.string(),
 })

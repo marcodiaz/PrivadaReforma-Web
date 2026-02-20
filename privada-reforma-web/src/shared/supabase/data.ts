@@ -58,6 +58,8 @@ type PollRow = {
   options: PollOptionRow[]
   votes: PollVoteRow[]
   created_at: string
+  ends_at: string | null
+  ended_at: string | null
   created_by_user_id: string
   created_by_name: string
 }
@@ -118,6 +120,8 @@ function mapPollRow(row: PollRow): Poll {
     options: row.options ?? [],
     votes: row.votes ?? [],
     createdAt: row.created_at,
+    endsAt: row.ends_at ?? undefined,
+    endedAt: row.ended_at ?? undefined,
     createdByUserId: row.created_by_user_id,
     createdByName: row.created_by_name,
   }
@@ -178,6 +182,8 @@ function mapPollToRow(input: Poll): PollRow {
     options: input.options,
     votes: input.votes,
     created_at: input.createdAt,
+    ends_at: input.endsAt ?? null,
+    ended_at: input.endedAt ?? null,
     created_by_user_id: input.createdByUserId,
     created_by_name: input.createdByName,
   }
@@ -255,7 +261,7 @@ export async function fetchPollsFromSupabase() {
 
   const { data, error } = await supabase
     .from('polls')
-    .select('id, title, options, votes, created_at, created_by_user_id, created_by_name')
+    .select('id, title, options, votes, created_at, ends_at, ended_at, created_by_user_id, created_by_name')
     .order('created_at', { ascending: false })
 
   if (error || !data) {
@@ -293,6 +299,17 @@ export async function deletePollInSupabase(pollId: string) {
     return false
   }
   const { error } = await supabase.from('polls').delete().eq('id', pollId)
+  return !error
+}
+
+export async function endPollInSupabase(input: { pollId: string; endedAt: string }) {
+  if (!supabase) {
+    return false
+  }
+  const { error } = await supabase
+    .from('polls')
+    .update({ ended_at: input.endedAt })
+    .eq('id', input.pollId)
   return !error
 }
 
