@@ -666,15 +666,6 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       endAt = new Date(now + 3 * 60 * 60 * 1000).toISOString()
     }
 
-    const needsPhoto =
-      type === 'time_window' && (input.timeLimit === 'month' || input.timeLimit === 'permanent')
-    if (needsPhoto && !input.visitorPhotoUrl?.trim()) {
-      return {
-        ok: false,
-        error: 'Para 1 mes o permanente se requiere foto del visitante.',
-      }
-    }
-
     const pass: QrPass = {
       id: randomId('qr'),
       label: input.label.trim(),

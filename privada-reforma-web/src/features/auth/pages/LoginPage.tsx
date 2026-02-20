@@ -11,6 +11,7 @@ export function LoginPage() {
   const [authMode, setAuthMode] = useState<'password' | 'magic_link'>('password')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   const [magicLinkMessage, setMagicLinkMessage] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -257,13 +258,22 @@ export function LoginPage() {
       {authMode === 'password' ? (
         <label className="block space-y-1">
           <span className="text-sm font-medium">Contrasena</span>
-          <input
-            className="w-full rounded-xl border border-[var(--color-border)] bg-white px-3 py-3 text-sm text-slate-900 caret-slate-900 outline-none placeholder:text-slate-500 ring-offset-2 focus:ring-2 focus:ring-[var(--color-brand)]"
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            placeholder="********"
-          />
+          <div className="relative">
+            <input
+              className="w-full rounded-xl border border-[var(--color-border)] bg-white px-3 py-3 pr-16 text-sm text-slate-900 caret-slate-900 outline-none placeholder:text-slate-500 ring-offset-2 focus:ring-2 focus:ring-[var(--color-brand)]"
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="********"
+            />
+            <button
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md border border-[var(--color-border)] bg-white px-2 py-1 text-xs font-medium text-slate-700"
+              onClick={() => setShowPassword((previous) => !previous)}
+              type="button"
+            >
+              {showPassword ? 'Ocultar' : 'Ver'}
+            </button>
+          </div>
         </label>
       ) : (
         <p className="text-xs text-[var(--color-text-muted)]">

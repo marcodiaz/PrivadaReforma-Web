@@ -115,7 +115,7 @@ export function AppLayout() {
                 className={({ isActive }) =>
                   `block rounded-xl border px-2 py-2 text-center text-xs font-medium transition-colors ${
                     isActive
-                      ? 'border-zinc-400 bg-zinc-100 text-zinc-900'
+                      ? 'border-zinc-400 text-zinc-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]'
                       : 'border-transparent text-slate-400'
                   }`
                 }

@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useState, type ChangeEvent } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { AppButton, AppCard, ModulePlaceholder } from '../../shared/ui'
 import { useDemoData } from '../../shared/state/DemoDataContext'
 import { sortIncidentsForGuard } from '../incidents/logic'
@@ -40,14 +40,14 @@ export function AppHomePage() {
   const activeParkingReports = parkingReports.filter((report) => report.status === 'open').length
   const profileTitle = `${session?.fullName ?? 'Usuario'} - ${session?.unitNumber ?? 'Sin departamento'}`
   const menuItems = [
-    { label: 'Estado de Cuenta', icon: 'EC', action: () => navigate('/app/finance') },
     { label: 'Comunicados', icon: 'CO', action: () => navigate('/app/announcements') },
     { label: 'Visitas', icon: 'VI', action: () => navigate('/app/visits') },
     { label: 'Reservaciones', icon: 'RE', action: () => navigate('/app/reservations') },
-    { label: 'Estacionamiento', icon: 'ES', action: () => navigate('/app/parking') },
+    { label: 'Reporte Estac.', icon: 'ES', action: () => navigate('/app/parking') },
     { label: 'Paquetes', icon: 'PA', action: () => navigate('/app/packages') },
     { label: 'Incidencias', icon: 'IN', action: () => navigate('/app/incidents') },
     { label: 'Perfil', icon: 'PE', action: () => navigate('/app/profile') },
+    { label: 'Estado de Cuenta', icon: 'EC', action: () => navigate('/app/finance') },
   ]
 
   return (
@@ -58,14 +58,18 @@ export function AppHomePage() {
         description="Accesos, comunicados y modulos principales."
       />
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <AppCard className="rounded-xl border-zinc-800 bg-zinc-950 p-3 text-center">
-          <p className="text-[11px] uppercase text-slate-400">QR activos</p>
-          <p className="text-2xl font-bold text-white">{activeQr}</p>
-        </AppCard>
-        <AppCard className="rounded-xl border-zinc-800 bg-zinc-950 p-3 text-center">
-          <p className="text-[11px] uppercase text-slate-400">Alertas</p>
-          <p className="text-2xl font-bold text-white">{activeAlerts}</p>
-        </AppCard>
+        <button onClick={() => navigate('/app/visits')} type="button">
+          <AppCard className="rounded-xl border-zinc-800 bg-zinc-950 p-3 text-center transition hover:border-zinc-500">
+            <p className="text-[11px] uppercase text-slate-400">QR activos</p>
+            <p className="text-2xl font-bold text-white">{activeQr}</p>
+          </AppCard>
+        </button>
+        <button onClick={() => navigate('/app/incidents?highlight=alert')} type="button">
+          <AppCard className="rounded-xl border-zinc-800 bg-zinc-950 p-3 text-center transition hover:border-zinc-500">
+            <p className="text-[11px] uppercase text-slate-400">Alertas</p>
+            <p className="text-2xl font-bold text-white">{activeAlerts}</p>
+          </AppCard>
+        </button>
         <AppCard className="rounded-xl border-zinc-800 bg-zinc-950 p-3 text-center">
           <p className="text-[11px] uppercase text-slate-400">Auditoria</p>
           <p className="text-2xl font-bold text-white">{auditLog.length}</p>
@@ -74,6 +78,14 @@ export function AppHomePage() {
           <p className="text-[11px] uppercase text-slate-400">Parking</p>
           <p className="text-2xl font-bold text-white">{activeParkingReports}</p>
         </AppCard>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <AppButton block onClick={() => navigate('/app/reservations')} variant="secondary">
+          Reservaciones
+        </AppButton>
+        <AppButton block onClick={() => navigate('/app/parking')} variant="secondary">
+          Reporte Estacionamiento
+        </AppButton>
       </div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         {menuItems.map((item) => (
@@ -103,6 +115,8 @@ export function AppVisitsPage() {
   const [maxPersons, setMaxPersons] = useState(1)
   const [visitDate, setVisitDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [visitorPhotoUrl, setVisitorPhotoUrl] = useState('')
+  const [photoName, setPhotoName] = useState('')
+  const [photoInputKey, setPhotoInputKey] = useState(0)
   const [accessMessage, setAccessMessage] = useState('')
   const [message, setMessage] = useState('')
   const [selectedQrId, setSelectedQrId] = useState<string | null>(null)
@@ -128,6 +142,21 @@ export function AppVisitsPage() {
   }, [selectedQr])
   const selectedQrImageUrl = selectedQr ? buildQrImageUrl(selectedQrPayload, 440) : ''
 
+  function handlePhotoSelection(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (!file) {
+      return
+    }
+    const nextPhotoUrl = URL.createObjectURL(file)
+    setVisitorPhotoUrl((previous) => {
+      if (previous.startsWith('blob:')) {
+        URL.revokeObjectURL(previous)
+      }
+      return nextPhotoUrl
+    })
+    setPhotoName(file.name)
+  }
+
   function handleCreateQr() {
     const normalizedVisitorName = visitorName.trim().toUpperCase()
     const result = createQrPass({
@@ -147,9 +176,22 @@ export function AppVisitsPage() {
     setMessage(result.ok ? 'QR creado correctamente.' : result.error ?? 'Error.')
     if (result.ok) {
       setAccessMessage('')
+      if (visitorPhotoUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(visitorPhotoUrl)
+      }
       setVisitorPhotoUrl('')
+      setPhotoName('')
+      setPhotoInputKey((previous) => previous + 1)
     }
   }
+
+  useEffect(() => {
+    return () => {
+      if (visitorPhotoUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(visitorPhotoUrl)
+      }
+    }
+  }, [visitorPhotoUrl])
 
   async function handleCopyPayload() {
     if (!selectedQrPayload) {
@@ -259,9 +301,23 @@ export function AppVisitsPage() {
             <input
               className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100"
               onChange={(event) => setVisitorPhotoUrl(event.target.value)}
-              placeholder="visitorPhotoUrl (requerido para 1 mes/permanente)"
+              placeholder="visitorPhotoUrl (opcional)"
               value={visitorPhotoUrl}
             />
+            <label className="space-y-1">
+              <span className="block text-[11px] uppercase tracking-[0.08em] text-zinc-400">
+                Foto visitante (opcional)
+              </span>
+              <input
+                accept="image/*"
+                capture="environment"
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 file:mr-3 file:rounded-lg file:border-0 file:bg-zinc-800 file:px-3 file:py-1 file:text-xs file:font-semibold file:text-zinc-100"
+                key={photoInputKey}
+                onChange={handlePhotoSelection}
+                type="file"
+              />
+              {photoName ? <p className="text-xs text-zinc-400">Archivo: {photoName}</p> : null}
+            </label>
           </>
         ) : null}
         <div className="grid grid-cols-2 gap-2">
@@ -527,6 +583,7 @@ export function AppParkingPage() {
 }
 
 export function AppIncidentsPage() {
+  const location = useLocation()
   const { incidents, updateVote, createIncident, session } = useDemoData()
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -536,6 +593,14 @@ export function AppIncidentsPage() {
 
   const sortedIncidents = useMemo(() => sortIncidentsForGuard(incidents), [incidents])
   const communalAlert = sortedIncidents.some((incident) => incident.supportScore >= 3)
+  const searchParams = new URLSearchParams(location.search)
+  const highlightedById = searchParams.get('incidentId')
+  const highlightedByAlert =
+    searchParams.get('highlight') === 'alert'
+      ? sortedIncidents.find((incident) => incident.supportScore >= 10) ??
+        sortedIncidents.find((incident) => incident.supportScore >= 3)
+      : null
+  const highlightedIncidentId = highlightedById ?? highlightedByAlert?.id ?? null
 
   function handleCreateIncident() {
     if (!title.trim() || !description.trim()) {
@@ -580,19 +645,19 @@ export function AppIncidentsPage() {
             onChange={(event) => setCategory(event.target.value as Incident['category'])}
             value={category}
           >
-            <option value="noise">noise</option>
-            <option value="pets">pets</option>
-            <option value="rules">rules</option>
-            <option value="other">other</option>
+            <option value="noise">Ruido</option>
+            <option value="pets">Mascotas</option>
+            <option value="rules">Reglamento</option>
+            <option value="other">Otro</option>
           </select>
           <select
             className="w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
             onChange={(event) => setPriority(event.target.value as Incident['priority'])}
             value={priority}
           >
-            <option value="low">low</option>
-            <option value="medium">medium</option>
-            <option value="high">high</option>
+            <option value="low">Baja</option>
+            <option value="medium">Media</option>
+            <option value="high">Alta</option>
           </select>
         </div>
         <AppButton block onClick={handleCreateIncident}>
@@ -611,7 +676,12 @@ export function AppIncidentsPage() {
         {sortedIncidents.map((incident) => {
           const myVote = incident.votes.find((vote) => vote.userId === session?.userId)?.value
           return (
-            <AppCard className={incidentEmphasis(incident.supportScore)} key={incident.id}>
+            <AppCard
+              className={`${incidentEmphasis(incident.supportScore)} ${
+                highlightedIncidentId === incident.id ? 'ring-2 ring-[var(--color-brand)]' : ''
+              }`}
+              key={incident.id}
+            >
               <div className="space-y-2">
                 <div className="flex items-start justify-between gap-2">
                   <div>
@@ -665,6 +735,7 @@ export function AppIncidentsPage() {
 }
 
 export function AppAnnouncementsPage() {
+  const navigate = useNavigate()
   const { incidents } = useDemoData()
   const escalated = incidents.filter((incident) => incident.supportScore >= 3)
 
@@ -684,9 +755,14 @@ export function AppAnnouncementsPage() {
         ) : (
           <ul className="mt-2 space-y-2">
             {escalated.map((incident) => (
-              <li key={incident.id} className="text-sm text-[var(--color-text-muted)]">
-                {incident.title}: score {incident.supportScore}. Abre Incidencias para apoyar
-                (+1/-1).
+              <li key={incident.id}>
+                <button
+                  className="w-full rounded-lg border border-zinc-700 px-2 py-2 text-left text-sm text-[var(--color-text-muted)] transition hover:border-zinc-500"
+                  onClick={() => navigate(`/app/incidents?incidentId=${encodeURIComponent(incident.id)}`)}
+                  type="button"
+                >
+                  {incident.title}: score {incident.supportScore}. Tap para ver detalle.
+                </button>
               </li>
             ))}
           </ul>
