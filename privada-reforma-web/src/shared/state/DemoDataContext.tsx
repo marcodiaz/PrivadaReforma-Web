@@ -178,6 +178,7 @@ type DemoDataContextValue = {
 }
 
 const DemoDataContext = createContext<DemoDataContextValue | null>(null)
+const REMOTE_BOOTSTRAP_TIMEOUT_MS = 6_000
 
 function safeReadArray<T>(
   key: string,
@@ -194,6 +195,21 @@ function safeReadArray<T>(
 
 function randomId(prefix: string) {
   return `${prefix}-${crypto.randomUUID()}`
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => reject(new Error(`${label} timeout`)), timeoutMs)
+    promise
+      .then((value) => {
+        window.clearTimeout(timeoutId)
+        resolve(value)
+      })
+      .catch((error) => {
+        window.clearTimeout(timeoutId)
+        reject(error)
+      })
+  })
 }
 
 function getEffectiveQrStatus(pass: QrPass, now = new Date()): QrPass['status'] {
@@ -325,29 +341,55 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     let isMounted = true
 
     void (async () => {
-      const [remotePackages, remoteIncidents, remotePolls, remotePetPosts] = await Promise.all([
+      const loadPackages = withTimeout(
         fetchPackagesFromSupabase({ role: session.role, unitNumber: session.unitNumber }),
+        REMOTE_BOOTSTRAP_TIMEOUT_MS,
+        'packages'
+      )
+        .then((remotePackages) => {
+          if (!isMounted || !remotePackages) {
+            return
+          }
+          setPackages(remotePackages)
+        })
+        .catch(() => undefined)
+
+      const loadIncidents = withTimeout(
         fetchIncidentsFromSupabase({ role: session.role, unitNumber: session.unitNumber }),
-        fetchPollsFromSupabase(),
+        REMOTE_BOOTSTRAP_TIMEOUT_MS,
+        'incidents'
+      )
+        .then((remoteIncidents) => {
+          if (!isMounted || !remoteIncidents) {
+            return
+          }
+          setIncidents(remoteIncidents)
+        })
+        .catch(() => undefined)
+
+      const loadPolls = withTimeout(fetchPollsFromSupabase(), REMOTE_BOOTSTRAP_TIMEOUT_MS, 'polls')
+        .then((remotePolls) => {
+          if (!isMounted || !remotePolls) {
+            return
+          }
+          setPolls(remotePolls)
+        })
+        .catch(() => undefined)
+
+      const loadPets = withTimeout(
         fetchPetPostsFromSupabase(),
-      ])
+        REMOTE_BOOTSTRAP_TIMEOUT_MS,
+        'pet_posts'
+      )
+        .then((remotePetPosts) => {
+          if (!isMounted || !remotePetPosts) {
+            return
+          }
+          setPetPosts(remotePetPosts)
+        })
+        .catch(() => undefined)
 
-      if (!isMounted) {
-        return
-      }
-
-      if (remotePackages) {
-        setPackages(remotePackages)
-      }
-      if (remoteIncidents) {
-        setIncidents(remoteIncidents)
-      }
-      if (remotePolls) {
-        setPolls(remotePolls)
-      }
-      if (remotePetPosts) {
-        setPetPosts(remotePetPosts)
-      }
+      await Promise.allSettled([loadPackages, loadIncidents, loadPolls, loadPets])
     })()
 
     return () => {

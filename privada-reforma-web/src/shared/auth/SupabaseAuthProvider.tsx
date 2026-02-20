@@ -7,7 +7,7 @@ import {
   useState,
   type PropsWithChildren,
 } from 'react'
-import type { Session } from '@supabase/supabase-js'
+import type { Session, User } from '@supabase/supabase-js'
 import type { UserRole } from '../domain/auth'
 import type { AppSession } from '../domain/demoData'
 import { isSupabaseConfigured, supabase } from '../supabase/client'
@@ -34,6 +34,8 @@ type SupabaseAuthContextValue = {
 
 const SupabaseAuthContext = createContext<SupabaseAuthContextValue | null>(null)
 const AUTH_BOOTSTRAP_TIMEOUT_MS = 10_000
+const PROFILE_LOAD_TIMEOUT_MS = 5_000
+const PROFILE_CACHE_KEY = 'auth_profile_cache_v1'
 
 function devLog(message: string, extra?: unknown) {
   if (!import.meta.env.DEV) {
@@ -54,6 +56,89 @@ function mapProfileRoleToUserRole(role: ProfileRole): UserRole {
     return 'guard'
   }
   return role
+}
+
+function isProfileRole(value: unknown): value is ProfileRole {
+  return (
+    value === 'admin' ||
+    value === 'resident' ||
+    value === 'tenant' ||
+    value === 'guard' ||
+    value === 'board_member' ||
+    value === 'maintenance'
+  )
+}
+
+function getOptimisticRoleFromUser(user: User): ProfileRole {
+  const metadataRole = user.user_metadata?.role ?? user.app_metadata?.role
+  if (isProfileRole(metadataRole)) {
+    return metadataRole
+  }
+  return 'resident'
+}
+
+function getOptimisticUnitFromUser(user: User): string | null {
+  const metadataUnit = user.user_metadata?.unit_number ?? user.user_metadata?.unitNumber
+  if (typeof metadataUnit === 'string' && metadataUnit.trim()) {
+    return metadataUnit.trim()
+  }
+  return null
+}
+
+function buildOptimisticProfile(user: User): ProfileRow {
+  return {
+    user_id: user.id,
+    role: getOptimisticRoleFromUser(user),
+    unit_number: getOptimisticUnitFromUser(user),
+  }
+}
+
+function readProfileCache(userId: string): ProfileRow | null {
+  try {
+    const raw = localStorage.getItem(PROFILE_CACHE_KEY)
+    if (!raw) {
+      return null
+    }
+    const parsed = JSON.parse(raw) as ProfileRow
+    if (
+      parsed &&
+      parsed.user_id === userId &&
+      isProfileRole(parsed.role) &&
+      (parsed.unit_number === null || typeof parsed.unit_number === 'string')
+    ) {
+      return parsed
+    }
+  } catch {
+    // no-op
+  }
+  return null
+}
+
+function writeProfileCache(profile: ProfileRow | null) {
+  try {
+    if (!profile) {
+      localStorage.removeItem(PROFILE_CACHE_KEY)
+      return
+    }
+    localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(profile))
+  } catch {
+    // no-op
+  }
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => reject(new Error(message)), timeoutMs)
+    promise
+      .then((value) => {
+        window.clearTimeout(timeoutId)
+        resolve(value)
+      })
+      .catch((error) => {
+        window.clearTimeout(timeoutId)
+        reject(error)
+      })
+  })
 }
 
 function buildAppSession(activeSession: Session, profile: ProfileRow): AppSession {
@@ -138,26 +223,34 @@ export function SupabaseAuthProvider({ children }: PropsWithChildren) {
       setSupabaseSession(nextSession)
       if (!nextSession) {
         setProfile(null)
+        writeProfileCache(null)
         setIsLoading(false)
         return
       }
 
+      const cachedProfile = readProfileCache(nextSession.user.id)
+      if (cachedProfile) {
+        setProfile(cachedProfile)
+      } else {
+        setProfile(buildOptimisticProfile(nextSession.user))
+      }
+      setIsLoading(false)
+
       try {
-        const nextProfile = await ensureProfileExists(nextSession.user.id)
+        const nextProfile = await withTimeout(
+          ensureProfileExists(nextSession.user.id),
+          PROFILE_LOAD_TIMEOUT_MS,
+          'Profile load timeout'
+        )
         if (!active) {
           return
         }
-        setProfile(nextProfile)
+        if (nextProfile) {
+          setProfile(nextProfile)
+          writeProfileCache(nextProfile)
+        }
       } catch (error) {
         devLog('ensureProfileExists failed', error)
-        if (!active) {
-          return
-        }
-        setProfile(null)
-      } finally {
-        if (active) {
-          setIsLoading(false)
-        }
       }
     }
 
