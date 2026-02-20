@@ -105,6 +105,7 @@ type DemoDataContextValue = {
   polls: Poll[]
   petPosts: PetPost[]
   offlineQueue: OfflineQueueEvent[]
+  remoteDataLoading: boolean
   isOnline: boolean
   syncToast: string | null
   debtMode: boolean
@@ -299,6 +300,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
   const [offlineQueue, setOfflineQueue] = useState<OfflineQueueEvent[]>(() =>
     safeReadArray(storageKeys.offlineQueue, offlineQueueSchema.array(), LOCAL_OFFLINE_QUEUE)
   )
+  const [remoteDataLoading, setRemoteDataLoading] = useState(false)
   const [isOnline, setIsOnline] = useState(() => navigator.onLine)
   const [syncToast, setSyncToast] = useState<string | null>(null)
   const [debtMode] = useState(false)
@@ -334,10 +336,12 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
 
   useEffect(() => {
     if (!session || !isSupabaseConfigured || !isOnline || remoteLoadDoneRef.current) {
+      setRemoteDataLoading(false)
       return
     }
 
     remoteLoadDoneRef.current = true
+    setRemoteDataLoading(true)
     let isMounted = true
 
     void (async () => {
@@ -390,10 +394,14 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
         .catch(() => undefined)
 
       await Promise.allSettled([loadPackages, loadIncidents, loadPolls, loadPets])
+      if (isMounted) {
+        setRemoteDataLoading(false)
+      }
     })()
 
     return () => {
       isMounted = false
+      setRemoteDataLoading(false)
     }
   }, [isOnline, session])
 
@@ -1333,6 +1341,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     parkingReports,
     polls,
     petPosts,
+    remoteDataLoading,
     offlineQueue,
     isOnline,
     syncToast,

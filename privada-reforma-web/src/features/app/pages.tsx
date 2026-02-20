@@ -35,7 +35,8 @@ function incidentEmphasis(score: number) {
 }
 
 export function AppHomePage() {
-  const { incidents, qrPasses, auditLog, parkingReports, polls, petPosts, session } = useDemoData()
+  const { incidents, qrPasses, auditLog, parkingReports, polls, petPosts, remoteDataLoading, session } =
+    useDemoData()
   const navigate = useNavigate()
   const myQrPasses = qrPasses.filter((pass) => pass.createdByUserId === session?.userId)
   const activeAlerts = incidents.filter((incident) => incident.supportScore >= 3).length
@@ -64,6 +65,13 @@ export function AppHomePage() {
         title={profileTitle}
         description="Accesos, comunicados y modulos principales."
       />
+      {remoteDataLoading ? (
+        <AppCard className="rounded-xl border-zinc-700 bg-zinc-900 p-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-300">
+            Sincronizando datos...
+          </p>
+        </AppCard>
+      ) : null}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <button onClick={() => navigate('/app/visits')} type="button">
           <AppCard className="rounded-xl border-zinc-800 bg-zinc-950 p-3 text-center transition hover:border-zinc-500">
