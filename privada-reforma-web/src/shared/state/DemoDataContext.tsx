@@ -460,7 +460,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
   }
 
   function updateVote(incidentId: string, newValue: 1 | -1) {
-    if (!session || !['resident', 'tenant'].includes(session.role)) {
+    if (!session) {
       return
     }
     setIncidents((previous) => updateIncidentVote(previous, incidentId, session.userId, newValue))

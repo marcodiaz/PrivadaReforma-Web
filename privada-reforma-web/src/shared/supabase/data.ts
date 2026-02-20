@@ -146,19 +146,17 @@ export async function fetchPackagesFromSupabase(input: { role: UserRole; unitNum
   return data.map((row) => mapPackageRow(row as PackageRow))
 }
 
-export async function fetchIncidentsFromSupabase(input: { role: UserRole; unitNumber?: string }) {
+export async function fetchIncidentsFromSupabase(_input: { role: UserRole; unitNumber?: string }) {
   if (!supabase) {
     return null
   }
 
-  let query = supabase
+  const query = supabase
     .from('incidents')
     .select(
       'id, unit_number, title, description, category, priority, created_at, created_by_user_id, status, acknowledged_at, resolved_at, support_score, votes, guard_actions'
     )
     .order('created_at', { ascending: false })
-
-  query = applyUnitScope(query, input.role, input.unitNumber)
   const { data, error } = await query
 
   if (error || !data) {
