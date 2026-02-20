@@ -2,6 +2,7 @@
 
 This project includes branded templates that match the current app style:
 
+- `supabase/templates/confirm_signup.html`
 - `supabase/templates/magic_link.html`
 - `supabase/templates/invite.html`
 - `supabase/templates/recovery.html`
@@ -10,6 +11,7 @@ Use these in Supabase Dashboard:
 
 1. Go to `Authentication > Email Templates`.
 2. Open each template and paste the corresponding HTML file:
+   - Confirm signup -> `confirm_signup.html`
    - Magic Link -> `magic_link.html`
    - Invite -> `invite.html`
    - Reset Password -> `recovery.html`

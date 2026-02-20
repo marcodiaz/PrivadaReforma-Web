@@ -96,6 +96,22 @@ Deno.serve(async (req) => {
     if (!allowedRoles.includes(role)) {
       return json(400, { ok: false, error: 'Invalid role.' })
     }
+    const requiresDepartment =
+      role === 'resident' || role === 'tenant' || role === 'board_member'
+    const blocksDepartment = role === 'guard'
+
+    if (requiresDepartment && !unitNumber) {
+      return json(400, {
+        ok: false,
+        error: 'unit_number is required for resident, tenant and board_member.',
+      })
+    }
+    if (blocksDepartment && unitNumber) {
+      return json(400, {
+        ok: false,
+        error: 'unit_number must be empty for guard.',
+      })
+    }
 
     let userId: string | null = null
     if (mode === 'invite') {
@@ -130,7 +146,7 @@ Deno.serve(async (req) => {
       {
         user_id: userId,
         role,
-        unit_number: unitNumber,
+        unit_number: blocksDepartment ? null : unitNumber,
       },
       { onConflict: 'user_id' },
     )
