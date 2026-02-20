@@ -10,7 +10,7 @@ import {
   getLast4Code,
   normalizeDepartmentCode,
 } from '../access/qrLogic'
-import { isSupabaseConfigured } from '../../shared/supabase/client'
+import { isSupabaseConfigured, supabase } from '../../shared/supabase/client'
 import { sendPushTestToUser, uploadPetPhoto } from '../../shared/supabase/data'
 import {
   getNotificationPermissionState,
@@ -1774,6 +1774,13 @@ export function AppProfilePage() {
   const [pushMessage, setPushMessage] = useState('')
   const [busyAction, setBusyAction] = useState<'enable' | 'disable' | 'test' | null>(null)
   const [permission, setPermission] = useState(getNotificationPermissionState())
+  const [displayName, setDisplayName] = useState(session?.fullName ?? '')
+  const [profileMessage, setProfileMessage] = useState('')
+  const [savingDisplayName, setSavingDisplayName] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [passwordMessage, setPasswordMessage] = useState('')
+  const [savingPassword, setSavingPassword] = useState(false)
   const pushSupported = isWebPushSupported()
   const pushConfigured = isWebPushConfigured()
 
@@ -1784,6 +1791,10 @@ export function AppProfilePage() {
   useEffect(() => {
     refreshPermission()
   }, [])
+
+  useEffect(() => {
+    setDisplayName(session?.fullName ?? '')
+  }, [session?.fullName])
 
   async function handleEnablePush() {
     if (!session?.userId) {
@@ -1850,6 +1861,62 @@ export function AppProfilePage() {
     }
   }
 
+  async function handleUpdateDisplayName() {
+    if (!supabase || !session) {
+      setProfileMessage('Sesion no disponible para actualizar nombre.')
+      return
+    }
+    if (!displayName.trim()) {
+      setProfileMessage('El nombre visible no puede estar vacio.')
+      return
+    }
+    setSavingDisplayName(true)
+    setProfileMessage('')
+    const result = await supabase.auth.updateUser({
+      data: {
+        full_name: displayName.trim(),
+      },
+    })
+    setSavingDisplayName(false)
+    if (result.error) {
+      setProfileMessage(result.error.message)
+      return
+    }
+    setProfileMessage('Nombre actualizado.')
+  }
+
+  async function handleUpdatePassword() {
+    if (!supabase || !session) {
+      setPasswordMessage('Sesion no disponible para actualizar contrasena.')
+      return
+    }
+    if (!newPassword.trim() || !confirmPassword.trim()) {
+      setPasswordMessage('Completa nueva contrasena y confirmacion.')
+      return
+    }
+    if (newPassword.length < 8) {
+      setPasswordMessage('La contrasena debe tener al menos 8 caracteres.')
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordMessage('La confirmacion no coincide.')
+      return
+    }
+    setSavingPassword(true)
+    setPasswordMessage('')
+    const result = await supabase.auth.updateUser({
+      password: newPassword,
+    })
+    setSavingPassword(false)
+    if (result.error) {
+      setPasswordMessage(result.error.message)
+      return
+    }
+    setPasswordMessage('Contrasena actualizada.')
+    setNewPassword('')
+    setConfirmPassword('')
+  }
+
   return (
     <div className="space-y-3">
       <ModulePlaceholder
@@ -1869,6 +1936,40 @@ export function AppProfilePage() {
         <div>
           <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">Departamento</p>
           <p className="text-sm font-semibold text-zinc-100">{session?.unitNumber ?? '-'}</p>
+        </div>
+        <div className="space-y-2 rounded-xl border border-zinc-800 bg-zinc-900 p-3">
+          <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">Nombre visible</p>
+          <input
+            className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+            onChange={(event) => setDisplayName(event.target.value)}
+            placeholder="Tu nombre para mostrar"
+            value={displayName}
+          />
+          <AppButton block disabled={savingDisplayName} onClick={() => void handleUpdateDisplayName()}>
+            {savingDisplayName ? 'Guardando...' : 'Actualizar nombre'}
+          </AppButton>
+          {profileMessage ? <p className="text-xs text-zinc-300">{profileMessage}</p> : null}
+        </div>
+        <div className="space-y-2 rounded-xl border border-zinc-800 bg-zinc-900 p-3">
+          <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">Cambiar contrasena</p>
+          <input
+            className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+            onChange={(event) => setNewPassword(event.target.value)}
+            placeholder="Nueva contrasena"
+            type="password"
+            value={newPassword}
+          />
+          <input
+            className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+            onChange={(event) => setConfirmPassword(event.target.value)}
+            placeholder="Confirmar nueva contrasena"
+            type="password"
+            value={confirmPassword}
+          />
+          <AppButton block disabled={savingPassword} onClick={() => void handleUpdatePassword()}>
+            {savingPassword ? 'Guardando...' : 'Actualizar contrasena'}
+          </AppButton>
+          {passwordMessage ? <p className="text-xs text-zinc-300">{passwordMessage}</p> : null}
         </div>
         <div className="space-y-2 rounded-xl border border-zinc-800 bg-zinc-900 p-3">
           <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">Notificaciones push</p>
