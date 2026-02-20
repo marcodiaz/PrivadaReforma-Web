@@ -12,12 +12,15 @@ import {
   LOCAL_INCIDENTS,
   LOCAL_OFFLINE_QUEUE,
   LOCAL_PARKING_REPORTS,
+  LOCAL_POLLS,
   LOCAL_QR_PASSES,
   LOCAL_RESERVATIONS,
   auditLogSchema,
   type AppSession,
   type AuditLogEntry,
   type Incident,
+  pollSchema,
+  type Poll,
   parkingReportSchema,
   type ParkingReport,
   incidentCategorySchema,
@@ -89,6 +92,7 @@ type DemoDataContextValue = {
   auditLog: AuditLogEntry[]
   reservations: Reservation[]
   parkingReports: ParkingReport[]
+  polls: Poll[]
   offlineQueue: OfflineQueueEvent[]
   isOnline: boolean
   syncToast: string | null
@@ -118,6 +122,9 @@ type DemoDataContextValue = {
     error?: string
   }
   getActiveReservations: () => Reservation[]
+  createPoll: (input: { title: string; options: string[] }) => { ok: boolean; error?: string }
+  votePoll: (pollId: string, optionId: string) => { ok: boolean; error?: string }
+  deletePoll: (pollId: string) => { ok: boolean; error?: string }
   createParkingReport: (input: { description: string }) => { ok: boolean; error?: string }
   updateParkingReportStatus: (input: {
     reportId: string
@@ -235,6 +242,9 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
   const [parkingReports, setParkingReports] = useState<ParkingReport[]>(() =>
     safeReadArray(storageKeys.parkingReports, parkingReportSchema.array(), LOCAL_PARKING_REPORTS)
   )
+  const [polls, setPolls] = useState<Poll[]>(() =>
+    safeReadArray(storageKeys.polls, pollSchema.array(), LOCAL_POLLS)
+  )
   const [offlineQueue, setOfflineQueue] = useState<OfflineQueueEvent[]>(() =>
     safeReadArray(storageKeys.offlineQueue, offlineQueueSchema.array(), LOCAL_OFFLINE_QUEUE)
   )
@@ -314,13 +324,14 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       setItem(storageKeys.offlineQueue, offlineQueue)
       setItem(storageKeys.reservations, reservations)
       setItem(storageKeys.parkingReports, parkingReports)
+      setItem(storageKeys.polls, polls)
     }, 300)
     return () => {
       if (persistTimerRef.current !== null) {
         window.clearTimeout(persistTimerRef.current)
       }
     }
-  }, [incidents, qrPasses, packages, auditLog, offlineQueue, reservations, parkingReports])
+  }, [incidents, qrPasses, packages, auditLog, offlineQueue, reservations, parkingReports, polls])
 
   useEffect(() => {
     if (!isOnline || !session || !isSupabaseConfigured || flushingOfflineQueueRef.current) {
@@ -374,6 +385,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     setOfflineQueue(LOCAL_OFFLINE_QUEUE)
     setReservations(LOCAL_RESERVATIONS)
     setParkingReports(LOCAL_PARKING_REPORTS)
+    setPolls(LOCAL_POLLS)
     removeItem(storageKeys.incidents)
     removeItem(storageKeys.qrPasses)
     removeItem(storageKeys.packages)
@@ -381,6 +393,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     removeItem(storageKeys.offlineQueue)
     removeItem(storageKeys.reservations)
     removeItem(storageKeys.parkingReports)
+    removeItem(storageKeys.polls)
   }
 
   function dismissSyncToast() {
@@ -748,6 +761,91 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     return reservations.filter((reservation) => isReservationActive(reservation))
   }
 
+  function createPoll(input: { title: string; options: string[] }) {
+    if (!session) {
+      return { ok: false, error: 'Sesion requerida.' }
+    }
+
+    const title = input.title.trim()
+    if (!title) {
+      return { ok: false, error: 'Titulo obligatorio.' }
+    }
+
+    const normalizedOptions = input.options
+      .map((option) => option.trim())
+      .filter((option) => option.length > 0)
+    const uniqueOptions = Array.from(new Set(normalizedOptions))
+    if (uniqueOptions.length < 2) {
+      return { ok: false, error: 'Agrega al menos 2 opciones.' }
+    }
+
+    const poll: Poll = {
+      id: randomId('poll'),
+      title,
+      options: uniqueOptions.map((label, index) => ({
+        id: `opt-${index + 1}`,
+        label,
+      })),
+      votes: [],
+      createdAt: new Date().toISOString(),
+      createdByUserId: session.userId,
+      createdByName: session.fullName,
+    }
+
+    setPolls((previous) => [poll, ...previous])
+    return { ok: true }
+  }
+
+  function votePoll(pollId: string, optionId: string) {
+    if (!session) {
+      return { ok: false, error: 'Sesion requerida.' }
+    }
+
+    let updated = false
+    setPolls((previous) =>
+      previous.map((poll) => {
+        if (poll.id !== pollId) {
+          return poll
+        }
+        const optionExists = poll.options.some((option) => option.id === optionId)
+        if (!optionExists) {
+          return poll
+        }
+        updated = true
+        const withoutMyVote = poll.votes.filter((vote) => vote.userId !== session.userId)
+        return {
+          ...poll,
+          votes: [
+            ...withoutMyVote,
+            {
+              userId: session.userId,
+              userName: session.fullName,
+              optionId,
+              votedAt: new Date().toISOString(),
+            },
+          ],
+        }
+      })
+    )
+
+    if (!updated) {
+      return { ok: false, error: 'Votacion no encontrada.' }
+    }
+    return { ok: true }
+  }
+
+  function deletePoll(pollId: string) {
+    if (!session || session.role !== 'admin') {
+      return { ok: false, error: 'Solo admin puede borrar votaciones.' }
+    }
+    const exists = polls.some((poll) => poll.id === pollId)
+    if (!exists) {
+      return { ok: false, error: 'Votacion no encontrada.' }
+    }
+    setPolls((previous) => previous.filter((poll) => poll.id !== pollId))
+    return { ok: true }
+  }
+
   function createParkingReport(input: { description: string }) {
     if (!session) {
       return { ok: false, error: 'Sesion requerida.' }
@@ -1067,6 +1165,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     auditLog,
     reservations,
     parkingReports,
+    polls,
     offlineQueue,
     isOnline,
     syncToast,
@@ -1085,6 +1184,9 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     deleteQrPass,
     createReservation,
     getActiveReservations,
+    createPoll,
+    votePoll,
+    deletePoll,
     createParkingReport,
     updateParkingReportStatus,
     getAssignedParkingForUnit,

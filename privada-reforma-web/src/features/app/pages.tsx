@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { AppButton, AppCard, ModulePlaceholder } from '../../shared/ui'
 import { useDemoData } from '../../shared/state/DemoDataContext'
 import { sortIncidentsForGuard } from '../incidents/logic'
-import type { Incident } from '../../shared/domain/demoData'
+import type { Incident, Poll } from '../../shared/domain/demoData'
 import {
   buildQrImageUrl,
   buildQrPayload,
@@ -33,18 +33,20 @@ function incidentEmphasis(score: number) {
 }
 
 export function AppHomePage() {
-  const { incidents, qrPasses, auditLog, parkingReports, session } = useDemoData()
+  const { incidents, qrPasses, auditLog, parkingReports, polls, session } = useDemoData()
   const navigate = useNavigate()
   const myQrPasses = qrPasses.filter((pass) => pass.createdByUserId === session?.userId)
   const activeAlerts = incidents.filter((incident) => incident.supportScore >= 3).length
   const activeQr = myQrPasses.filter((pass) => pass.status === 'active').length
   const activeParkingReports = parkingReports.filter((report) => report.status === 'open').length
+  const activePolls = polls.length
   const profileTitle = `${session?.fullName ?? 'Usuario'} - ${session?.unitNumber ?? 'Sin departamento'}`
   const menuItems = [
     { label: 'Comunicados', icon: 'CO', action: () => navigate('/app/announcements') },
     { label: 'Visitas', icon: 'VI', action: () => navigate('/app/visits') },
     { label: 'Reservaciones', icon: 'RE', action: () => navigate('/app/reservations') },
     { label: 'Estacionamiento', icon: 'ES', action: () => navigate('/app/parking') },
+    { label: 'Votaciones', icon: 'VO', action: () => navigate('/app/polls') },
     { label: 'Paquetes', icon: 'PA', action: () => navigate('/app/packages') },
     { label: 'Incidencias', icon: 'IN', action: () => navigate('/app/incidents') },
     { label: 'Perfil', icon: 'PE', action: () => navigate('/app/profile') },
@@ -79,6 +81,12 @@ export function AppHomePage() {
           <p className="text-[11px] uppercase text-slate-400">Parking</p>
           <p className="text-2xl font-bold text-white">{activeParkingReports}</p>
         </AppCard>
+        <button onClick={() => navigate('/app/polls')} type="button">
+          <AppCard className="rounded-xl border-zinc-800 bg-zinc-950 p-3 text-center transition hover:border-zinc-500">
+            <p className="text-[11px] uppercase text-slate-400">Votaciones</p>
+            <p className="text-2xl font-bold text-white">{activePolls}</p>
+          </AppCard>
+        </button>
       </div>
       <div className="grid grid-cols-2 gap-2">
         <AppButton block onClick={() => navigate('/app/reservations')} variant="secondary">
@@ -763,6 +771,148 @@ export function AppAnnouncementsPage() {
           </ul>
         )}
       </AppCard>
+    </div>
+  )
+}
+
+function getPollOptionVotesCount(poll: Poll, optionId: string) {
+  return poll.votes.filter((vote) => vote.optionId === optionId).length
+}
+
+export function AppPollsPage() {
+  const { createPoll, deletePoll, polls, session, votePoll } = useDemoData()
+  const [title, setTitle] = useState('')
+  const [mode, setMode] = useState<'yes_no' | 'multiple'>('yes_no')
+  const [optionsText, setOptionsText] = useState('')
+  const [feedback, setFeedback] = useState('')
+
+  function handleCreatePoll() {
+    const options =
+      mode === 'yes_no'
+        ? ['Si', 'No']
+        : optionsText
+            .split('\n')
+            .map((entry) => entry.trim())
+            .filter((entry) => entry.length > 0)
+    const result = createPoll({ title, options })
+    setFeedback(result.ok ? 'Votacion publicada.' : result.error ?? 'No fue posible crear votacion.')
+    if (result.ok) {
+      setTitle('')
+      setOptionsText('')
+      setMode('yes_no')
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <ModulePlaceholder
+        role="Residente / Inquilino / Admin"
+        title="Votaciones"
+        description="Crea encuestas publicas y participa con un voto por usuario."
+      />
+      <AppCard className="space-y-2 border-zinc-800 bg-zinc-950">
+        <p className="text-sm font-semibold text-zinc-100">Nueva votacion</p>
+        <input
+          className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+          onChange={(event) => setTitle(event.target.value)}
+          placeholder="Titulo de la votacion"
+          value={title}
+        />
+        <div className="grid grid-cols-2 gap-2">
+          <AppButton
+            block
+            onClick={() => setMode('yes_no')}
+            variant={mode === 'yes_no' ? 'primary' : 'secondary'}
+          >
+            Si / No
+          </AppButton>
+          <AppButton
+            block
+            onClick={() => setMode('multiple')}
+            variant={mode === 'multiple' ? 'primary' : 'secondary'}
+          >
+            Opcion multiple
+          </AppButton>
+        </div>
+        {mode === 'multiple' ? (
+          <textarea
+            className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+            onChange={(event) => setOptionsText(event.target.value)}
+            placeholder={'Escribe una opcion por linea\nEj:\nPorton\nLimpieza\nIluminacion'}
+            rows={4}
+            value={optionsText}
+          />
+        ) : null}
+        <AppButton block onClick={handleCreatePoll}>
+          Publicar votacion
+        </AppButton>
+        {feedback ? <p className="text-xs text-zinc-300">{feedback}</p> : null}
+      </AppCard>
+      <div className="space-y-2">
+        {polls.length === 0 ? (
+          <AppCard className="text-sm text-zinc-300">No hay votaciones por ahora.</AppCard>
+        ) : (
+          polls.map((poll) => {
+            const myVote = poll.votes.find((vote) => vote.userId === session?.userId)
+            return (
+              <AppCard className="space-y-2 border-zinc-800 bg-zinc-950" key={poll.id}>
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold text-zinc-100">{poll.title}</p>
+                    <p className="text-xs text-zinc-400">
+                      Creada por: {poll.createdByName} - {new Date(poll.createdAt).toLocaleString()}
+                    </p>
+                  </div>
+                  {session?.role === 'admin' ? (
+                    <AppButton
+                      className="px-2 py-1 text-xs"
+                      onClick={() => {
+                        const result = deletePoll(poll.id)
+                        setFeedback(
+                          result.ok
+                            ? 'Votacion eliminada.'
+                            : result.error ?? 'No se pudo eliminar votacion.'
+                        )
+                      }}
+                      variant="danger"
+                    >
+                      Borrar
+                    </AppButton>
+                  ) : null}
+                </div>
+                <div className="space-y-2">
+                  {poll.options.map((option) => {
+                    const count = getPollOptionVotesCount(poll, option.id)
+                    const selected = myVote?.optionId === option.id
+                    return (
+                      <button
+                        className={`w-full rounded-xl border px-3 py-2 text-left text-sm transition ${
+                          selected
+                            ? 'border-emerald-400 bg-emerald-500/10 text-emerald-200'
+                            : 'border-zinc-700 bg-zinc-900 text-zinc-200 hover:border-zinc-500'
+                        }`}
+                        key={option.id}
+                        onClick={() => {
+                          const result = votePoll(poll.id, option.id)
+                          setFeedback(
+                            result.ok ? 'Voto registrado.' : result.error ?? 'No se pudo votar.'
+                          )
+                        }}
+                        type="button"
+                      >
+                        <span className="flex items-center justify-between gap-2">
+                          <span>{option.label}</span>
+                          <span className="text-xs font-semibold text-zinc-400">{count} voto(s)</span>
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </AppCard>
+            )
+          })
+        )}
+      </div>
     </div>
   )
 }

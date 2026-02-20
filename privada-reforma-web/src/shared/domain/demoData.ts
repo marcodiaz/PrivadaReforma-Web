@@ -110,6 +110,30 @@ export const parkingReportSchema = z.object({
 
 export type ParkingReport = z.infer<typeof parkingReportSchema>
 
+export const pollOptionSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+})
+
+export const pollVoteSchema = z.object({
+  userId: z.string(),
+  userName: z.string(),
+  optionId: z.string(),
+  votedAt: z.string(),
+})
+
+export const pollSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  options: z.array(pollOptionSchema).min(2),
+  votes: z.array(pollVoteSchema),
+  createdAt: z.string(),
+  createdByUserId: z.string(),
+  createdByName: z.string(),
+})
+
+export type Poll = z.infer<typeof pollSchema>
+
 export const auditLogSchema = z.object({
   id: z.string(),
   at: z.string(),
@@ -265,3 +289,4 @@ export const LOCAL_RESERVATIONS: Reservation[] = [
   },
 ]
 export const LOCAL_PARKING_REPORTS: ParkingReport[] = []
+export const LOCAL_POLLS: Poll[] = []
