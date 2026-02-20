@@ -343,6 +343,115 @@ export function GuardIncidentsPage() {
   )
 }
 
+export function GuardParkingPage() {
+  const { parkingReports, updateParkingReportStatus } = useDemoData()
+  const [draftNotes, setDraftNotes] = useState<Record<string, string>>({})
+  const [feedback, setFeedback] = useState<Record<string, string>>({})
+
+  const pendingReports = parkingReports.filter((report) => report.status === 'open')
+  const resolvedReports = parkingReports.filter((report) => report.status !== 'open')
+
+  function handleStatusUpdate(
+    reportId: string,
+    status: 'owner_notified' | 'tow_truck_notified'
+  ) {
+    const result = updateParkingReportStatus({
+      reportId,
+      status,
+      guardNote: draftNotes[reportId],
+    })
+    setFeedback((previous) => ({
+      ...previous,
+      [reportId]: result.ok ? 'Accion guardada.' : result.error ?? 'No fue posible actualizar.',
+    }))
+    if (result.ok) {
+      setDraftNotes((previous) => ({ ...previous, [reportId]: '' }))
+    }
+  }
+
+  function statusLabel(status: string) {
+    if (status === 'owner_notified') {
+      return 'Conductor notificado'
+    }
+    if (status === 'tow_truck_notified') {
+      return 'Grua notificada'
+    }
+    return 'Pendiente'
+  }
+
+  return (
+    <div className="space-y-3">
+      <ModulePlaceholder
+        role="Guardia"
+        title="Reportes de estacionamiento"
+        description="Atiende reportes por cajon asignado del departamento."
+      />
+      <AppCard className="space-y-2 border-slate-700 bg-slate-900 text-slate-100">
+        <p className="text-sm font-semibold">Pendientes</p>
+        {pendingReports.length === 0 ? (
+          <p className="text-xs text-slate-300">No hay reportes pendientes.</p>
+        ) : (
+          <div className="space-y-2">
+            {pendingReports.map((report) => (
+              <div className="rounded-lg border border-slate-700 bg-slate-950 p-2" key={report.id}>
+                <p className="text-sm font-semibold">
+                  {report.parkingSpot} - Depto {report.unitNumber}
+                </p>
+                <p className="text-xs text-slate-300">{report.description}</p>
+                <p className="text-xs text-slate-400">{new Date(report.createdAt).toLocaleString()}</p>
+                <textarea
+                  className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-100"
+                  onChange={(event) =>
+                    setDraftNotes((previous) => ({ ...previous, [report.id]: event.target.value }))
+                  }
+                  placeholder="Nota opcional de atencion"
+                  rows={2}
+                  value={draftNotes[report.id] ?? ''}
+                />
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <AppButton
+                    className="px-3 py-2 text-xs"
+                    onClick={() => handleStatusUpdate(report.id, 'owner_notified')}
+                    variant="secondary"
+                  >
+                    Notifique al conductor
+                  </AppButton>
+                  <AppButton
+                    className="px-3 py-2 text-xs"
+                    onClick={() => handleStatusUpdate(report.id, 'tow_truck_notified')}
+                    variant="danger"
+                  >
+                    Notifique a la grua
+                  </AppButton>
+                </div>
+                {feedback[report.id] ? <p className="mt-1 text-xs text-slate-300">{feedback[report.id]}</p> : null}
+              </div>
+            ))}
+          </div>
+        )}
+      </AppCard>
+      <AppCard className="space-y-2 border-slate-700 bg-slate-900 text-slate-100">
+        <p className="text-sm font-semibold">Atendidos</p>
+        {resolvedReports.length === 0 ? (
+          <p className="text-xs text-slate-300">Sin reportes atendidos todavia.</p>
+        ) : (
+          <div className="space-y-2">
+            {resolvedReports.map((report) => (
+              <div className="rounded-lg border border-slate-700 bg-slate-950 p-2" key={report.id}>
+                <p className="text-sm font-semibold">
+                  {report.parkingSpot} - {statusLabel(report.status)}
+                </p>
+                <p className="text-xs text-slate-300">Depto {report.unitNumber}</p>
+                {report.guardNote ? <p className="text-xs text-slate-400">Nota: {report.guardNote}</p> : null}
+              </div>
+            ))}
+          </div>
+        )}
+      </AppCard>
+    </div>
+  )
+}
+
 export function GuardOfflinePage() {
   const { offlineQueue, enqueueManualOfflineValidation } = useDemoData()
   const [departmentCode, setDepartmentCode] = useState('')

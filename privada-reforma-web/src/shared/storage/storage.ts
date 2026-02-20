@@ -1,4 +1,4 @@
-export const schemaVersion = 3
+export const schemaVersion = 4
 
 const VERSION_KEY = 'schemaVersion'
 
@@ -9,6 +9,8 @@ export const storageKeys = {
   auditLog: 'auditLog',
   offlineQueue: 'offlineQueue',
   packages: 'packages',
+  reservations: 'reservations',
+  parkingReports: 'parkingReports',
 } as const
 
 function hasStorage() {

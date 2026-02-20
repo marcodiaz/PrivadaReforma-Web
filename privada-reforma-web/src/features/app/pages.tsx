@@ -33,15 +33,18 @@ function incidentEmphasis(score: number) {
 }
 
 export function AppHomePage() {
-  const { incidents, qrPasses, auditLog, session } = useDemoData()
+  const { incidents, qrPasses, auditLog, parkingReports, session } = useDemoData()
   const navigate = useNavigate()
   const activeAlerts = incidents.filter((incident) => incident.supportScore >= 3).length
   const activeQr = qrPasses.filter((pass) => pass.status === 'active').length
+  const activeParkingReports = parkingReports.filter((report) => report.status === 'open').length
   const profileTitle = `${session?.fullName ?? 'Usuario'} - ${session?.unitNumber ?? 'Sin departamento'}`
   const menuItems = [
     { label: 'Estado de Cuenta', icon: 'EC', action: () => navigate('/app/finance') },
     { label: 'Comunicados', icon: 'CO', action: () => navigate('/app/announcements') },
     { label: 'Visitas', icon: 'VI', action: () => navigate('/app/visits') },
+    { label: 'Reservaciones', icon: 'RE', action: () => navigate('/app/reservations') },
+    { label: 'Estacionamiento', icon: 'ES', action: () => navigate('/app/parking') },
     { label: 'Paquetes', icon: 'PA', action: () => navigate('/app/packages') },
     { label: 'Incidencias', icon: 'IN', action: () => navigate('/app/incidents') },
     { label: 'Perfil', icon: 'PE', action: () => navigate('/app/profile') },
@@ -54,7 +57,7 @@ export function AppHomePage() {
         title={profileTitle}
         description="Accesos, comunicados y modulos principales."
       />
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <AppCard className="rounded-xl border-zinc-800 bg-zinc-950 p-3 text-center">
           <p className="text-[11px] uppercase text-slate-400">QR activos</p>
           <p className="text-2xl font-bold text-white">{activeQr}</p>
@@ -66,6 +69,10 @@ export function AppHomePage() {
         <AppCard className="rounded-xl border-zinc-800 bg-zinc-950 p-3 text-center">
           <p className="text-[11px] uppercase text-slate-400">Auditoria</p>
           <p className="text-2xl font-bold text-white">{auditLog.length}</p>
+        </AppCard>
+        <AppCard className="rounded-xl border-zinc-800 bg-zinc-950 p-3 text-center">
+          <p className="text-[11px] uppercase text-slate-400">Parking</p>
+          <p className="text-2xl font-bold text-white">{activeParkingReports}</p>
         </AppCard>
       </div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -374,12 +381,148 @@ export function AppVisitsPage() {
 }
 
 export function AppPoolPage() {
+  const { createReservation, getActiveReservations, session } = useDemoData()
+  const [amenity, setAmenity] = useState('Terraza')
+  const [reservationDate, setReservationDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [message, setMessage] = useState('')
+  const activeReservations = getActiveReservations()
+
+  function handleReserve() {
+    const result = createReservation({ amenity, reservationDate })
+    setMessage(result.ok ? 'Reservacion registrada.' : result.error ?? 'No se pudo reservar.')
+  }
+
   return (
-    <ModulePlaceholder
-      role="Residente / Inquilino"
-      title="Alberca"
-      description="Reservas y reglas operativas para amenidades."
-    />
+    <div className="space-y-3">
+      <ModulePlaceholder
+        role="Residente / Inquilino"
+        title="Reservaciones"
+        description="Solo viernes/sabado. Cuota fija por reservacion: $5,000 MXN."
+      />
+      <AppCard className="space-y-3 border-zinc-800 bg-zinc-950">
+        <p className="text-sm font-semibold text-zinc-100">Nueva reservacion</p>
+        <p className="text-xs text-zinc-400">Departamento: {session?.unitNumber ?? 'Sin departamento'}</p>
+        <label className="space-y-1">
+          <span className="block text-[11px] uppercase tracking-[0.08em] text-zinc-400">Amenidad</span>
+          <select
+            className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100"
+            onChange={(event) => setAmenity(event.target.value)}
+            value={amenity}
+          >
+            <option value="Terraza">Terraza</option>
+            <option value="Salon de eventos">Salon de eventos</option>
+            <option value="Asador">Asador</option>
+          </select>
+        </label>
+        <label className="space-y-1">
+          <span className="block text-[11px] uppercase tracking-[0.08em] text-zinc-400">Fecha</span>
+          <input
+            className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100"
+            onChange={(event) => setReservationDate(event.target.value)}
+            type="date"
+            value={reservationDate}
+          />
+        </label>
+        <p className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200">
+          Fee de reservacion: <strong>$5,000 MXN</strong>
+        </p>
+        <AppButton block onClick={handleReserve}>
+          Reservar
+        </AppButton>
+        {message ? <p className="text-xs text-zinc-300">{message}</p> : null}
+      </AppCard>
+      <AppCard className="space-y-2 border-zinc-800 bg-zinc-950">
+        <p className="text-sm font-semibold text-zinc-100">Reservaciones activas (toda la privada)</p>
+        {activeReservations.length === 0 ? (
+          <p className="text-sm text-zinc-400">No hay reservaciones activas.</p>
+        ) : (
+          <div className="space-y-2">
+            {activeReservations.map((reservation) => (
+              <div
+                className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2"
+                key={reservation.id}
+              >
+                <p className="text-sm font-semibold text-zinc-100">
+                  {reservation.amenity} - {reservation.reservationDate}
+                </p>
+                <p className="text-xs text-zinc-400">
+                  Depto: {reservation.unitNumber} | Fee: ${reservation.fee.toLocaleString('es-MX')} MXN
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+      </AppCard>
+    </div>
+  )
+}
+
+export function AppParkingPage() {
+  const { createParkingReport, getAssignedParkingForUnit, parkingReports, session } = useDemoData()
+  const [description, setDescription] = useState('Vehiculo no autorizado ocupando mi lugar.')
+  const [message, setMessage] = useState('')
+  const myUnit = session?.unitNumber
+  const mySpot = getAssignedParkingForUnit(myUnit)
+  const myReports = parkingReports.filter((report) => report.unitNumber === myUnit)
+
+  function handleCreateReport() {
+    const result = createParkingReport({ description })
+    setMessage(result.ok ? 'Reporte enviado a guardia.' : result.error ?? 'No se pudo enviar.')
+    if (result.ok) {
+      setDescription('Vehiculo no autorizado ocupando mi lugar.')
+    }
+  }
+
+  function statusLabel(status: string) {
+    if (status === 'open') {
+      return 'Pendiente de atencion'
+    }
+    if (status === 'owner_notified') {
+      return 'Guardia notifico al conductor'
+    }
+    return 'Guardia notifico a la grua'
+  }
+
+  return (
+    <div className="space-y-3">
+      <ModulePlaceholder
+        role="Residente / Inquilino"
+        title="Estacionamiento"
+        description="Reporta directamente a guardia solo sobre tu cajon asignado."
+      />
+      <AppCard className="space-y-3 border-zinc-800 bg-zinc-950">
+        <p className="text-sm font-semibold text-zinc-100">Nuevo reporte</p>
+        <p className="text-xs text-zinc-400">Departamento: {myUnit ?? 'Sin departamento'}</p>
+        <p className="text-xs text-zinc-400">Cajon asignado (auto): {mySpot}</p>
+        <textarea
+          className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100"
+          onChange={(event) => setDescription(event.target.value)}
+          rows={3}
+          value={description}
+        />
+        <AppButton block onClick={handleCreateReport}>
+          Reportar a guardia
+        </AppButton>
+        {message ? <p className="text-xs text-zinc-300">{message}</p> : null}
+      </AppCard>
+      <AppCard className="space-y-2 border-zinc-800 bg-zinc-950">
+        <p className="text-sm font-semibold text-zinc-100">Mis reportes</p>
+        {myReports.length === 0 ? (
+          <p className="text-sm text-zinc-400">Sin reportes por ahora.</p>
+        ) : (
+          <div className="space-y-2">
+            {myReports.map((report) => (
+              <div className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2" key={report.id}>
+                <p className="text-sm font-semibold text-zinc-100">{report.parkingSpot}</p>
+                <p className="text-xs text-zinc-300">{report.description}</p>
+                <p className="text-xs text-zinc-400">{statusLabel(report.status)}</p>
+                {report.guardNote ? <p className="text-xs text-zinc-400">Nota: {report.guardNote}</p> : null}
+              </div>
+            ))}
+          </div>
+        )}
+      </AppCard>
+    </div>
   )
 }
 
