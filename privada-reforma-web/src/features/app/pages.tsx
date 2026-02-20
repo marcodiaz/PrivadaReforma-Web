@@ -1049,7 +1049,6 @@ export function AppPetsPage() {
           <span className="block text-[11px] uppercase tracking-[0.08em] text-zinc-400">Foto</span>
           <input
             accept="image/*"
-            capture="environment"
             className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 file:mr-3 file:rounded-lg file:border-0 file:bg-zinc-800 file:px-3 file:py-1 file:text-xs file:font-semibold file:text-zinc-100"
             onChange={(event) => void handleFileChange(event.target.files?.[0] ?? null)}
             type="file"
