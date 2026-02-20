@@ -1,10 +1,12 @@
 import type { UserRole } from '../domain/auth'
-import type { Incident, Poll } from '../domain/demoData'
+import type { Incident, PetPost, Poll } from '../domain/demoData'
 import type { Package } from '../domain/packages'
 import { supabase } from './client'
 
 const PACKAGE_BUCKET = 'package-photos'
 const PACKAGE_PHOTO_SIGNED_URL_SECONDS = 15 * 60
+const PET_BUCKET = 'pet-photos'
+const PET_PHOTO_SIGNED_URL_SECONDS = 15 * 60
 
 type PackageRow = {
   id: string
@@ -55,6 +57,16 @@ type PollRow = {
   title: string
   options: PollOptionRow[]
   votes: PollVoteRow[]
+  created_at: string
+  created_by_user_id: string
+  created_by_name: string
+}
+
+type PetPostRow = {
+  id: string
+  pet_name: string
+  photo_url: string
+  comments: string
   created_at: string
   created_by_user_id: string
   created_by_name: string
@@ -111,6 +123,18 @@ function mapPollRow(row: PollRow): Poll {
   }
 }
 
+function mapPetPostRow(row: PetPostRow): PetPost {
+  return {
+    id: row.id,
+    petName: row.pet_name,
+    photoUrl: row.photo_url,
+    comments: row.comments,
+    createdAt: row.created_at,
+    createdByUserId: row.created_by_user_id,
+    createdByName: row.created_by_name,
+  }
+}
+
 function mapPackageToRow(input: Package): PackageRow {
   return {
     id: input.id,
@@ -153,6 +177,18 @@ function mapPollToRow(input: Poll): PollRow {
     title: input.title,
     options: input.options,
     votes: input.votes,
+    created_at: input.createdAt,
+    created_by_user_id: input.createdByUserId,
+    created_by_name: input.createdByName,
+  }
+}
+
+function mapPetPostToRow(input: PetPost): PetPostRow {
+  return {
+    id: input.id,
+    pet_name: input.petName,
+    photo_url: input.photoUrl,
+    comments: input.comments,
     created_at: input.createdAt,
     created_by_user_id: input.createdByUserId,
     created_by_name: input.createdByName,
@@ -257,6 +293,31 @@ export async function deletePollInSupabase(pollId: string) {
     return false
   }
   const { error } = await supabase.from('polls').delete().eq('id', pollId)
+  return !error
+}
+
+export async function fetchPetPostsFromSupabase() {
+  if (!supabase) {
+    return null
+  }
+
+  const { data, error } = await supabase
+    .from('pet_posts')
+    .select('id, pet_name, photo_url, comments, created_at, created_by_user_id, created_by_name')
+    .order('created_at', { ascending: false })
+
+  if (error || !data) {
+    return null
+  }
+
+  return data.map((row) => mapPetPostRow(row as PetPostRow))
+}
+
+export async function createPetPostInSupabase(petPost: PetPost) {
+  if (!supabase) {
+    return false
+  }
+  const { error } = await supabase.from('pet_posts').insert(mapPetPostToRow(petPost))
   return !error
 }
 
@@ -367,6 +428,36 @@ export async function uploadPackagePhoto(file: Blob) {
   return path
 }
 
+export async function uploadPetPhoto(file: Blob) {
+  if (!supabase) {
+    throw new Error('Supabase no esta configurado.')
+  }
+
+  const path = `pets/${new Date().getUTCFullYear()}/${crypto.randomUUID()}.webp`
+  const bucket = supabase.storage.from(PET_BUCKET)
+
+  const signedUpload = await bucket.createSignedUploadUrl(path)
+  if (!signedUpload.error && signedUpload.data?.token) {
+    const uploadResult = await bucket.uploadToSignedUrl(path, signedUpload.data.token, file, {
+      contentType: 'image/webp',
+      upsert: false,
+    })
+    if (uploadResult.error) {
+      throw uploadResult.error
+    }
+  } else {
+    const directUpload = await bucket.upload(path, file, {
+      contentType: 'image/webp',
+      upsert: false,
+    })
+    if (directUpload.error) {
+      throw directUpload.error
+    }
+  }
+
+  return path
+}
+
 function isDirectDisplayUrl(value: string) {
   return (
     value.startsWith('http://') ||
@@ -397,6 +488,29 @@ export async function getSignedPackagePhotoUrl(
   const { data, error } = await supabase.storage
     .from(PACKAGE_BUCKET)
     .createSignedUrl(path, expiresSeconds)
+
+  if (error || !data?.signedUrl) {
+    throw new Error(error?.message ?? 'No fue posible crear signed URL.')
+  }
+
+  return data.signedUrl
+}
+
+export async function getSignedPetPhotoUrl(
+  path: string,
+  expiresSeconds = PET_PHOTO_SIGNED_URL_SECONDS
+): Promise<string> {
+  if (!path) {
+    throw new Error('Storage path requerido.')
+  }
+  if (isDirectDisplayUrl(path)) {
+    return path
+  }
+  if (!supabase) {
+    throw new Error('Supabase no esta configurado.')
+  }
+
+  const { data, error } = await supabase.storage.from(PET_BUCKET).createSignedUrl(path, expiresSeconds)
 
   if (error || !data?.signedUrl) {
     throw new Error(error?.message ?? 'No fue posible crear signed URL.')

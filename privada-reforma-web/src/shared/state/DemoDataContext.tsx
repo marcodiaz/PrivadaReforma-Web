@@ -12,6 +12,7 @@ import {
   LOCAL_INCIDENTS,
   LOCAL_OFFLINE_QUEUE,
   LOCAL_PARKING_REPORTS,
+  LOCAL_PET_POSTS,
   LOCAL_POLLS,
   LOCAL_QR_PASSES,
   LOCAL_RESERVATIONS,
@@ -19,6 +20,8 @@ import {
   type AppSession,
   type AuditLogEntry,
   type Incident,
+  petPostSchema,
+  type PetPost,
   pollSchema,
   type Poll,
   parkingReportSchema,
@@ -37,11 +40,13 @@ import {
 import { getItem, migrateIfNeeded, removeItem, setItem, storageKeys } from '../storage/storage'
 import {
   createIncidentInSupabase,
+  createPetPostInSupabase,
   createPollInSupabase,
   deletePollInSupabase,
   deliverPackageInSupabase,
   fetchIncidentsFromSupabase,
   fetchPackagesFromSupabase,
+  fetchPetPostsFromSupabase,
   fetchPollsFromSupabase,
   markPackageReadyInSupabase,
   registerPackageInSupabase,
@@ -97,6 +102,7 @@ type DemoDataContextValue = {
   reservations: Reservation[]
   parkingReports: ParkingReport[]
   polls: Poll[]
+  petPosts: PetPost[]
   offlineQueue: OfflineQueueEvent[]
   isOnline: boolean
   syncToast: string | null
@@ -129,6 +135,10 @@ type DemoDataContextValue = {
   createPoll: (input: { title: string; options: string[] }) => { ok: boolean; error?: string }
   votePoll: (pollId: string, optionId: string) => { ok: boolean; error?: string }
   deletePoll: (pollId: string) => { ok: boolean; error?: string }
+  createPetPost: (input: { petName: string; photoUrl: string; comments: string }) => {
+    ok: boolean
+    error?: string
+  }
   createParkingReport: (input: { description: string }) => { ok: boolean; error?: string }
   updateParkingReportStatus: (input: {
     reportId: string
@@ -249,6 +259,9 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
   const [polls, setPolls] = useState<Poll[]>(() =>
     safeReadArray(storageKeys.polls, pollSchema.array(), LOCAL_POLLS)
   )
+  const [petPosts, setPetPosts] = useState<PetPost[]>(() =>
+    safeReadArray(storageKeys.petPosts, petPostSchema.array(), LOCAL_PET_POSTS)
+  )
   const [offlineQueue, setOfflineQueue] = useState<OfflineQueueEvent[]>(() =>
     safeReadArray(storageKeys.offlineQueue, offlineQueueSchema.array(), LOCAL_OFFLINE_QUEUE)
   )
@@ -294,10 +307,11 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     let isMounted = true
 
     void (async () => {
-      const [remotePackages, remoteIncidents, remotePolls] = await Promise.all([
+      const [remotePackages, remoteIncidents, remotePolls, remotePetPosts] = await Promise.all([
         fetchPackagesFromSupabase({ role: session.role, unitNumber: session.unitNumber }),
         fetchIncidentsFromSupabase({ role: session.role, unitNumber: session.unitNumber }),
         fetchPollsFromSupabase(),
+        fetchPetPostsFromSupabase(),
       ])
 
       if (!isMounted) {
@@ -312,6 +326,9 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       }
       if (remotePolls) {
         setPolls(remotePolls)
+      }
+      if (remotePetPosts) {
+        setPetPosts(remotePetPosts)
       }
     })()
 
@@ -333,13 +350,14 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       setItem(storageKeys.reservations, reservations)
       setItem(storageKeys.parkingReports, parkingReports)
       setItem(storageKeys.polls, polls)
+      setItem(storageKeys.petPosts, petPosts)
     }, 300)
     return () => {
       if (persistTimerRef.current !== null) {
         window.clearTimeout(persistTimerRef.current)
       }
     }
-  }, [incidents, qrPasses, packages, auditLog, offlineQueue, reservations, parkingReports, polls])
+  }, [incidents, qrPasses, packages, auditLog, offlineQueue, reservations, parkingReports, polls, petPosts])
 
   useEffect(() => {
     if (!isOnline || !session || !isSupabaseConfigured || flushingOfflineQueueRef.current) {
@@ -394,6 +412,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     setReservations(LOCAL_RESERVATIONS)
     setParkingReports(LOCAL_PARKING_REPORTS)
     setPolls(LOCAL_POLLS)
+    setPetPosts(LOCAL_PET_POSTS)
     removeItem(storageKeys.incidents)
     removeItem(storageKeys.qrPasses)
     removeItem(storageKeys.packages)
@@ -402,6 +421,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     removeItem(storageKeys.reservations)
     removeItem(storageKeys.parkingReports)
     removeItem(storageKeys.polls)
+    removeItem(storageKeys.petPosts)
   }
 
   function dismissSyncToast() {
@@ -863,6 +883,41 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     return { ok: true }
   }
 
+  function createPetPost(input: { petName: string; photoUrl: string; comments: string }) {
+    if (!session) {
+      return { ok: false, error: 'Sesion requerida.' }
+    }
+
+    const petName = input.petName.trim()
+    const photoUrl = input.photoUrl.trim()
+    const comments = input.comments.trim()
+    if (!petName) {
+      return { ok: false, error: 'Nombre de mascota obligatorio.' }
+    }
+    if (!photoUrl) {
+      return { ok: false, error: 'Foto de mascota obligatoria.' }
+    }
+    if (!comments) {
+      return { ok: false, error: 'Comentarios obligatorios.' }
+    }
+
+    const petPost: PetPost = {
+      id: randomId('pet'),
+      petName,
+      photoUrl,
+      comments,
+      createdAt: new Date().toISOString(),
+      createdByUserId: session.userId,
+      createdByName: session.fullName,
+    }
+
+    setPetPosts((previous) => [petPost, ...previous])
+    if (isSupabaseConfigured && isOnline) {
+      void createPetPostInSupabase(petPost)
+    }
+    return { ok: true }
+  }
+
   function createParkingReport(input: { description: string }) {
     if (!session) {
       return { ok: false, error: 'Sesion requerida.' }
@@ -1183,6 +1238,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     reservations,
     parkingReports,
     polls,
+    petPosts,
     offlineQueue,
     isOnline,
     syncToast,
@@ -1204,6 +1260,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     createPoll,
     votePoll,
     deletePoll,
+    createPetPost,
     createParkingReport,
     updateParkingReportStatus,
     getAssignedParkingForUnit,
