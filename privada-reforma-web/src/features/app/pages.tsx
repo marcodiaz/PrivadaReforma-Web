@@ -20,6 +20,7 @@ import {
   unsubscribeThisDeviceFromPush,
 } from '../../shared/push/webPush'
 import { adminCreateOrInviteUser } from '../../shared/supabase/admin'
+import { useLanguage } from '../../shared/i18n/LanguageContext'
 export { AppPackagesPage } from '../packages/pages'
 
 function priorityBadge(priority: Incident['priority']) {
@@ -1771,6 +1772,7 @@ export function AppFinancePage() {
 
 export function AppProfilePage() {
   const { session } = useDemoData()
+  const { language, setLanguage, t } = useLanguage()
   const [pushMessage, setPushMessage] = useState('')
   const [busyAction, setBusyAction] = useState<'enable' | 'disable' | 'test' | null>(null)
   const [permission, setPermission] = useState(getNotificationPermissionState())
@@ -1923,21 +1925,32 @@ export function AppProfilePage() {
     <div className="space-y-3">
       <ModulePlaceholder
         role="Residente / Inquilino"
-        title="Perfil"
-        description="Preferencias de usuario (base inicial)."
+        title={t('profileTitle')}
+        description={t('profileDescription')}
       />
       <AppCard className="space-y-3 border-zinc-800 bg-zinc-950">
         <div>
-          <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">Nombre</p>
+          <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">{t('name')}</p>
           <p className="text-sm font-semibold text-zinc-100">{session?.fullName ?? '-'}</p>
         </div>
         <div>
-          <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">Correo</p>
+          <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">{t('email')}</p>
           <p className="text-sm font-semibold text-zinc-100">{session?.email ?? '-'}</p>
         </div>
         <div>
-          <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">Departamento</p>
+          <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">{t('department')}</p>
           <p className="text-sm font-semibold text-zinc-100">{session?.unitNumber ?? '-'}</p>
+        </div>
+        <div className="space-y-2 rounded-xl border border-zinc-800 bg-zinc-900 p-3">
+          <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">{t('language')}</p>
+          <div className="grid grid-cols-2 gap-2">
+            <AppButton block onClick={() => setLanguage('es')} variant={language === 'es' ? 'primary' : 'secondary'}>
+              {t('spanish')}
+            </AppButton>
+            <AppButton block onClick={() => setLanguage('en')} variant={language === 'en' ? 'primary' : 'secondary'}>
+              {t('english')}
+            </AppButton>
+          </div>
         </div>
         <div className="space-y-2 rounded-xl border border-zinc-800 bg-zinc-900 p-3">
           <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">Nombre visible</p>

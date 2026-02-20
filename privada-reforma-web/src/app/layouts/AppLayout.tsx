@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useDemoData } from '../../shared/state/DemoDataContext'
 import { getRoleLandingPath } from '../../shared/domain/auth'
+import { useLanguage } from '../../shared/i18n/LanguageContext'
 
 type NavItem = {
   to: string
@@ -79,19 +80,20 @@ function writeStoredAdminSection(section: AdminSection) {
   }
 }
 
-function resolveTitle(pathname: string): string {
+function resolveTitle(pathname: string, labels: { adminOperation: string; residence: string }): string {
   if (pathname.startsWith('/admin')) {
-    return 'Operacion administrativa'
+    return labels.adminOperation
   }
 
-  return 'Residencia'
+  return labels.residence
 }
 
 function AuthLoadingShell() {
+  const { t } = useLanguage()
   return (
     <div className="min-h-dvh bg-[var(--color-bg)] px-4 pb-8 pt-6">
       <div className="mx-auto flex w-full max-w-md items-center justify-center rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-6">
-        <p className="text-sm text-[var(--color-text-muted)]">Validando sesion...</p>
+        <p className="text-sm text-[var(--color-text-muted)]">{t('validatingSession')}</p>
       </div>
     </div>
   )
@@ -100,6 +102,7 @@ function AuthLoadingShell() {
 export function AppLayout() {
   const { pathname } = useLocation()
   const navigate = useNavigate()
+  const { t } = useLanguage()
   const { authLoading, getHeldPackageCountForUser, logout, moderationReports, session } = useDemoData()
   const isAdmin = pathname.startsWith('/admin')
   const activeAdminSection = resolveAdminSection(pathname)
@@ -153,10 +156,12 @@ export function AppLayout() {
             <p className="text-xs uppercase tracking-[0.08em] text-zinc-400">
               Privada Reforma
             </p>
-            <h1 className="text-base font-semibold text-white">{resolveTitle(pathname)}</h1>
+            <h1 className="text-base font-semibold text-white">
+              {resolveTitle(pathname, { adminOperation: t('adminOperation'), residence: t('residence') })}
+            </h1>
             {shouldShowTopPackages ? (
               <p className="mt-1 text-xs font-semibold text-zinc-400">
-                Paquetes: {heldPackages}
+                {t('packagesCount')}: {heldPackages}
               </p>
             ) : null}
           </div>
@@ -168,7 +173,7 @@ export function AppLayout() {
             }}
             type="button"
           >
-            Salir
+            {t('logout')}
           </button>
         </div>
       </header>
