@@ -44,6 +44,7 @@ import {
   createPollInSupabase,
   deletePollInSupabase,
   deliverPackageInSupabase,
+  endPollInSupabase,
   fetchIncidentsFromSupabase,
   fetchPackagesFromSupabase,
   fetchPetPostsFromSupabase,
@@ -132,8 +133,12 @@ type DemoDataContextValue = {
     error?: string
   }
   getActiveReservations: () => Reservation[]
-  createPoll: (input: { title: string; options: string[] }) => { ok: boolean; error?: string }
+  createPoll: (input: { title: string; options: string[]; durationDays: number }) => {
+    ok: boolean
+    error?: string
+  }
   votePoll: (pollId: string, optionId: string) => { ok: boolean; error?: string }
+  endPoll: (pollId: string) => { ok: boolean; error?: string }
   deletePoll: (pollId: string) => { ok: boolean; error?: string }
   createPetPost: (input: { petName: string; photoUrl: string; comments: string }) => {
     ok: boolean
@@ -227,6 +232,19 @@ function isReservationActive(reservation: Reservation, now = new Date()) {
     return false
   }
   return reservationDate >= now
+}
+
+function isPollClosed(poll: Poll, now = new Date()) {
+  if (poll.endedAt) {
+    return true
+  }
+  if (poll.endsAt) {
+    const endsAt = new Date(poll.endsAt)
+    if (!Number.isNaN(endsAt.getTime()) && endsAt < now) {
+      return true
+    }
+  }
+  return false
 }
 
 export function DemoDataProvider({ children }: PropsWithChildren) {
@@ -789,7 +807,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     return reservations.filter((reservation) => isReservationActive(reservation))
   }
 
-  function createPoll(input: { title: string; options: string[] }) {
+  function createPoll(input: { title: string; options: string[]; durationDays: number }) {
     if (!session) {
       return { ok: false, error: 'Sesion requerida.' }
     }
@@ -806,6 +824,12 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     if (uniqueOptions.length < 2) {
       return { ok: false, error: 'Agrega al menos 2 opciones.' }
     }
+    if (!Number.isInteger(input.durationDays) || input.durationDays < 1 || input.durationDays > 7) {
+      return { ok: false, error: 'La duracion debe ser entre 1 y 7 dias.' }
+    }
+
+    const createdAt = new Date()
+    const endsAt = new Date(createdAt.getTime() + input.durationDays * 24 * 60 * 60 * 1000)
 
     const poll: Poll = {
       id: randomId('poll'),
@@ -815,7 +839,8 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
         label,
       })),
       votes: [],
-      createdAt: new Date().toISOString(),
+      createdAt: createdAt.toISOString(),
+      endsAt: endsAt.toISOString(),
       createdByUserId: session.userId,
       createdByName: session.fullName,
     }
@@ -842,6 +867,9 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
         if (!optionExists) {
           return poll
         }
+        if (isPollClosed(poll)) {
+          return poll
+        }
         updated = true
         const withoutMyVote = poll.votes.filter((vote) => vote.userId !== session.userId)
         return {
@@ -860,7 +888,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     )
 
     if (!updated) {
-      return { ok: false, error: 'Votacion no encontrada.' }
+      return { ok: false, error: 'Votacion cerrada o no encontrada.' }
     }
     if (isSupabaseConfigured && isOnline) {
       void votePollInSupabase({ pollId, optionId })
@@ -868,13 +896,37 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     return { ok: true }
   }
 
-  function deletePoll(pollId: string) {
-    if (!session || session.role !== 'admin') {
-      return { ok: false, error: 'Solo admin puede borrar votaciones.' }
+  function endPoll(pollId: string) {
+    if (!session) {
+      return { ok: false, error: 'Sesion requerida.' }
     }
-    const exists = polls.some((poll) => poll.id === pollId)
-    if (!exists) {
+    const target = polls.find((poll) => poll.id === pollId)
+    if (!target) {
       return { ok: false, error: 'Votacion no encontrada.' }
+    }
+    if (target.createdByUserId !== session.userId && session.role !== 'admin') {
+      return { ok: false, error: 'Solo el creador o admin puede terminar votaciones.' }
+    }
+    const endedAt = new Date().toISOString()
+    setPolls((previous) =>
+      previous.map((poll) => (poll.id === pollId ? { ...poll, endedAt } : poll))
+    )
+    if (isSupabaseConfigured && isOnline) {
+      void endPollInSupabase({ pollId, endedAt })
+    }
+    return { ok: true }
+  }
+
+  function deletePoll(pollId: string) {
+    if (!session) {
+      return { ok: false, error: 'Sesion requerida.' }
+    }
+    const target = polls.find((poll) => poll.id === pollId)
+    if (!target) {
+      return { ok: false, error: 'Votacion no encontrada.' }
+    }
+    if (target.createdByUserId !== session.userId && session.role !== 'admin') {
+      return { ok: false, error: 'Solo el creador o admin puede eliminar votaciones.' }
     }
     setPolls((previous) => previous.filter((poll) => poll.id !== pollId))
     if (isSupabaseConfigured && isOnline) {
@@ -1259,6 +1311,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     getActiveReservations,
     createPoll,
     votePoll,
+    endPoll,
     deletePoll,
     createPetPost,
     createParkingReport,
