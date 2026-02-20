@@ -33,15 +33,16 @@ function incidentEmphasis(score: number) {
 }
 
 export function AppHomePage() {
-  const { incidents, qrPasses, auditLog } = useDemoData()
+  const { incidents, qrPasses, auditLog, session } = useDemoData()
   const navigate = useNavigate()
   const activeAlerts = incidents.filter((incident) => incident.supportScore >= 3).length
   const activeQr = qrPasses.filter((pass) => pass.status === 'active').length
+  const profileTitle = `${session?.fullName ?? 'Usuario'} - ${session?.unitNumber ?? 'Sin departamento'}`
   const menuItems = [
     { label: 'Estado de Cuenta', icon: 'EC', action: () => navigate('/app/finance') },
     { label: 'Comunicados', icon: 'CO', action: () => navigate('/app/announcements') },
     { label: 'Visitas', icon: 'VI', action: () => navigate('/app/visits') },
-    { label: 'Reservaciones', icon: 'RE', action: () => navigate('/app/pool') },
+    { label: 'Paquetes', icon: 'PA', action: () => navigate('/app/packages') },
     { label: 'Incidencias', icon: 'IN', action: () => navigate('/app/incidents') },
     { label: 'Perfil', icon: 'PE', action: () => navigate('/app/profile') },
   ]
@@ -50,7 +51,7 @@ export function AppHomePage() {
     <div className="space-y-4">
       <ModulePlaceholder
         role="Residente / Inquilino"
-        title="Residencia"
+        title={profileTitle}
         description="Accesos, comunicados y modulos principales."
       />
       <div className="grid grid-cols-3 gap-2">
@@ -86,10 +87,9 @@ export function AppHomePage() {
 }
 
 export function AppVisitsPage() {
-  const { qrPasses, createQrPass, deleteQrPass, debtMode } = useDemoData()
+  const { qrPasses, createQrPass, deleteQrPass, debtMode, session } = useDemoData()
   const [visitorName, setVisitorName] = useState('MARCO')
   const [unitId, setUnitId] = useState('1141')
-  const [departmentCode, setDepartmentCode] = useState('1141')
   const [accessType, setAccessType] = useState<'temporal' | 'time_limit'>('temporal')
   const [timeLimit, setTimeLimit] = useState<'week' | 'month' | 'permanent'>('week')
   const [maxUses, setMaxUses] = useState(1)
@@ -100,6 +100,7 @@ export function AppVisitsPage() {
   const [message, setMessage] = useState('')
   const [selectedQrId, setSelectedQrId] = useState<string | null>(null)
   const [copyMessage, setCopyMessage] = useState('')
+  const accountDepartmentCode = normalizeDepartmentCode(session?.unitNumber ?? '').slice(0, 4)
 
   const selectedQr = qrPasses.find((pass) => pass.id === selectedQrId) ?? null
   const selectedQrPayload = useMemo(() => {
@@ -125,13 +126,13 @@ export function AppVisitsPage() {
     const result = createQrPass({
       label: `Visita: ${normalizedVisitorName || 'VISITANTE'}`,
       unitId,
-      departmentCode,
+      departmentCode: accountDepartmentCode,
       visitorName: normalizedVisitorName,
       maxUses,
       maxPersons,
       accessMessage:
         accessMessage.trim() ||
-        `Hola. Este es tu codigo de acceso: [${departmentCode}] para la fecha ${visitDate}.`,
+        `Hola. Este es tu codigo de acceso: [${accountDepartmentCode}] para la fecha ${visitDate}.`,
       accessType,
       timeLimit: accessType === 'time_limit' ? timeLimit : undefined,
       visitorPhotoUrl: visitorPhotoUrl || undefined,
@@ -198,14 +199,10 @@ export function AppVisitsPage() {
           </span>
           <input
             className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100"
-            inputMode="numeric"
-            maxLength={4}
-            onChange={(event) =>
-              setDepartmentCode(normalizeDepartmentCode(event.target.value).slice(0, 4))
-            }
-            placeholder="1141"
-            type="tel"
-            value={departmentCode}
+            disabled
+            placeholder="Sin departamento"
+            readOnly
+            value={accountDepartmentCode}
           />
         </label>
         <div className="grid grid-cols-2 gap-2">
@@ -567,11 +564,29 @@ export function AppFinancePage() {
 }
 
 export function AppProfilePage() {
+  const { session } = useDemoData()
+
   return (
-    <ModulePlaceholder
-      role="Residente / Inquilino"
-      title="Perfil"
-      description="Datos de usuario, vivienda y preferencias."
-    />
+    <div className="space-y-3">
+      <ModulePlaceholder
+        role="Residente / Inquilino"
+        title="Perfil"
+        description="Preferencias de usuario (base inicial)."
+      />
+      <AppCard className="space-y-3 border-zinc-800 bg-zinc-950">
+        <div>
+          <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">Nombre</p>
+          <p className="text-sm font-semibold text-zinc-100">{session?.fullName ?? '-'}</p>
+        </div>
+        <div>
+          <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">Correo</p>
+          <p className="text-sm font-semibold text-zinc-100">{session?.email ?? '-'}</p>
+        </div>
+        <div>
+          <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">Departamento</p>
+          <p className="text-sm font-semibold text-zinc-100">{session?.unitNumber ?? '-'}</p>
+        </div>
+      </AppCard>
+    </div>
   )
 }

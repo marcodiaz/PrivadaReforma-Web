@@ -33,6 +33,18 @@ type SupabaseAuthContextValue = {
 }
 
 const SupabaseAuthContext = createContext<SupabaseAuthContextValue | null>(null)
+const AUTH_BOOTSTRAP_TIMEOUT_MS = 10_000
+
+function devLog(message: string, extra?: unknown) {
+  if (!import.meta.env.DEV) {
+    return
+  }
+  if (typeof extra !== 'undefined') {
+    console.info(`[auth] ${message}`, extra)
+    return
+  }
+  console.info(`[auth] ${message}`)
+}
 
 function mapProfileRoleToUserRole(role: ProfileRole): UserRole {
   if (role === 'board_member') {
@@ -105,17 +117,28 @@ export function SupabaseAuthProvider({ children }: PropsWithChildren) {
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
+      setIsLoading(false)
       return
     }
 
     let active = true
+    const timeoutId = window.setTimeout(() => {
+      if (!active) {
+        return
+      }
+      devLog('bootstrap timeout reached; forcing loading=false')
+      setIsLoading(false)
+    }, AUTH_BOOTSTRAP_TIMEOUT_MS)
+
     const syncFromSession = async (nextSession: Session | null) => {
       if (!active) {
         return
       }
+      devLog('syncFromSession', { hasSession: Boolean(nextSession) })
       setSupabaseSession(nextSession)
       if (!nextSession) {
         setProfile(null)
+        setIsLoading(false)
         return
       }
 
@@ -125,31 +148,49 @@ export function SupabaseAuthProvider({ children }: PropsWithChildren) {
           return
         }
         setProfile(nextProfile)
-      } catch {
+      } catch (error) {
+        devLog('ensureProfileExists failed', error)
         if (!active) {
           return
         }
         setProfile(null)
+      } finally {
+        if (active) {
+          setIsLoading(false)
+        }
       }
     }
 
+    devLog('bootstrap start')
     void (async () => {
-      const current = await supabase.auth.getSession()
-      if (!active) {
-        return
-      }
-      await syncFromSession(current.data.session)
-      if (active) {
-        setIsLoading(false)
+      try {
+        const current = await supabase.auth.getSession()
+        if (!active) {
+          return
+        }
+        await syncFromSession(current.data.session)
+      } catch (error) {
+        devLog('getSession failed', error)
+        if (active) {
+          setSupabaseSession(null)
+          setProfile(null)
+        }
+      } finally {
+        if (active) {
+          setIsLoading(false)
+          devLog('bootstrap end')
+        }
       }
     })()
 
-    const authSubscription = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const authSubscription = supabase.auth.onAuthStateChange((event, nextSession) => {
+      devLog('onAuthStateChange', { event, hasSession: Boolean(nextSession) })
       void syncFromSession(nextSession)
     })
 
     return () => {
       active = false
+      window.clearTimeout(timeoutId)
       authSubscription.data.subscription.unsubscribe()
     }
   }, [])
@@ -180,7 +221,11 @@ export function SupabaseAuthProvider({ children }: PropsWithChildren) {
         if (!supabase) {
           return
         }
-        await supabase.auth.signOut()
+        const result = await supabase.auth.signOut()
+        if (result.error) {
+          devLog('signOut failed', result.error)
+          throw result.error
+        }
       },
       async updateMyProfile(input: { role: ProfileRole; unitNumber: string | null }) {
         if (!supabase || !supabaseSession) {

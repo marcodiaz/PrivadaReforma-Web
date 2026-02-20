@@ -86,7 +86,7 @@ type DemoDataContextValue = {
   syncToast: string | null
   debtMode: boolean
   login: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>
-  logout: () => void
+  logout: () => Promise<void>
   resetDemoData: () => void
   dismissSyncToast: () => void
   createIncident: (input: {
@@ -297,8 +297,14 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     return signInWithPassword(email, password)
   }
 
-  function logout() {
-    void signOut()
+  async function logout() {
+    try {
+      await signOut()
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.info('[auth] logout fallback after signOut error', error)
+      }
+    }
   }
 
   function resetDemoData() {
@@ -568,9 +574,9 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     }
 
     const type = input.accessType === 'temporal' ? 'single_use' : 'time_window'
-    const normalizedDepartment = normalizeDepartmentCode(input.departmentCode)
+    const normalizedDepartment = normalizeDepartmentCode(session.unitNumber ?? '')
     if (!/^\d{4}$/.test(normalizedDepartment)) {
-      return { ok: false, error: 'Departamento debe tener 4 digitos (ej. 1141).' }
+      return { ok: false, error: 'Tu cuenta no tiene un departamento valido de 4 digitos.' }
     }
     if (!/[12]$/.test(normalizedDepartment)) {
       return {
