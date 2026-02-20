@@ -33,8 +33,11 @@ export function AdminUsersPage() {
     'maintenance',
     'admin',
   ]
+  const requiresDepartment = ['resident', 'tenant', 'board_member'].includes(role)
+  const blocksDepartment = role === 'guard'
 
   async function handleSubmit() {
+    const trimmedDepartment = unitNumber.trim()
     if (!email.trim()) {
       setFeedbackType('error')
       setFeedback('Correo requerido.')
@@ -45,13 +48,23 @@ export function AdminUsersPage() {
       setFeedback('Contrasena temporal requerida para modo create.')
       return
     }
+    if (requiresDepartment && !trimmedDepartment) {
+      setFeedbackType('error')
+      setFeedback('Departamento obligatorio para resident, tenant y board_member.')
+      return
+    }
+    if (blocksDepartment && trimmedDepartment) {
+      setFeedbackType('error')
+      setFeedback('Guard no debe tener departamento asignado.')
+      return
+    }
 
     setLoading(true)
     const result = await adminCreateOrInviteUser({
       mode,
       email,
       role,
-      unitNumber: unitNumber.trim() || undefined,
+      unitNumber: blocksDepartment ? undefined : (trimmedDepartment || undefined),
       password: mode === 'create' ? password : undefined,
     })
     setLoading(false)
@@ -124,7 +137,13 @@ export function AdminUsersPage() {
           Rol
           <select
             className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm text-[var(--color-text)]"
-            onChange={(event) => setRole(event.target.value as ManagedUserRole)}
+            onChange={(event) => {
+              const nextRole = event.target.value as ManagedUserRole
+              setRole(nextRole)
+              if (nextRole === 'guard') {
+                setUnitNumber('')
+              }
+            }}
             value={role}
           >
             {roles.map((entry) => (
@@ -135,11 +154,12 @@ export function AdminUsersPage() {
           </select>
         </label>
         <label className="block text-xs text-[var(--color-text-muted)]">
-          unit_number (opcional para guard/admin/board)
+          Departamento:
           <input
             className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-muted)]"
+            disabled={blocksDepartment}
             onChange={(event) => setUnitNumber(event.target.value)}
-            placeholder="1141"
+            placeholder={blocksDepartment ? 'No aplica para guard' : '1141'}
             value={unitNumber}
           />
         </label>
@@ -180,7 +200,7 @@ function localizeAdminError(raw?: string): string {
     return 'Tu usuario no tiene permisos de administrador para crear o invitar usuarios.'
   }
   if (lower.includes('unit') || lower.includes('unit_number')) {
-    return 'Falta unit_number. Para resident/tenant/maintenance debes capturar la unidad.'
+    return 'Regla de departamento invalida. resident/tenant/board requieren departamento y guard no debe tenerlo.'
   }
   if (lower.includes('email') && lower.includes('already')) {
     return 'Ese correo ya existe. Usa otro correo o intenta con modo invite.'

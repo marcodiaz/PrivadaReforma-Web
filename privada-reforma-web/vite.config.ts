@@ -9,18 +9,18 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['vite.svg'],
+      includeAssets: ['privada-ai-logo.svg'],
       manifest: {
         name: 'Privada Reforma',
         short_name: 'Privada Reforma',
         description: 'Operacion residencial para residentes, guardia y admin',
-        theme_color: '#0c6c59',
-        background_color: '#f4f6f8',
+        theme_color: '#0a0a0a',
+        background_color: '#0a0a0a',
         display: 'standalone',
         start_url: '/login',
         icons: [
           {
-            src: '/vite.svg',
+            src: '/privada-ai-logo.svg',
             sizes: 'any',
             type: 'image/svg+xml',
           },
