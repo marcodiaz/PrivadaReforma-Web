@@ -101,25 +101,6 @@ export function AppLayout() {
   const { pathname } = useLocation()
   const navigate = useNavigate()
   const { authLoading, getHeldPackageCountForUser, logout, moderationReports, session } = useDemoData()
-
-  if (authLoading) {
-    return <AuthLoadingShell />
-  }
-
-  if (!session) {
-    return <Navigate to="/login" replace />
-  }
-
-  const expectedIsAdminArea = pathname.startsWith('/admin')
-  const canUseAdminArea = ['admin', 'board'].includes(session.role)
-  const canUseAppArea = ['resident', 'tenant', 'board', 'admin'].includes(session.role)
-  if (expectedIsAdminArea && !canUseAdminArea) {
-    return <Navigate to={getRoleLandingPath(session.role)} replace />
-  }
-  if (!expectedIsAdminArea && !canUseAppArea) {
-    return <Navigate to={getRoleLandingPath(session.role)} replace />
-  }
-
   const isAdmin = pathname.startsWith('/admin')
   const activeAdminSection = resolveAdminSection(pathname)
   const navItems = isAdmin ? adminNavBySection[activeAdminSection] : residentNav
@@ -145,6 +126,24 @@ export function AppLayout() {
     }
     navigate(adminNavBySection[storedSection][0].to, { replace: true })
   }, [isAdmin, navigate, pathname])
+
+  if (authLoading) {
+    return <AuthLoadingShell />
+  }
+
+  if (!session) {
+    return <Navigate to="/login" replace />
+  }
+
+  const expectedIsAdminArea = pathname.startsWith('/admin')
+  const canUseAdminArea = ['admin', 'board'].includes(session.role)
+  const canUseAppArea = ['resident', 'tenant', 'board', 'admin'].includes(session.role)
+  if (expectedIsAdminArea && !canUseAdminArea) {
+    return <Navigate to={getRoleLandingPath(session.role)} replace />
+  }
+  if (!expectedIsAdminArea && !canUseAppArea) {
+    return <Navigate to={getRoleLandingPath(session.role)} replace />
+  }
 
   return (
     <div className="min-h-dvh bg-[var(--color-bg)]">

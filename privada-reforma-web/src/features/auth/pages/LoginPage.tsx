@@ -5,9 +5,22 @@ import { useDemoData } from '../../../shared/state/DemoDataContext'
 import { supabase } from '../../../shared/supabase/client'
 import { AppButton, AppCard } from '../../../shared/ui'
 
+function detectAuthFlowFromUrl() {
+  const hash = window.location.hash.startsWith('#')
+    ? window.location.hash.slice(1)
+    : window.location.hash
+  const hashParams = new URLSearchParams(hash)
+  const searchParams = new URLSearchParams(window.location.search)
+  const flowType = hashParams.get('type') ?? searchParams.get('type')
+  const flowError = hashParams.get('error_description') ?? searchParams.get('error_description')
+  const isInviteOrRecovery = flowType === 'invite' || flowType === 'recovery'
+  return { flowError, isInviteOrRecovery }
+}
+
 export function LoginPage() {
   const navigate = useNavigate()
   const { session, authLoading, login } = useDemoData()
+  const authFlow = detectAuthFlowFromUrl()
   const [authMode, setAuthMode] = useState<'password' | 'magic_link'>('password')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -15,21 +28,14 @@ export function LoginPage() {
   const [errorMessage, setErrorMessage] = useState('')
   const [magicLinkMessage, setMagicLinkMessage] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const [needsPasswordSetup, setNeedsPasswordSetup] = useState(false)
+  const [needsPasswordSetup, setNeedsPasswordSetup] = useState(() => authFlow.isInviteOrRecovery)
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [passwordSetupError, setPasswordSetupError] = useState('')
   const [settingPassword, setSettingPassword] = useState(false)
 
   useEffect(() => {
-    const hash = window.location.hash.startsWith('#')
-      ? window.location.hash.slice(1)
-      : window.location.hash
-    const hashParams = new URLSearchParams(hash)
-    const searchParams = new URLSearchParams(window.location.search)
-    const flowType = hashParams.get('type') ?? searchParams.get('type')
-    const flowError = hashParams.get('error_description') ?? searchParams.get('error_description')
-
+    const { flowError, isInviteOrRecovery } = detectAuthFlowFromUrl()
     if (flowError) {
       try {
         setErrorMessage(decodeURIComponent(flowError))
@@ -37,7 +43,7 @@ export function LoginPage() {
         setErrorMessage(flowError)
       }
     }
-    if (flowType === 'invite' || flowType === 'recovery') {
+    if (isInviteOrRecovery) {
       setNeedsPasswordSetup(true)
     }
   }, [])
@@ -145,11 +151,11 @@ export function LoginPage() {
     if (!session) {
       return
     }
-    if (needsPasswordSetup) {
+    if (needsPasswordSetup || authFlow.isInviteOrRecovery) {
       return
     }
     navigate(getRoleLandingPath(session.role), { replace: true })
-  }, [navigate, needsPasswordSetup, session])
+  }, [authFlow.isInviteOrRecovery, navigate, needsPasswordSetup, session])
 
   if (authLoading) {
     return <AppCard className="text-sm text-[var(--color-text-muted)]">Validando sesion...</AppCard>
