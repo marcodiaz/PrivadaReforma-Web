@@ -578,6 +578,7 @@ export function AppParkingPage() {
   const [description, setDescription] = useState('Vehiculo no autorizado ocupando mi lugar.')
   const [photoUrl, setPhotoUrl] = useState('')
   const [photoName, setPhotoName] = useState('')
+  const [photoInputKey, setPhotoInputKey] = useState(0)
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const [message, setMessage] = useState('')
   const myUnit = session?.unitNumber
@@ -617,9 +618,10 @@ export function AppParkingPage() {
     if (result.ok) {
       setReportType('own_spot')
       setVisitorParkingSpot('')
-      setDescription('Vehiculo no autorizado ocupando mi lugar.')
+      setDescription('')
       setPhotoUrl('')
       setPhotoName('')
+      setPhotoInputKey((previous) => previous + 1)
     }
   }
 
@@ -695,6 +697,7 @@ export function AppParkingPage() {
             accept="image/*"
             capture="environment"
             className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 file:mr-3 file:rounded-lg file:border-0 file:bg-zinc-800 file:px-3 file:py-1 file:text-xs file:font-semibold file:text-zinc-100"
+            key={photoInputKey}
             onChange={(event) => void handlePhotoSelection(event.target.files?.[0] ?? null)}
             type="file"
           />
