@@ -5,6 +5,7 @@ export type UiComponent = {
 export { AppButton } from './AppButton'
 export { AppCard } from './AppCard'
 export { GlobalStatus } from './GlobalStatus'
+export { MaintenancePhoto } from './MaintenancePhoto'
 export { MarketplacePhoto } from './MarketplacePhoto'
 export { ModulePlaceholder } from './ModulePlaceholder'
 export { PackagePhoto } from './PackagePhoto'

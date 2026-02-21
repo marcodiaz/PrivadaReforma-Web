@@ -16,6 +16,8 @@ const PACKAGE_BUCKET = 'package-photos'
 const PACKAGE_PHOTO_SIGNED_URL_SECONDS = 15 * 60
 const PET_BUCKET = 'pet-photos'
 const PET_PHOTO_SIGNED_URL_SECONDS = 15 * 60
+const MAINTENANCE_BUCKET = 'maintenance-photos'
+const MAINTENANCE_PHOTO_SIGNED_URL_SECONDS = 15 * 60
 const MARKETPLACE_BUCKET = 'marketplace-photos'
 const MARKETPLACE_PHOTO_SIGNED_URL_SECONDS = 15 * 60
 
@@ -985,6 +987,36 @@ export async function uploadMarketplacePhoto(file: Blob) {
   return path
 }
 
+export async function uploadMaintenancePhoto(file: Blob) {
+  if (!supabase) {
+    throw new Error('Supabase no esta configurado.')
+  }
+
+  const path = `maintenance/${new Date().getUTCFullYear()}/${crypto.randomUUID()}.webp`
+  const bucket = supabase.storage.from(MAINTENANCE_BUCKET)
+
+  const signedUpload = await bucket.createSignedUploadUrl(path)
+  if (!signedUpload.error && signedUpload.data?.token) {
+    const uploadResult = await bucket.uploadToSignedUrl(path, signedUpload.data.token, file, {
+      contentType: 'image/webp',
+      upsert: false,
+    })
+    if (uploadResult.error) {
+      throw uploadResult.error
+    }
+  } else {
+    const directUpload = await bucket.upload(path, file, {
+      contentType: 'image/webp',
+      upsert: false,
+    })
+    if (directUpload.error) {
+      throw directUpload.error
+    }
+  }
+
+  return path
+}
+
 function isDirectDisplayUrl(value: string) {
   return (
     value.startsWith('http://') ||
@@ -1062,6 +1094,31 @@ export async function getSignedMarketplacePhotoUrl(
 
   const { data, error } = await supabase.storage
     .from(MARKETPLACE_BUCKET)
+    .createSignedUrl(path, expiresSeconds)
+
+  if (error || !data?.signedUrl) {
+    throw new Error(error?.message ?? 'No fue posible crear signed URL.')
+  }
+
+  return data.signedUrl
+}
+
+export async function getSignedMaintenancePhotoUrl(
+  path: string,
+  expiresSeconds = MAINTENANCE_PHOTO_SIGNED_URL_SECONDS
+): Promise<string> {
+  if (!path) {
+    throw new Error('Storage path requerido.')
+  }
+  if (isDirectDisplayUrl(path)) {
+    return path
+  }
+  if (!supabase) {
+    throw new Error('Supabase no esta configurado.')
+  }
+
+  const { data, error } = await supabase.storage
+    .from(MAINTENANCE_BUCKET)
     .createSignedUrl(path, expiresSeconds)
 
   if (error || !data?.signedUrl) {

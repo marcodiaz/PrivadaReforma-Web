@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ChangeEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { AppButton, AppCard, MarketplacePhoto, ModulePlaceholder, PetPhoto } from '../../shared/ui'
+import { AppButton, AppCard, MaintenancePhoto, MarketplacePhoto, ModulePlaceholder, PetPhoto } from '../../shared/ui'
 import { useDemoData } from '../../shared/state/DemoDataContext'
 import { sortIncidentsForGuard } from '../incidents/logic'
 import { filterMarketplacePosts } from '../marketplace/logic'
@@ -12,7 +12,12 @@ import {
   normalizeDepartmentCode,
 } from '../access/qrLogic'
 import { isSupabaseConfigured, supabase } from '../../shared/supabase/client'
-import { sendPushTestToUser, uploadMarketplacePhoto, uploadPetPhoto } from '../../shared/supabase/data'
+import {
+  sendPushTestToUser,
+  uploadMaintenancePhoto,
+  uploadMarketplacePhoto,
+  uploadPetPhoto,
+} from '../../shared/supabase/data'
 import {
   getNotificationPermissionState,
   isWebPushConfigured,
@@ -47,7 +52,7 @@ function incidentEmphasis(score: number) {
 
 const reportActionClass =
   'border-zinc-700/80 bg-zinc-900/80 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100'
-const MAX_MARKETPLACE_UPLOAD_BYTES = 15 * 1024 * 1024
+const MAX_IMAGE_UPLOAD_BYTES = 15 * 1024 * 1024
 
 const petBehaviorTraitOptions: Array<{ value: PetProfile['behaviorTraits'][number]; label: string; icon: string }> = [
   { value: 'playful', label: 'Playful', icon: '🎾' },
@@ -764,6 +769,7 @@ export function AppParkingPage() {
   const [photoName, setPhotoName] = useState('')
   const [photoInputKey, setPhotoInputKey] = useState(0)
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const [photoUploadProgress, setPhotoUploadProgress] = useState(0)
   const [message, setMessage] = useState('')
   const myUnit = session?.unitNumber
   const mySpot = getAssignedParkingForUnit(myUnit)
@@ -773,18 +779,28 @@ export function AppParkingPage() {
     if (!file) {
       return
     }
+    if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
+      setMessage('La foto excede 15 MB. Selecciona una imagen mas ligera.')
+      return
+    }
     setUploadingPhoto(true)
+    setPhotoUploadProgress(5)
     setMessage('')
     try {
+      setPhotoUploadProgress(25)
+      const compressedBlob = await compressImageForUpload(file, 1280, 0.8)
+      setPhotoUploadProgress(70)
       const dataUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader()
         reader.onload = () => resolve(String(reader.result))
         reader.onerror = () => reject(new Error('No fue posible leer la foto.'))
-        reader.readAsDataURL(file)
+        reader.readAsDataURL(compressedBlob)
       })
       setPhotoUrl(dataUrl)
       setPhotoName(file.name)
+      setPhotoUploadProgress(100)
     } catch (error) {
+      setPhotoUploadProgress(0)
       setMessage(error instanceof Error ? error.message : 'No se pudo cargar la foto.')
     } finally {
       setUploadingPhoto(false)
@@ -805,6 +821,7 @@ export function AppParkingPage() {
       setDescription('')
       setPhotoUrl('')
       setPhotoName('')
+      setPhotoUploadProgress(0)
       setPhotoInputKey((previous) => previous + 1)
     }
   }
@@ -894,6 +911,23 @@ export function AppParkingPage() {
             />
           ) : null}
         </label>
+        {photoUploadProgress > 0 ? (
+          <div className="space-y-1">
+            <div className="h-2 w-full overflow-hidden rounded-full border border-zinc-700 bg-zinc-900">
+              <div
+                className="h-full rounded-full bg-emerald-500 transition-all"
+                style={{ width: `${photoUploadProgress}%` }}
+              />
+            </div>
+            <p className="text-[11px] text-zinc-400">
+              {uploadingPhoto
+                ? `Procesando imagen ${photoUploadProgress}%`
+                : photoUploadProgress === 100
+                  ? 'Foto lista.'
+                  : ''}
+            </p>
+          </div>
+        ) : null}
         <AppButton block disabled={uploadingPhoto} onClick={handleCreateReport}>
           {uploadingPhoto ? 'Procesando foto...' : 'Reportar a guardia'}
         </AppButton>
@@ -1147,6 +1181,7 @@ export function AppMaintenancePage() {
   const [photoUrl, setPhotoUrl] = useState('')
   const [photoName, setPhotoName] = useState('')
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const [photoUploadProgress, setPhotoUploadProgress] = useState(0)
   const [feedback, setFeedback] = useState('')
 
   const myReports = maintenanceReports.filter((report) => report.createdByUserId === session?.userId)
@@ -1155,24 +1190,35 @@ export function AppMaintenancePage() {
     if (!file) {
       return
     }
+    if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
+      setFeedback('La foto excede 15 MB. Selecciona una imagen mas ligera.')
+      return
+    }
     setUploadingPhoto(true)
+    setPhotoUploadProgress(5)
     setFeedback('')
     try {
+      setPhotoUploadProgress(20)
+      const imageBlob = await compressImageForUpload(file)
+      setPhotoUploadProgress(55)
       if (isSupabaseConfigured && navigator.onLine) {
-        const objectPath = await uploadPetPhoto(file)
+        const objectPath = await uploadMaintenancePhoto(imageBlob)
         setPhotoUrl(objectPath)
         setPhotoName(file.name)
+        setPhotoUploadProgress(100)
       } else {
         const dataUrl = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader()
           reader.onload = () => resolve(String(reader.result))
           reader.onerror = () => reject(new Error('No fue posible leer la foto.'))
-          reader.readAsDataURL(file)
+          reader.readAsDataURL(imageBlob)
         })
         setPhotoUrl(dataUrl)
         setPhotoName(file.name)
+        setPhotoUploadProgress(100)
       }
     } catch (error) {
+      setPhotoUploadProgress(0)
       setFeedback(error instanceof Error ? error.message : 'No se pudo cargar foto.')
     } finally {
       setUploadingPhoto(false)
@@ -1185,6 +1231,7 @@ export function AppMaintenancePage() {
     setReportType('plumbing')
     setPhotoUrl('')
     setPhotoName('')
+    setPhotoUploadProgress(0)
   }
 
   function handleSubmit() {
@@ -1240,7 +1287,7 @@ export function AppMaintenancePage() {
                   {reportTypeLabel(report.reportType)}
                 </span>
               </div>
-              <PetPhoto
+              <MaintenancePhoto
                 alt={`Evidencia ${report.title}`}
                 className="h-36 w-full rounded-xl border border-zinc-700 object-cover"
                 pathOrUrl={report.photoUrl}
@@ -1309,6 +1356,23 @@ export function AppMaintenancePage() {
                 />
                 {photoName ? <p className="text-xs text-zinc-400">Archivo: {photoName}</p> : null}
               </label>
+              {photoUploadProgress > 0 ? (
+                <div className="space-y-1">
+                  <div className="h-2 w-full overflow-hidden rounded-full border border-zinc-700 bg-zinc-900">
+                    <div
+                      className="h-full rounded-full bg-emerald-500 transition-all"
+                      style={{ width: `${photoUploadProgress}%` }}
+                    />
+                  </div>
+                  <p className="text-[11px] text-zinc-400">
+                    {uploadingPhoto
+                      ? `Procesando imagen ${photoUploadProgress}%`
+                      : photoUploadProgress === 100
+                        ? 'Foto lista.'
+                        : ''}
+                  </p>
+                </div>
+              ) : null}
               <AppButton block disabled={uploadingPhoto} onClick={handleSubmit}>
                 {uploadingPhoto ? 'Subiendo foto...' : 'Enviar reporte'}
               </AppButton>
@@ -1578,6 +1642,7 @@ export function AppPetsPage() {
   const [newCommentText, setNewCommentText] = useState('')
   const [feedback, setFeedback] = useState('')
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const [petPhotoUploadProgress, setPetPhotoUploadProgress] = useState(0)
   const [reportingPetPostId, setReportingPetPostId] = useState<string | null>(null)
 
   const selectedPetPost = petPosts.find((post) => post.id === selectedPetPostId) ?? null
@@ -1588,24 +1653,35 @@ export function AppPetsPage() {
     if (!file) {
       return
     }
+    if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
+      setFeedback('La foto excede 15 MB. Selecciona una imagen mas ligera.')
+      return
+    }
     setUploadingPhoto(true)
+    setPetPhotoUploadProgress(5)
     setFeedback('')
     try {
+      setPetPhotoUploadProgress(20)
+      const imageBlob = await compressImageForUpload(file)
+      setPetPhotoUploadProgress(55)
       if (isSupabaseConfigured && navigator.onLine) {
-        const objectPath = await uploadPetPhoto(file)
+        const objectPath = await uploadPetPhoto(imageBlob)
         setPhotoUrl(objectPath)
+        setPetPhotoUploadProgress(100)
         setFeedback('Foto cargada correctamente.')
       } else {
         const dataUrl = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader()
           reader.onload = () => resolve(String(reader.result))
           reader.onerror = () => reject(new Error('No fue posible leer la foto.'))
-          reader.readAsDataURL(file)
+          reader.readAsDataURL(imageBlob)
         })
         setPhotoUrl(dataUrl)
+        setPetPhotoUploadProgress(100)
         setFeedback('Foto guardada localmente (modo sin red).')
       }
     } catch (error) {
+      setPetPhotoUploadProgress(0)
       setFeedback(error instanceof Error ? error.message : 'No se pudo cargar la foto.')
     } finally {
       setUploadingPhoto(false)
@@ -1618,6 +1694,7 @@ export function AppPetsPage() {
     setPhotoUrl('')
     setPetProfile(normalizePetProfile())
     setPetFormStep(1)
+    setPetPhotoUploadProgress(0)
     setIsPetFormOpen(false)
     setSelectedPetPostId(null)
     setEditingPetPostId(null)
@@ -1640,6 +1717,7 @@ export function AppPetsPage() {
     setPhotoUrl(post.photoUrl)
     setPetProfile(normalizePetProfile(post.profile))
     setPetFormStep(1)
+    setPetPhotoUploadProgress(0)
     setFeedback('')
   }
 
@@ -1650,6 +1728,7 @@ export function AppPetsPage() {
     setPhotoUrl('')
     setPetProfile(normalizePetProfile())
     setPetFormStep(1)
+    setPetPhotoUploadProgress(0)
     setFeedback('')
     setIsPetFormOpen(true)
   }
@@ -1843,6 +1922,23 @@ export function AppPetsPage() {
                   type="file"
                 />
               </label>
+              {petPhotoUploadProgress > 0 ? (
+                <div className="space-y-1">
+                  <div className="h-2 w-full overflow-hidden rounded-full border border-zinc-700 bg-zinc-900">
+                    <div
+                      className="h-full rounded-full bg-emerald-500 transition-all"
+                      style={{ width: `${petPhotoUploadProgress}%` }}
+                    />
+                  </div>
+                  <p className="text-[11px] text-zinc-400">
+                    {uploadingPhoto
+                      ? `Procesando imagen ${petPhotoUploadProgress}%`
+                      : petPhotoUploadProgress === 100
+                        ? 'Foto lista.'
+                        : ''}
+                  </p>
+                </div>
+              ) : null}
               <textarea
                 className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
                 onChange={(event) => setComments(event.target.value)}
@@ -2622,7 +2718,7 @@ export function AppMarketplacePage() {
     if (!file) {
       return
     }
-    if (file.size > MAX_MARKETPLACE_UPLOAD_BYTES) {
+    if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
       setFeedback('La foto excede 15 MB. Selecciona una imagen mas ligera.')
       return
     }
