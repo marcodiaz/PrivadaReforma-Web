@@ -264,6 +264,20 @@ export const petPostCommentSchema = z.object({
 
 export type PetPostComment = z.infer<typeof petPostCommentSchema>
 
+export const appCommentTargetTypeSchema = z.enum(['poll', 'marketplace_post', 'directory_entry'])
+
+export const appCommentSchema = z.object({
+  id: z.string(),
+  targetType: appCommentTargetTypeSchema,
+  targetId: z.string(),
+  message: z.string(),
+  createdAt: z.string(),
+  createdByUserId: z.string(),
+  createdByName: z.string(),
+})
+
+export type AppComment = z.infer<typeof appCommentSchema>
+
 export const maintenanceReportTypeSchema = z.enum([
   'plumbing',
   'electrical',
@@ -280,7 +294,7 @@ export const maintenanceReportSchema = z.object({
   title: z.string(),
   description: z.string(),
   reportType: maintenanceReportTypeSchema,
-  photoUrl: z.string(),
+  photoUrl: z.string().optional(),
   unitNumber: z.string(),
   status: maintenanceReportStatusSchema,
   createdAt: z.string(),
@@ -289,6 +303,36 @@ export const maintenanceReportSchema = z.object({
 })
 
 export type MaintenanceReport = z.infer<typeof maintenanceReportSchema>
+
+export const directoryServiceTypeSchema = z.enum([
+  'plumbing',
+  'electrical',
+  'carpentry',
+  'painting',
+  'gardening',
+  'cleaning',
+  'security',
+  'internet',
+  'appliances',
+  'other',
+])
+
+export const directoryEntrySchema = z.object({
+  id: z.string(),
+  providerName: z.string(),
+  contactName: z.string().optional(),
+  contactPhone: z.string(),
+  contactWhatsapp: z.string().optional(),
+  notes: z.string().optional(),
+  serviceTypes: directoryServiceTypeSchema.array().min(1),
+  otherServiceType: z.string().optional(),
+  photoUrl: z.string().optional(),
+  createdAt: z.string(),
+  createdByUserId: z.string(),
+  createdByName: z.string(),
+})
+
+export type DirectoryEntry = z.infer<typeof directoryEntrySchema>
 
 export const marketplaceConditionSchema = z.enum(['new', 'used'])
 export const marketplaceStatusSchema = z.enum(['active', 'sold'])
@@ -489,6 +533,8 @@ export const LOCAL_PARKING_REPORTS: ParkingReport[] = []
 export const LOCAL_POLLS: Poll[] = []
 export const LOCAL_PET_POSTS: PetPost[] = []
 export const LOCAL_PET_POST_COMMENTS: PetPostComment[] = []
+export const LOCAL_APP_COMMENTS: AppComment[] = []
 export const LOCAL_MARKETPLACE_POSTS: MarketplacePost[] = []
 export const LOCAL_MODERATION_REPORTS: ModerationReport[] = []
 export const LOCAL_MAINTENANCE_REPORTS: MaintenanceReport[] = []
+export const LOCAL_DIRECTORY_ENTRIES: DirectoryEntry[] = []

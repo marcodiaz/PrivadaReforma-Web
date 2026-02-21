@@ -1,10 +1,18 @@
 import { useEffect, useMemo, useState, type ChangeEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { AppButton, AppCard, MaintenancePhoto, MarketplacePhoto, ModulePlaceholder, PetPhoto } from '../../shared/ui'
+import {
+  AppButton,
+  AppCard,
+  DirectoryPhoto,
+  MaintenancePhoto,
+  MarketplacePhoto,
+  ModulePlaceholder,
+  PetPhoto,
+} from '../../shared/ui'
 import { useDemoData } from '../../shared/state/DemoDataContext'
 import { sortIncidentsForGuard } from '../incidents/logic'
 import { filterMarketplacePosts } from '../marketplace/logic'
-import type { Incident, PetProfile, Poll } from '../../shared/domain/demoData'
+import type { DirectoryEntry, Incident, PetProfile, Poll } from '../../shared/domain/demoData'
 import {
   buildQrImageUrl,
   buildQrPayload,
@@ -14,11 +22,13 @@ import {
 import { isSupabaseConfigured, supabase } from '../../shared/supabase/client'
 import {
   sendPushTestToUser,
+  uploadDirectoryPhoto,
   uploadMaintenancePhoto,
   uploadMarketplacePhoto,
   uploadPetPhoto,
 } from '../../shared/supabase/data'
 import {
+  hasDevicePushSubscription,
   getNotificationPermissionState,
   isWebPushConfigured,
   isWebPushSupported,
@@ -53,6 +63,11 @@ function incidentEmphasis(score: number) {
 const reportActionClass =
   'border-zinc-700/80 bg-zinc-900/80 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100'
 const MAX_IMAGE_UPLOAD_BYTES = 15 * 1024 * 1024
+const HOME_GROUP_STORAGE_KEY = 'app_home_group_v1'
+const POLL_COMMENTS_READ_KEY = 'poll_comments_read_v1'
+const PET_COMMENTS_READ_KEY = 'pet_comments_read_v1'
+const MARKET_COMMENTS_READ_KEY = 'market_comments_read_v1'
+const DIRECTORY_COMMENTS_READ_KEY = 'directory_comments_read_v1'
 
 const petBehaviorTraitOptions: Array<{ value: PetProfile['behaviorTraits'][number]; label: string; icon: string }> = [
   { value: 'playful', label: 'Playful', icon: '🎾' },
@@ -108,8 +123,70 @@ const petAvailableForOptions: Array<{
   { value: 'walk_groups', label: 'Walk groups', icon: '🚶' },
 ]
 
+const directoryServiceTypeOptions: Array<{
+  value: DirectoryEntry['serviceTypes'][number]
+  label: string
+  icon: string
+}> = [
+  { value: 'plumbing', label: 'Plomeria', icon: '🔧' },
+  { value: 'electrical', label: 'Electrico', icon: '⚡' },
+  { value: 'carpentry', label: 'Carpinteria', icon: '🪚' },
+  { value: 'painting', label: 'Pintura', icon: '🎨' },
+  { value: 'gardening', label: 'Jardineria', icon: '🌿' },
+  { value: 'cleaning', label: 'Limpieza', icon: '🧹' },
+  { value: 'security', label: 'Seguridad', icon: '🛡️' },
+  { value: 'internet', label: 'Internet', icon: '🌐' },
+  { value: 'appliances', label: 'Electrodomesticos', icon: '🧰' },
+  { value: 'other', label: 'Otro', icon: '➕' },
+]
+
 function toggleInArray<T extends string>(current: T[], value: T) {
   return current.includes(value) ? current.filter((entry) => entry !== value) : [...current, value]
+}
+
+function readReadMap(key: string): Record<string, string> {
+  if (typeof window === 'undefined') {
+    return {}
+  }
+  try {
+    const raw = window.localStorage.getItem(key)
+    if (!raw) {
+      return {}
+    }
+    const parsed = JSON.parse(raw) as Record<string, string>
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+function persistReadMap(key: string, value: Record<string, string>) {
+  if (typeof window === 'undefined') {
+    return
+  }
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    // no-op
+  }
+}
+
+function hasUnreadByTarget(
+  entries: Array<{ targetId: string; createdByUserId: string; createdAt: string }>,
+  targetId: string,
+  currentUserId?: string,
+  readAt?: string
+) {
+  const readTimestamp = readAt ? new Date(readAt).getTime() : 0
+  return entries.some((entry) => {
+    if (entry.targetId !== targetId) {
+      return false
+    }
+    if (entry.createdByUserId === currentUserId) {
+      return false
+    }
+    return new Date(entry.createdAt).getTime() > readTimestamp
+  })
 }
 
 function normalizeEnergyLevel(
@@ -234,11 +311,29 @@ export function AppHomePage() {
     petPosts,
     maintenanceReports,
     marketplacePosts,
+    directoryEntries,
     remoteDataLoading,
     session,
   } =
     useDemoData()
   const navigate = useNavigate()
+  const [activeGroup, setActiveGroup] = useState<'community' | 'notices' | 'ops' | 'reports'>(() => {
+    if (typeof window === 'undefined') {
+      return 'community'
+    }
+    const stored = window.localStorage.getItem(HOME_GROUP_STORAGE_KEY)
+    return stored === 'community' || stored === 'notices' || stored === 'ops' || stored === 'reports'
+      ? stored
+      : 'community'
+  })
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+    window.localStorage.setItem(HOME_GROUP_STORAGE_KEY, activeGroup)
+  }, [activeGroup])
+
   const myQrPasses = qrPasses.filter((pass) => pass.createdByUserId === session?.userId)
   const activeAlerts = incidents.filter((incident) => incident.supportScore >= 3).length
   const activeQr = myQrPasses.filter((pass) => pass.status === 'active').length
@@ -251,24 +346,43 @@ export function AppHomePage() {
     (report) => report.status === 'open' && report.createdByUserId === session?.userId
   ).length
   const activeMarketPosts = marketplacePosts.filter((post) => post.status === 'active').length
+  const activeDirectoryEntries = directoryEntries.length
+  const pendingAuditItems = auditLog.length
   const profileTitle = `${session?.fullName ?? tx('Usuario', 'User')} - ${session?.unitNumber ?? tx('Sin departamento', 'No unit')}`
-  const menuItems = [
-    { label: tx('Comunicados', 'Announcements'), icon: 'CO', action: () => navigate('/app/announcements') },
-    { label: tx('Visitas', 'Visits'), icon: 'VI', action: () => navigate('/app/visits') },
-    { label: tx('Reservaciones', 'Reservations'), icon: 'RE', action: () => navigate('/app/reservations') },
-    { label: tx('Estacionamiento', 'Parking'), icon: 'ES', action: () => navigate('/app/parking') },
-    { label: tx('Votaciones', 'Polls'), icon: 'VO', action: () => navigate('/app/polls') },
-    { label: tx('Mascotas', 'Pets'), icon: 'MA', action: () => navigate('/app/pets') },
-    { label: tx('Rep. Manto', 'Maint. Report'), icon: 'RM', action: () => navigate('/app/maintenance') },
-    { label: 'Marketplace', icon: 'MK', action: () => navigate('/app/marketplace') },
-    ...(session?.role === 'resident'
-      ? [{ label: tx('Agregar Inquilino', 'Add Tenant'), icon: 'TI', action: () => navigate('/app/add-tenant') }]
-      : []),
-    { label: tx('Paquetes', 'Packages'), icon: 'PA', action: () => navigate('/app/packages') },
-    { label: tx('Incidencias', 'Incidents'), icon: 'IN', action: () => navigate('/app/incidents') },
-    { label: tx('Perfil', 'Profile'), icon: 'PE', action: () => navigate('/app/profile') },
-    { label: tx('Estado de Cuenta', 'Account Statement'), icon: 'EC', action: () => navigate('/app/finance') },
-  ]
+  const groupedMenu: Record<
+    'community' | 'notices' | 'ops' | 'reports',
+    Array<{ label: string; icon: string; action: () => void }>
+  > = {
+    community: [
+      { label: tx('Visitas', 'Visits'), icon: 'VI', action: () => navigate('/app/visits') },
+      { label: tx('Mascotas', 'Pets'), icon: 'MA', action: () => navigate('/app/pets') },
+      { label: 'Marketplace', icon: 'MK', action: () => navigate('/app/marketplace') },
+      { label: tx('Directorio', 'Directory'), icon: 'DI', action: () => navigate('/app/directory') },
+      { label: tx('Paquetes', 'Packages'), icon: 'PA', action: () => navigate('/app/packages') },
+    ],
+    notices: [
+      { label: tx('Comunicados', 'Announcements'), icon: 'CO', action: () => navigate('/app/announcements') },
+      { label: tx('Votaciones', 'Polls'), icon: 'VO', action: () => navigate('/app/polls') },
+      { label: tx('Incidencias', 'Incidents'), icon: 'IN', action: () => navigate('/app/incidents') },
+    ],
+    ops: [
+      { label: tx('Reservaciones', 'Reservations'), icon: 'RE', action: () => navigate('/app/reservations') },
+      { label: tx('Estacionamiento', 'Parking'), icon: 'ES', action: () => navigate('/app/parking') },
+      { label: tx('Rep. Manto', 'Maint. Report'), icon: 'RM', action: () => navigate('/app/maintenance') },
+      { label: tx('Estado de Cuenta', 'Account Statement'), icon: 'EC', action: () => navigate('/app/finance') },
+      { label: tx('Perfil', 'Profile'), icon: 'PE', action: () => navigate('/app/profile') },
+      ...(session?.role === 'resident'
+        ? [{ label: tx('Agregar Inquilino', 'Add Tenant'), icon: 'TI', action: () => navigate('/app/add-tenant') }]
+        : []),
+    ],
+    reports: [
+      { label: tx('Incidencias', 'Incidents'), icon: 'IN', action: () => navigate('/app/incidents') },
+      { label: tx('Estacionamiento', 'Parking'), icon: 'ES', action: () => navigate('/app/parking') },
+      { label: tx('Rep. Manto', 'Maint. Report'), icon: 'RM', action: () => navigate('/app/maintenance') },
+      { label: tx('Votaciones', 'Polls'), icon: 'VO', action: () => navigate('/app/polls') },
+    ],
+  }
+  const menuItems = groupedMenu[activeGroup]
 
   return (
     <div className="space-y-4">
@@ -297,10 +411,6 @@ export function AppHomePage() {
             <p className="text-2xl font-bold text-white">{activeAlerts}</p>
           </AppCard>
         </button>
-        <AppCard className="rounded-xl border-zinc-800 bg-zinc-950 p-3 text-center">
-          <p className="text-[11px] uppercase text-slate-400">{tx('Auditoria', 'Audit')}</p>
-          <p className="text-2xl font-bold text-white">{auditLog.length}</p>
-        </AppCard>
         <button onClick={() => navigate('/app/parking')} type="button">
           <AppCard className="rounded-xl border-zinc-800 bg-zinc-950 p-3 text-center transition hover:border-zinc-500">
             <p className="text-[11px] uppercase text-slate-400">Parking</p>
@@ -331,15 +441,29 @@ export function AppHomePage() {
             <p className="text-2xl font-bold text-white">{activeMarketPosts}</p>
           </AppCard>
         </button>
+        <button onClick={() => navigate('/app/directory')} type="button">
+          <AppCard className="rounded-xl border-zinc-800 bg-zinc-950 p-3 text-center transition hover:border-zinc-500">
+            <p className="text-[11px] uppercase text-slate-400">{tx('Directorio', 'Directory')}</p>
+            <p className="text-2xl font-bold text-white">{activeDirectoryEntries}</p>
+          </AppCard>
+        </button>
       </div>
-      <div className="grid grid-cols-2 gap-2">
-        <AppButton block onClick={() => navigate('/app/reservations')} variant="secondary">
-          {tx('Reservaciones', 'Reservations')}
-        </AppButton>
-        <AppButton block onClick={() => navigate('/app/parking')} variant="secondary">
-          {tx('Reporte Estacionamiento', 'Parking Report')}
-        </AppButton>
-      </div>
+      <AppCard className="rounded-xl border-zinc-800 bg-zinc-950 p-3">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <AppButton block onClick={() => setActiveGroup('community')} variant={activeGroup === 'community' ? 'primary' : 'secondary'}>
+            {tx('Comunidad', 'Community')}
+          </AppButton>
+          <AppButton block onClick={() => setActiveGroup('notices')} variant={activeGroup === 'notices' ? 'primary' : 'secondary'}>
+            {tx('Avisos', 'Notices')}
+          </AppButton>
+          <AppButton block onClick={() => setActiveGroup('ops')} variant={activeGroup === 'ops' ? 'primary' : 'secondary'}>
+            {tx('Administracion/Manto', 'Admin/Maintenance')}
+          </AppButton>
+          <AppButton block onClick={() => setActiveGroup('reports')} variant={activeGroup === 'reports' ? 'primary' : 'secondary'}>
+            {tx('Reportes', 'Reports')}
+          </AppButton>
+        </div>
+      </AppCard>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         {menuItems.map((item) => (
           <button key={item.label} onClick={item.action} type="button">
@@ -354,6 +478,9 @@ export function AppHomePage() {
           </button>
         ))}
       </div>
+      <p className="text-center text-[11px] uppercase tracking-[0.08em] text-zinc-500">
+        {tx('Auditoria historica', 'Audit history')}: {pendingAuditItems}
+      </p>
     </div>
   )
 }
@@ -906,7 +1033,7 @@ export function AppParkingPage() {
           {photoUrl ? (
             <PetPhoto
               alt="Evidencia de estacionamiento"
-              className="h-32 w-full rounded-xl border border-zinc-700 object-cover"
+              className="h-40 w-full rounded-xl border border-zinc-700 bg-zinc-900 object-contain p-1"
               pathOrUrl={photoUrl}
             />
           ) : null}
@@ -956,7 +1083,7 @@ export function AppParkingPage() {
                 {report.photoUrl ? (
                   <PetPhoto
                     alt="Evidencia enviada"
-                    className="mt-2 h-28 w-full rounded-xl border border-zinc-700 object-cover"
+                    className="mt-2 h-40 w-full rounded-xl border border-zinc-700 bg-zinc-900 object-contain p-1"
                     pathOrUrl={report.photoUrl}
                   />
                 ) : null}
@@ -1171,6 +1298,7 @@ export function AppIncidentsPage() {
 }
 
 export function AppMaintenancePage() {
+  const { tx } = useLanguage()
   const { createMaintenanceReport, maintenanceReports, session } = useDemoData()
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [title, setTitle] = useState('')
@@ -1182,6 +1310,7 @@ export function AppMaintenancePage() {
   const [photoName, setPhotoName] = useState('')
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const [photoUploadProgress, setPhotoUploadProgress] = useState(0)
+  const [submitting, setSubmitting] = useState(false)
   const [feedback, setFeedback] = useState('')
 
   const myReports = maintenanceReports.filter((report) => report.createdByUserId === session?.userId)
@@ -1191,7 +1320,7 @@ export function AppMaintenancePage() {
       return
     }
     if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
-      setFeedback('La foto excede 15 MB. Selecciona una imagen mas ligera.')
+      setFeedback(tx('La foto excede 15 MB. Selecciona una imagen mas ligera.', 'Photo exceeds 15 MB. Select a lighter image.'))
       return
     }
     setUploadingPhoto(true)
@@ -1234,18 +1363,24 @@ export function AppMaintenancePage() {
     setPhotoUploadProgress(0)
   }
 
-  function handleSubmit() {
+  async function handleSubmit() {
+    if (uploadingPhoto || submitting) {
+      return
+    }
+    setSubmitting(true)
+    setFeedback(tx('Enviando reporte...', 'Submitting report...'))
     const result = createMaintenanceReport({
       title,
       description,
       reportType,
-      photoUrl,
+      photoUrl: photoUrl || undefined,
     })
-    setFeedback(result.ok ? 'Reporte enviado.' : result.error ?? 'No se pudo enviar.')
+    setFeedback(result.ok ? tx('Reporte enviado.', 'Report sent.') : result.error ?? tx('No se pudo enviar.', 'Could not submit report.'))
     if (result.ok) {
       clearForm()
       setIsCreateModalOpen(false)
     }
+    setSubmitting(false)
   }
 
   function reportTypeLabel(type: typeof reportType) {
@@ -1287,11 +1422,13 @@ export function AppMaintenancePage() {
                   {reportTypeLabel(report.reportType)}
                 </span>
               </div>
-              <MaintenancePhoto
-                alt={`Evidencia ${report.title}`}
-                className="h-36 w-full rounded-xl border border-zinc-700 object-cover"
-                pathOrUrl={report.photoUrl}
-              />
+              {report.photoUrl ? (
+                <MaintenancePhoto
+                  alt={`Evidencia ${report.title}`}
+                  className="h-48 w-full rounded-xl border border-zinc-700 bg-zinc-900 object-contain p-1"
+                  pathOrUrl={report.photoUrl}
+                />
+              ) : null}
               <p className="text-xs text-zinc-300">{report.description}</p>
               <p className="text-xs text-zinc-400">{new Date(report.createdAt).toLocaleString()}</p>
             </AppCard>
@@ -1345,7 +1482,7 @@ export function AppMaintenancePage() {
               />
               <label className="space-y-1">
                 <span className="block text-[11px] uppercase tracking-[0.08em] text-zinc-400">
-                  Foto
+                  {tx('Foto (opcional)', 'Photo (optional)')}
                 </span>
                 <input
                   accept="image/*"
@@ -1373,8 +1510,427 @@ export function AppMaintenancePage() {
                   </p>
                 </div>
               ) : null}
-              <AppButton block disabled={uploadingPhoto} onClick={handleSubmit}>
-                {uploadingPhoto ? 'Subiendo foto...' : 'Enviar reporte'}
+              <AppButton block disabled={uploadingPhoto || submitting} onClick={() => void handleSubmit()}>
+                {uploadingPhoto
+                  ? tx('Subiendo foto...', 'Uploading photo...')
+                  : submitting
+                    ? tx('Enviando reporte...', 'Submitting report...')
+                    : tx('Enviar reporte', 'Submit report')}
+              </AppButton>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+export function AppDirectoryPage() {
+  const { tx } = useLanguage()
+  const { createAppComment, createDirectoryEntry, directoryEntries, appComments, session } = useDemoData()
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+  const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null)
+  const [newCommentText, setNewCommentText] = useState('')
+  const [directoryReadMap, setDirectoryReadMap] = useState<Record<string, string>>(() =>
+    readReadMap(DIRECTORY_COMMENTS_READ_KEY)
+  )
+  const [providerName, setProviderName] = useState('')
+  const [contactName, setContactName] = useState('')
+  const [contactPhone, setContactPhone] = useState('')
+  const [contactWhatsapp, setContactWhatsapp] = useState('')
+  const [serviceTypes, setServiceTypes] = useState<DirectoryEntry['serviceTypes']>([])
+  const [otherServiceType, setOtherServiceType] = useState('')
+  const [notes, setNotes] = useState('')
+  const [photoUrl, setPhotoUrl] = useState('')
+  const [photoName, setPhotoName] = useState('')
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const [photoUploadProgress, setPhotoUploadProgress] = useState(0)
+  const [submitting, setSubmitting] = useState(false)
+  const [feedback, setFeedback] = useState('')
+  const selectedEntry = directoryEntries.find((entry) => entry.id === selectedEntryId) ?? null
+  const directoryComments = appComments.filter((comment) => comment.targetType === 'directory_entry')
+  const selectedEntryComments = directoryComments.filter((comment) => comment.targetId === selectedEntryId)
+
+  function serviceLabel(type: DirectoryEntry['serviceTypes'][number]) {
+    return directoryServiceTypeOptions.find((entry) => entry.value === type)?.label ?? type
+  }
+
+  function toggleServiceType(type: DirectoryEntry['serviceTypes'][number]) {
+    setServiceTypes((current) => toggleInArray(current, type))
+  }
+
+  async function handlePhotoUpload(file: File | null) {
+    if (!file) {
+      return
+    }
+    if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
+      setFeedback(tx('La foto excede 15 MB. Selecciona una imagen mas ligera.', 'Photo exceeds 15 MB. Select a lighter image.'))
+      return
+    }
+    setUploadingPhoto(true)
+    setPhotoUploadProgress(5)
+    setFeedback('')
+    try {
+      setPhotoUploadProgress(20)
+      const imageBlob = await compressImageForUpload(file)
+      setPhotoUploadProgress(55)
+      if (isSupabaseConfigured && navigator.onLine) {
+        const objectPath = await uploadDirectoryPhoto(imageBlob)
+        setPhotoUrl(objectPath)
+        setPhotoName(file.name)
+        setPhotoUploadProgress(100)
+      } else {
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve(String(reader.result))
+          reader.onerror = () => reject(new Error('No fue posible leer la foto.'))
+          reader.readAsDataURL(imageBlob)
+        })
+        setPhotoUrl(dataUrl)
+        setPhotoName(file.name)
+        setPhotoUploadProgress(100)
+      }
+    } catch (error) {
+      setPhotoUploadProgress(0)
+      setFeedback(error instanceof Error ? error.message : tx('No se pudo cargar foto.', 'Could not upload photo.'))
+    } finally {
+      setUploadingPhoto(false)
+    }
+  }
+
+  function clearForm() {
+    setProviderName('')
+    setContactName('')
+    setContactPhone('')
+    setContactWhatsapp('')
+    setServiceTypes([])
+    setOtherServiceType('')
+    setNotes('')
+    setPhotoUrl('')
+    setPhotoName('')
+    setPhotoUploadProgress(0)
+  }
+
+  async function handleSubmit() {
+    if (uploadingPhoto || submitting) {
+      return
+    }
+    setSubmitting(true)
+    setFeedback(tx('Publicando contacto...', 'Publishing contact...'))
+    const result = createDirectoryEntry({
+      providerName,
+      contactName: contactName || undefined,
+      contactPhone,
+      contactWhatsapp: contactWhatsapp || undefined,
+      notes: notes || undefined,
+      serviceTypes,
+      otherServiceType: otherServiceType || undefined,
+      photoUrl: photoUrl || undefined,
+    })
+    setFeedback(result.ok ? tx('Contacto publicado.', 'Contact published.') : result.error ?? tx('No se pudo publicar.', 'Could not publish.'))
+    if (result.ok) {
+      clearForm()
+      setIsCreateModalOpen(false)
+    }
+    setSubmitting(false)
+  }
+
+  function markDirectoryEntryRead(entryId: string) {
+    const timestamp = new Date().toISOString()
+    setDirectoryReadMap((previous) => {
+      const next = { ...previous, [entryId]: timestamp }
+      persistReadMap(DIRECTORY_COMMENTS_READ_KEY, next)
+      return next
+    })
+  }
+
+  function openDirectoryEntryDetail(entryId: string) {
+    setSelectedEntryId(entryId)
+    markDirectoryEntryRead(entryId)
+  }
+
+  function handleCreateDirectoryComment() {
+    if (!selectedEntryId) {
+      return
+    }
+    const result = createAppComment({
+      targetType: 'directory_entry',
+      targetId: selectedEntryId,
+      message: newCommentText,
+    })
+    setFeedback(
+      result.ok
+        ? tx('Comentario publicado.', 'Comment posted.')
+        : result.error ?? tx('No se pudo publicar comentario.', 'Could not post comment.')
+    )
+    if (result.ok) {
+      setNewCommentText('')
+      markDirectoryEntryRead(selectedEntryId)
+    }
+  }
+
+  const sortedEntries = [...directoryEntries].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+
+  return (
+    <div className="space-y-3">
+      <ModulePlaceholder
+        role="Residente / Inquilino"
+        title={tx('Directorio', 'Directory')}
+        description={tx('Contactos recomendados para servicios del condominio.', 'Recommended service contacts for the community.')}
+      />
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-zinc-200">{tx('Contactos compartidos', 'Shared contacts')}</p>
+        <button
+          className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-zinc-700 bg-zinc-900 text-xl font-semibold leading-none text-zinc-100 transition hover:border-zinc-500"
+          onClick={() => setIsCreateModalOpen(true)}
+          type="button"
+        >
+          +
+        </button>
+      </div>
+      {feedback ? <p className="text-xs text-zinc-300">{feedback}</p> : null}
+      <div className="max-h-[52vh] space-y-2 overflow-y-auto pr-1">
+        {sortedEntries.length === 0 ? (
+          <AppCard className="text-sm text-zinc-300">{tx('Aun no hay contactos publicados.', 'There are no published contacts yet.')}</AppCard>
+        ) : (
+          sortedEntries.map((entry) => {
+            const entryCommentCount = directoryComments.filter((comment) => comment.targetId === entry.id).length
+            const hasUnread = hasUnreadByTarget(
+              directoryComments,
+              entry.id,
+              session?.userId,
+              directoryReadMap[entry.id]
+            )
+            return (
+            <AppCard className="space-y-2 border-zinc-800 bg-zinc-950" key={entry.id}>
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-sm font-semibold text-zinc-100">{entry.providerName}</p>
+                  <p className="text-xs text-zinc-400">{entry.contactName || tx('Sin nombre de contacto', 'No contact name')}</p>
+                </div>
+                <span className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-1 text-[10px] font-semibold uppercase text-zinc-300">
+                  {entry.serviceTypes.length} {tx('servicios', 'services')}
+                </span>
+              </div>
+              {entry.photoUrl ? (
+                <DirectoryPhoto
+                  alt={`Servicio ${entry.providerName}`}
+                  className="h-48 w-full rounded-xl border border-zinc-700 bg-zinc-900 object-contain p-1"
+                  pathOrUrl={entry.photoUrl}
+                />
+              ) : null}
+              <div className="flex flex-wrap gap-1">
+                {entry.serviceTypes.map((type) => (
+                  <span
+                    className="inline-flex items-center rounded-full border border-zinc-700 bg-zinc-900 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.06em] text-zinc-300"
+                    key={`${entry.id}-${type}`}
+                  >
+                    {serviceLabel(type)}
+                  </span>
+                ))}
+                {entry.otherServiceType ? (
+                  <span className="inline-flex items-center rounded-full border border-zinc-700 bg-zinc-900 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.06em] text-zinc-300">
+                    {entry.otherServiceType}
+                  </span>
+                ) : null}
+              </div>
+              <p className="text-xs text-zinc-300">
+                {tx('Telefono', 'Phone')}: {entry.contactPhone}
+              </p>
+              <button
+                className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs font-semibold text-zinc-200 transition hover:border-zinc-500"
+                onClick={() => openDirectoryEntryDetail(entry.id)}
+                type="button"
+              >
+                {tx('Comentarios', 'Comments')}: {entryCommentCount} {hasUnread ? '🔔' : ''}
+              </button>
+              {entry.contactWhatsapp ? (
+                <a
+                  className="inline-flex w-full items-center justify-center rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm font-semibold text-emerald-200"
+                  href={`https://wa.me/${entry.contactWhatsapp.replace(/\D/g, '')}`}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  WhatsApp
+                </a>
+              ) : null}
+              {entry.notes ? <p className="text-xs text-zinc-300">{entry.notes}</p> : null}
+              <p className="text-xs text-zinc-400">
+                {tx('Publicado por', 'Posted by')}: {entry.createdByName} | {new Date(entry.createdAt).toLocaleString()}
+              </p>
+            </AppCard>
+            )
+          })
+        )}
+      </div>
+
+      {selectedEntry ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/55 p-4 sm:items-center">
+          <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-950 p-3 shadow-2xl">
+            <div className="mb-3 flex items-start justify-between gap-2">
+              <div>
+                <p className="text-base font-semibold text-zinc-100">{selectedEntry.providerName}</p>
+                <p className="text-xs text-zinc-400">{selectedEntry.contactName || tx('Sin nombre de contacto', 'No contact name')}</p>
+              </div>
+              <AppButton
+                className="px-2 py-1 text-xs"
+                onClick={() => {
+                  setSelectedEntryId(null)
+                  setNewCommentText('')
+                }}
+                variant="secondary"
+              >
+                {tx('Cerrar', 'Close')}
+              </AppButton>
+            </div>
+            {selectedEntry.photoUrl ? (
+              <DirectoryPhoto
+                alt={`Servicio ${selectedEntry.providerName}`}
+                className="mb-2 h-64 w-full rounded-xl border border-zinc-700 bg-zinc-900 object-contain p-1"
+                pathOrUrl={selectedEntry.photoUrl}
+              />
+            ) : null}
+            <p className="text-xs text-zinc-300">{tx('Telefono', 'Phone')}: {selectedEntry.contactPhone}</p>
+            {selectedEntry.notes ? <p className="mb-2 mt-2 text-sm text-zinc-300">{selectedEntry.notes}</p> : null}
+            <div className="mt-3 space-y-2 rounded-xl border border-zinc-800 bg-zinc-900 p-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-400">
+                {tx('Comentarios', 'Comments')} ({selectedEntryComments.length})
+              </p>
+              {selectedEntryComments.length === 0 ? (
+                <p className="text-xs text-zinc-400">{tx('Sin comentarios por ahora.', 'No comments yet.')}</p>
+              ) : (
+                <div className="max-h-40 space-y-2 overflow-y-auto pr-1">
+                  {selectedEntryComments.map((comment) => (
+                    <div className="rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2" key={comment.id}>
+                      <p className="text-[11px] text-zinc-400">
+                        {comment.createdByName} | {new Date(comment.createdAt).toLocaleString()}
+                      </p>
+                      <p className="text-xs text-zinc-200">{comment.message}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <textarea
+                className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                onChange={(event) => setNewCommentText(event.target.value)}
+                placeholder={tx('Escribe un comentario', 'Write a comment')}
+                rows={2}
+                value={newCommentText}
+              />
+              <AppButton block onClick={handleCreateDirectoryComment}>
+                {tx('Comentar', 'Comment')}
+              </AppButton>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isCreateModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 sm:items-center">
+          <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-950 p-3 shadow-2xl">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <p className="text-sm font-semibold text-zinc-100">{tx('Nuevo contacto', 'New contact')}</p>
+              <AppButton className="px-2 py-1 text-xs" onClick={() => setIsCreateModalOpen(false)} variant="secondary">
+                {tx('Cerrar', 'Close')}
+              </AppButton>
+            </div>
+            <div className="space-y-3">
+              <input
+                className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                onChange={(event) => setProviderName(event.target.value)}
+                placeholder={tx('Nombre del proveedor', 'Provider name')}
+                value={providerName}
+              />
+              <input
+                className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                onChange={(event) => setContactName(event.target.value)}
+                placeholder={tx('Nombre del contacto (opcional)', 'Contact name (optional)')}
+                value={contactName}
+              />
+              <input
+                className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                onChange={(event) => setContactPhone(event.target.value)}
+                placeholder={tx('Telefono de contacto', 'Contact phone')}
+                value={contactPhone}
+              />
+              <input
+                className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                onChange={(event) => setContactWhatsapp(event.target.value)}
+                placeholder={tx('WhatsApp (opcional)', 'WhatsApp (optional)')}
+                value={contactWhatsapp}
+              />
+              <div className="space-y-2 rounded-xl border border-zinc-800 bg-zinc-900 p-3">
+                <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">{tx('Tipo de servicio', 'Service type')}</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {directoryServiceTypeOptions.map((option) => {
+                    const selected = serviceTypes.includes(option.value)
+                    return (
+                      <button
+                        className={`rounded-xl border px-2 py-2 text-xs font-medium transition ${
+                          selected
+                            ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-200'
+                            : 'border-zinc-700 bg-zinc-900 text-zinc-200'
+                        }`}
+                        key={option.value}
+                        onClick={() => toggleServiceType(option.value)}
+                        type="button"
+                      >
+                        {option.icon} {option.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+              {serviceTypes.includes('other') ? (
+                <input
+                  className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                  onChange={(event) => setOtherServiceType(event.target.value)}
+                  placeholder={tx('Especifica el servicio', 'Specify service')}
+                  value={otherServiceType}
+                />
+              ) : null}
+              <textarea
+                className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                onChange={(event) => setNotes(event.target.value)}
+                placeholder={tx('Notas (opcional)', 'Notes (optional)')}
+                rows={3}
+                value={notes}
+              />
+              <label className="space-y-1">
+                <span className="block text-[11px] uppercase tracking-[0.08em] text-zinc-400">
+                  {tx('Foto (opcional)', 'Photo (optional)')}
+                </span>
+                <input
+                  accept="image/*"
+                  className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 file:mr-3 file:rounded-lg file:border-0 file:bg-zinc-800 file:px-3 file:py-1 file:text-xs file:font-semibold file:text-zinc-100"
+                  onChange={(event) => void handlePhotoUpload(event.target.files?.[0] ?? null)}
+                  type="file"
+                />
+                {photoName ? <p className="text-xs text-zinc-400">Archivo: {photoName}</p> : null}
+              </label>
+              {photoUploadProgress > 0 ? (
+                <div className="space-y-1">
+                  <div className="h-2 w-full overflow-hidden rounded-full border border-zinc-700 bg-zinc-900">
+                    <div
+                      className="h-full rounded-full bg-emerald-500 transition-all"
+                      style={{ width: `${photoUploadProgress}%` }}
+                    />
+                  </div>
+                  <p className="text-[11px] text-zinc-400">
+                    {uploadingPhoto
+                      ? `Procesando imagen ${photoUploadProgress}%`
+                      : photoUploadProgress === 100
+                        ? tx('Foto lista.', 'Photo ready.')
+                        : ''}
+                  </p>
+                </div>
+              ) : null}
+              <AppButton block disabled={uploadingPhoto || submitting} onClick={() => void handleSubmit()}>
+                {uploadingPhoto
+                  ? tx('Subiendo foto...', 'Uploading photo...')
+                  : submitting
+                    ? tx('Publicando...', 'Publishing...')
+                    : tx('Publicar en directorio', 'Publish to directory')}
               </AppButton>
             </div>
           </div>
@@ -1437,12 +1993,18 @@ function getPollStatusLabel(poll: Poll) {
 }
 
 export function AppPollsPage() {
-  const { createPoll, deletePoll, endPoll, polls, session, votePoll } = useDemoData()
+  const { appComments, createAppComment, createPoll, deletePoll, endPoll, polls, session, votePoll } = useDemoData()
   const [title, setTitle] = useState('')
   const [mode, setMode] = useState<'yes_no' | 'multiple'>('yes_no')
   const [optionsText, setOptionsText] = useState('')
   const [durationDays, setDurationDays] = useState(1)
   const [feedback, setFeedback] = useState('')
+  const [selectedPollId, setSelectedPollId] = useState<string | null>(null)
+  const [newCommentText, setNewCommentText] = useState('')
+  const [pollReadMap, setPollReadMap] = useState<Record<string, string>>(() => readReadMap(POLL_COMMENTS_READ_KEY))
+  const pollComments = appComments.filter((comment) => comment.targetType === 'poll')
+  const selectedPoll = polls.find((poll) => poll.id === selectedPollId) ?? null
+  const selectedPollComments = pollComments.filter((comment) => comment.targetId === selectedPollId)
 
   function handleCreatePoll() {
     const options =
@@ -1459,6 +2021,36 @@ export function AppPollsPage() {
       setOptionsText('')
       setMode('yes_no')
       setDurationDays(1)
+    }
+  }
+
+  function markPollRead(pollId: string) {
+    const timestamp = new Date().toISOString()
+    setPollReadMap((previous) => {
+      const next = { ...previous, [pollId]: timestamp }
+      persistReadMap(POLL_COMMENTS_READ_KEY, next)
+      return next
+    })
+  }
+
+  function openPollComments(pollId: string) {
+    setSelectedPollId(pollId)
+    markPollRead(pollId)
+  }
+
+  function handleCreatePollComment() {
+    if (!selectedPollId) {
+      return
+    }
+    const result = createAppComment({
+      targetType: 'poll',
+      targetId: selectedPollId,
+      message: newCommentText,
+    })
+    setFeedback(result.ok ? 'Comentario publicado.' : result.error ?? 'No se pudo publicar comentario.')
+    if (result.ok) {
+      setNewCommentText('')
+      markPollRead(selectedPollId)
     }
   }
 
@@ -1535,6 +2127,13 @@ export function AppPollsPage() {
             const myVote = poll.votes.find((vote) => vote.userId === session?.userId)
             const isClosed = poll.endedAt ? true : poll.endsAt ? new Date(poll.endsAt) < new Date() : false
             const canManage = session?.role === 'admin' || session?.userId === poll.createdByUserId
+            const pollCommentCount = pollComments.filter((comment) => comment.targetId === poll.id).length
+            const hasUnreadComments = hasUnreadByTarget(
+              pollComments,
+              poll.id,
+              session?.userId,
+              pollReadMap[poll.id]
+            )
             return (
               <AppCard className="space-y-2 border-zinc-800 bg-zinc-950" key={poll.id}>
                 <div className="flex items-start justify-between gap-2">
@@ -1612,16 +2211,73 @@ export function AppPollsPage() {
                     )
                   })}
                 </div>
+                <button
+                  className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-left text-xs font-semibold text-zinc-200 transition hover:border-zinc-500"
+                  onClick={() => openPollComments(poll.id)}
+                  type="button"
+                >
+                  Comentarios: {pollCommentCount} {hasUnreadComments ? '🔔' : ''}
+                </button>
               </AppCard>
             )
           })
         )}
       </div>
+      {selectedPoll ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/55 p-4 sm:items-center">
+          <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-950 p-3 shadow-2xl">
+            <div className="mb-3 flex items-start justify-between gap-2">
+              <div>
+                <p className="text-base font-semibold text-zinc-100">{selectedPoll.title}</p>
+                <p className="text-xs text-zinc-400">{new Date(selectedPoll.createdAt).toLocaleString()}</p>
+              </div>
+              <AppButton
+                className="px-2 py-1 text-xs"
+                onClick={() => {
+                  setSelectedPollId(null)
+                  setNewCommentText('')
+                }}
+                variant="secondary"
+              >
+                Cerrar
+              </AppButton>
+            </div>
+            <div className="space-y-2 rounded-xl border border-zinc-800 bg-zinc-900 p-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-400">
+                Comentarios ({selectedPollComments.length})
+              </p>
+              {selectedPollComments.length === 0 ? (
+                <p className="text-xs text-zinc-400">Sin comentarios por ahora.</p>
+              ) : (
+                <div className="max-h-44 space-y-2 overflow-y-auto pr-1">
+                  {selectedPollComments.map((comment) => (
+                    <div className="rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2" key={comment.id}>
+                      <p className="text-[11px] text-zinc-400">
+                        {comment.createdByName} | {new Date(comment.createdAt).toLocaleString()}
+                      </p>
+                      <p className="text-xs text-zinc-200">{comment.message}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <textarea
+                className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                onChange={(event) => setNewCommentText(event.target.value)}
+                placeholder="Escribe un comentario"
+                rows={2}
+                value={newCommentText}
+              />
+              <AppButton block onClick={handleCreatePollComment}>Comentar</AppButton>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
 
 export function AppPetsPage() {
+  const { tx } = useLanguage()
   const {
     createPetPost,
     updatePetPost,
@@ -1644,17 +2300,81 @@ export function AppPetsPage() {
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const [petPhotoUploadProgress, setPetPhotoUploadProgress] = useState(0)
   const [reportingPetPostId, setReportingPetPostId] = useState<string | null>(null)
+  const [petReadMap, setPetReadMap] = useState<Record<string, string>>(() => readReadMap(PET_COMMENTS_READ_KEY))
 
   const selectedPetPost = petPosts.find((post) => post.id === selectedPetPostId) ?? null
   const editingPetPost = petPosts.find((post) => post.id === editingPetPostId) ?? null
   const selectedPetComments = petPostComments.filter((comment) => comment.petPostId === selectedPetPostId)
+
+  function getBehaviorTraitLabel(value: PetProfile['behaviorTraits'][number]) {
+    const labels: Record<PetProfile['behaviorTraits'][number], string> = {
+      playful: tx('Jugueton', 'Playful'),
+      calm: tx('Tranquilo', 'Calm'),
+      protective: tx('Protector', 'Protective'),
+      curious: tx('Curioso', 'Curious'),
+      anxious: tx('Ansioso', 'Anxious'),
+      stubborn: tx('Terco', 'Stubborn'),
+      gentle: tx('Gentil', 'Gentle'),
+      vocal: tx('Vocal', 'Vocal'),
+      alert: tx('Alerta', 'Alert'),
+      lazy: tx('Perezoso', 'Lazy'),
+    }
+    return labels[value]
+  }
+
+  function getKnownCommandLabel(value: PetProfile['commandsKnown'][number]) {
+    const labels: Record<PetProfile['commandsKnown'][number], string> = {
+      sit: tx('Sentado', 'Sit'),
+      stay: tx('Quieto', 'Stay'),
+      come: tx('Ven', 'Come'),
+      down: tx('Abajo', 'Down'),
+      heel: tx('Junto', 'Heel'),
+      leave_it: tx('Dejalo', 'Leave it'),
+      drop_it: tx('Suelta', 'Drop it'),
+    }
+    return labels[value]
+  }
+
+  function getHighlightLabel(value: PetProfile['personalityHighlights'][number]) {
+    const labels: Record<PetProfile['personalityHighlights'][number], string> = {
+      loves_people: tx('Ama a las personas', 'Loves people'),
+      high_energy: tx('Alta energia', 'High energy'),
+      great_with_kids: tx('Excelente con ninos', 'Great with kids'),
+      needs_training: tx('Necesita entrenamiento', 'Needs training'),
+      independent: tx('Independiente', 'Independent'),
+    }
+    return labels[value]
+  }
+
+  function getPrefersLabel(value: PetProfile['prefers'][number]) {
+    const labels: Record<PetProfile['prefers'][number], string> = {
+      small_dogs: tx('Perros pequenos', 'Small dogs'),
+      large_dogs: tx('Perros grandes', 'Large dogs'),
+      calm_pets: tx('Mascotas tranquilas', 'Calm pets'),
+      energetic_pets: tx('Mascotas energeticas', 'Energetic pets'),
+    }
+    return labels[value]
+  }
+
+  function getAvailableForLabel(value: PetProfile['availableFor'][number]) {
+    const labels: Record<PetProfile['availableFor'][number], string> = {
+      playdates: tx('Playdates', 'Playdates'),
+      breeding: tx('Crianza', 'Breeding'),
+      adoption: tx('Adopcion', 'Adoption'),
+      training_buddies: tx('Companeros de entrenamiento', 'Training buddies'),
+      walk_groups: tx('Grupos de paseo', 'Walk groups'),
+    }
+    return labels[value]
+  }
 
   async function handleFileChange(file: File | null) {
     if (!file) {
       return
     }
     if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
-      setFeedback('La foto excede 15 MB. Selecciona una imagen mas ligera.')
+      setFeedback(
+        tx('La foto excede 15 MB. Selecciona una imagen mas ligera.', 'Photo exceeds 15 MB. Select a lighter image.')
+      )
       return
     }
     setUploadingPhoto(true)
@@ -1668,7 +2388,7 @@ export function AppPetsPage() {
         const objectPath = await uploadPetPhoto(imageBlob)
         setPhotoUrl(objectPath)
         setPetPhotoUploadProgress(100)
-        setFeedback('Foto cargada correctamente.')
+        setFeedback(tx('Foto cargada correctamente.', 'Photo uploaded successfully.'))
       } else {
         const dataUrl = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader()
@@ -1678,11 +2398,11 @@ export function AppPetsPage() {
         })
         setPhotoUrl(dataUrl)
         setPetPhotoUploadProgress(100)
-        setFeedback('Foto guardada localmente (modo sin red).')
+        setFeedback(tx('Foto guardada localmente (offline).', 'Photo saved locally (offline mode).'))
       }
     } catch (error) {
       setPetPhotoUploadProgress(0)
-      setFeedback(error instanceof Error ? error.message : 'No se pudo cargar la foto.')
+      setFeedback(error instanceof Error ? error.message : tx('No se pudo cargar la foto.', 'Could not upload photo.'))
     } finally {
       setUploadingPhoto(false)
     }
@@ -1703,6 +2423,20 @@ export function AppPetsPage() {
 
   function canManage(postUserId: string) {
     return session?.userId === postUserId || session?.role === 'admin'
+  }
+
+  function markPetRead(postId: string) {
+    const timestamp = new Date().toISOString()
+    setPetReadMap((previous) => {
+      const next = { ...previous, [postId]: timestamp }
+      persistReadMap(PET_COMMENTS_READ_KEY, next)
+      return next
+    })
+  }
+
+  function openPetPost(postId: string) {
+    setSelectedPetPostId(postId)
+    markPetRead(postId)
   }
 
   function beginEditPetPost(postId: string) {
@@ -1743,7 +2477,9 @@ export function AppPetsPage() {
         profile: normalizePetProfile(petProfile),
       })
       setFeedback(
-        result.ok ? 'Publicacion de mascota actualizada.' : result.error ?? 'No se pudo actualizar.'
+        result.ok
+          ? tx('Publicacion de mascota actualizada.', 'Pet post updated.')
+          : result.error ?? tx('No se pudo actualizar.', 'Could not update.')
       )
       if (result.ok) {
         resetPetForm()
@@ -1758,7 +2494,9 @@ export function AppPetsPage() {
       profile: normalizePetProfile(petProfile),
     })
     setFeedback(
-      result.ok ? 'Mascota publicada correctamente.' : result.error ?? 'No se pudo publicar.'
+      result.ok
+        ? tx('Mascota publicada correctamente.', 'Pet posted successfully.')
+        : result.error ?? tx('No se pudo publicar.', 'Could not publish.')
     )
     if (result.ok) {
       resetPetForm()
@@ -1771,10 +2509,13 @@ export function AppPetsPage() {
     }
     const result = createPetPostComment({ petPostId: selectedPetPostId, message: newCommentText })
     setFeedback(
-      result.ok ? 'Comentario publicado.' : result.error ?? 'No se pudo publicar comentario.'
+      result.ok
+        ? tx('Comentario publicado.', 'Comment posted.')
+        : result.error ?? tx('No se pudo publicar comentario.', 'Could not post comment.')
     )
     if (result.ok) {
       setNewCommentText('')
+      markPetRead(selectedPetPostId)
     }
   }
 
@@ -1785,7 +2526,11 @@ export function AppPetsPage() {
       targetId: petPostId,
       reason: 'Contenido inapropiado en mascotas',
     })
-    setFeedback(result.ok ? 'Publicacion reportada para moderacion.' : result.error ?? 'No se pudo reportar.')
+    setFeedback(
+      result.ok
+        ? tx('Publicacion reportada para moderacion.', 'Post reported for moderation.')
+        : result.error ?? tx('No se pudo reportar.', 'Could not report.')
+    )
     setReportingPetPostId(null)
   }
 
@@ -1793,11 +2538,14 @@ export function AppPetsPage() {
     <div className="space-y-3">
       <ModulePlaceholder
         role="Residente / Inquilino"
-        title="Mascotas"
-        description="Comparte a tu mascota con foto y experiencia para la comunidad."
+        title={tx('Mascotas', 'Pets')}
+        description={tx(
+          'Comparte a tu mascota con foto y experiencia para la comunidad.',
+          'Share your pet with photo and details for the community.'
+        )}
       />
       <div className="flex items-center justify-between gap-2">
-        <p className="text-sm font-semibold text-zinc-200">Mascotas de la comunidad</p>
+        <p className="text-sm font-semibold text-zinc-200">{tx('Mascotas de la comunidad', 'Community pets')}</p>
         <button
           className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-zinc-700 bg-zinc-900 text-xl font-semibold leading-none text-zinc-100 transition hover:border-zinc-500"
           onClick={openCreatePetPost}
@@ -1809,7 +2557,9 @@ export function AppPetsPage() {
       {feedback ? <p className="text-xs text-zinc-300">{feedback}</p> : null}
       <div className="space-y-2">
         {petPosts.length === 0 ? (
-          <AppCard className="text-sm text-zinc-300">Aun no hay mascotas publicadas.</AppCard>
+          <AppCard className="text-sm text-zinc-300">
+            {tx('Aun no hay mascotas publicadas.', 'There are no pet posts yet.')}
+          </AppCard>
         ) : (
           petPosts.map((petPost) => (
             <AppCard
@@ -1819,13 +2569,13 @@ export function AppPetsPage() {
               <div>
                 <p className="text-sm font-semibold text-zinc-100">{petPost.petName}</p>
                 <p className="text-xs text-zinc-400">
-                  Publicado por: {petPost.createdByName} -{' '}
+                  {tx('Publicado por', 'Posted by')}: {petPost.createdByName} -{' '}
                   {new Date(petPost.createdAt).toLocaleString()}
                 </p>
               </div>
               <PetPhoto
                 alt={`Mascota ${petPost.petName}`}
-                className="h-36 w-full rounded-xl border border-zinc-700 object-cover"
+                className="h-52 w-full rounded-xl border border-zinc-700 bg-zinc-900 object-contain p-1"
                 pathOrUrl={petPost.photoUrl}
               />
               <p className="text-sm text-zinc-300">{petPost.comments}</p>
@@ -1836,27 +2586,40 @@ export function AppPetsPage() {
                       className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-1 text-[10px] font-semibold text-zinc-300"
                       key={highlight}
                     >
-                      {highlight.replaceAll('_', ' ')}
+                    {getHighlightLabel(highlight)}
                     </span>
                   ))}
                 </div>
               ) : null}
               <p className="text-xs font-semibold text-zinc-400">
-                Comentarios: {petPostComments.filter((comment) => comment.petPostId === petPost.id).length}
+                {tx('Comentarios', 'Comments')}:{' '}
+                {petPostComments.filter((comment) => comment.petPostId === petPost.id).length}{' '}
+                {hasUnreadByTarget(
+                  petPostComments.map((comment) => ({
+                    targetId: comment.petPostId,
+                    createdByUserId: comment.createdByUserId,
+                    createdAt: comment.createdAt,
+                  })),
+                  petPost.id,
+                  session?.userId,
+                  petReadMap[petPost.id]
+                )
+                  ? '🔔'
+                  : ''}
               </p>
               <div
                 className={`grid gap-2 ${canManage(petPost.createdByUserId) ? 'grid-cols-3' : 'grid-cols-2'}`}
               >
                 <AppButton
                   block
-                  onClick={() => setSelectedPetPostId(petPost.id)}
+                  onClick={() => openPetPost(petPost.id)}
                   variant="secondary"
                 >
-                  Ver detalle
+                  {tx('Ver detalle', 'View details')}
                 </AppButton>
                 {canManage(petPost.createdByUserId) ? (
                   <AppButton block onClick={() => beginEditPetPost(petPost.id)} variant="secondary">
-                    Editar
+                    {tx('Editar', 'Edit')}
                   </AppButton>
                 ) : null}
                 <AppButton
@@ -1866,7 +2629,7 @@ export function AppPetsPage() {
                   onClick={() => void handleReportPetPost(petPost.id)}
                   variant="secondary"
                 >
-                  {reportingPetPostId === petPost.id ? 'Enviando...' : 'Reportar'}
+                  {reportingPetPostId === petPost.id ? tx('Enviando...', 'Sending...') : tx('Reportar', 'Report')}
                 </AppButton>
               </div>
             </AppCard>
@@ -1878,15 +2641,19 @@ export function AppPetsPage() {
           <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-950 p-3 shadow-2xl">
             <div className="mb-3 flex items-center justify-between gap-2">
               <p className="text-sm font-semibold text-zinc-100">
-                {editingPetPost ? 'Editar mascota' : 'Nueva mascota'}
+                {editingPetPost ? tx('Editar mascota', 'Edit pet') : tx('Nueva mascota', 'New pet')}
               </p>
               <AppButton className="px-2 py-1 text-xs" onClick={resetPetForm} variant="secondary">
-                Cerrar
+                {tx('Cerrar', 'Close')}
               </AppButton>
             </div>
             <div className="space-y-3">
               <div className="grid grid-cols-3 gap-2">
-                {(['Basic', 'Social', 'Advanced'] as const).map((label, index) => {
+                {([
+                  tx('Basico', 'Basic'),
+                  tx('Social', 'Social'),
+                  tx('Avanzado', 'Advanced'),
+                ] as const).map((label, index) => {
                   const step = (index + 1) as 1 | 2 | 3
                   const isActive = petFormStep === step
                   return (
@@ -1910,11 +2677,11 @@ export function AppPetsPage() {
               <input
                 className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
                 onChange={(event) => setPetName(event.target.value)}
-                placeholder="Nombre de la mascota"
+                placeholder={tx('Nombre de la mascota', 'Pet name')}
                 value={petName}
               />
               <label className="space-y-1">
-                <span className="block text-[11px] uppercase tracking-[0.08em] text-zinc-400">Foto</span>
+                <span className="block text-[11px] uppercase tracking-[0.08em] text-zinc-400">{tx('Foto', 'Photo')}</span>
                 <input
                   accept="image/*"
                   className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 file:mr-3 file:rounded-lg file:border-0 file:bg-zinc-800 file:px-3 file:py-1 file:text-xs file:font-semibold file:text-zinc-100"
@@ -1932,9 +2699,9 @@ export function AppPetsPage() {
                   </div>
                   <p className="text-[11px] text-zinc-400">
                     {uploadingPhoto
-                      ? `Procesando imagen ${petPhotoUploadProgress}%`
+                      ? tx(`Procesando imagen ${petPhotoUploadProgress}%`, `Processing image ${petPhotoUploadProgress}%`)
                       : petPhotoUploadProgress === 100
-                        ? 'Foto lista.'
+                        ? tx('Foto lista.', 'Photo ready.')
                         : ''}
                   </p>
                 </div>
@@ -1942,13 +2709,13 @@ export function AppPetsPage() {
               <textarea
                 className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
                 onChange={(event) => setComments(event.target.value)}
-                placeholder="Comentarios / experiencia"
+                placeholder={tx('Comentarios / experiencia', 'Comments / experience')}
                 rows={3}
                 value={comments}
               />
               <div className="space-y-2 rounded-xl border border-zinc-700 bg-zinc-900 p-2">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-400">
-                  Basic profile
+                  {tx('Perfil basico', 'Basic profile')}
                 </p>
                 <div className="grid grid-cols-2 gap-2">
                   <select
@@ -1961,9 +2728,9 @@ export function AppPetsPage() {
                     }
                     value={petProfile.species}
                   >
-                    <option value="dog">Dog</option>
-                    <option value="cat">Cat</option>
-                    <option value="other">Other</option>
+                    <option value="dog">{tx('Perro', 'Dog')}</option>
+                    <option value="cat">{tx('Gato', 'Cat')}</option>
+                    <option value="other">{tx('Otro', 'Other')}</option>
                   </select>
                   <select
                     className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
@@ -1988,7 +2755,7 @@ export function AppPetsPage() {
                     onChange={(event) =>
                       setPetProfile((previous) => ({ ...previous, breed: event.target.value }))
                     }
-                    placeholder="Breed"
+                    placeholder={tx('Raza', 'Breed')}
                     value={petProfile.breed ?? ''}
                   />
                   <input
@@ -1996,7 +2763,7 @@ export function AppPetsPage() {
                     onChange={(event) =>
                       setPetProfile((previous) => ({ ...previous, age: event.target.value }))
                     }
-                    placeholder="Age"
+                    placeholder={tx('Edad', 'Age')}
                     value={petProfile.age ?? ''}
                   />
                   <input
@@ -2004,7 +2771,7 @@ export function AppPetsPage() {
                     onChange={(event) =>
                       setPetProfile((previous) => ({ ...previous, weight: event.target.value }))
                     }
-                    placeholder="Weight"
+                    placeholder={tx('Peso', 'Weight')}
                     value={petProfile.weight ?? ''}
                   />
                   <select
@@ -2017,16 +2784,16 @@ export function AppPetsPage() {
                     }
                     value={petProfile.gender ?? 'other'}
                   >
-                    <option value="female">Gender: Female</option>
-                    <option value="male">Gender: Male</option>
-                    <option value="other">Gender: Other</option>
+                    <option value="female">{tx('Genero: Hembra', 'Gender: Female')}</option>
+                    <option value="male">{tx('Genero: Macho', 'Gender: Male')}</option>
+                    <option value="other">{tx('Genero: Otro', 'Gender: Other')}</option>
                   </select>
                   <input
                     className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
                     onChange={(event) =>
                       setPetProfile((previous) => ({ ...previous, locationCity: event.target.value }))
                     }
-                    placeholder="City (optional)"
+                    placeholder={tx('Ciudad (opcional)', 'City (optional)')}
                     value={petProfile.locationCity ?? ''}
                   />
                   <input
@@ -2034,7 +2801,7 @@ export function AppPetsPage() {
                     onChange={(event) =>
                       setPetProfile((previous) => ({ ...previous, birthday: event.target.value }))
                     }
-                    placeholder="Birthday (optional)"
+                    placeholder={tx('Cumpleanos (opcional)', 'Birthday (optional)')}
                     type="date"
                     value={petProfile.birthday ?? ''}
                   />
@@ -2043,7 +2810,7 @@ export function AppPetsPage() {
                     onChange={(event) =>
                       setPetProfile((previous) => ({ ...previous, availabilityNote: event.target.value }))
                     }
-                    placeholder="Availability note (optional)"
+                    placeholder={tx('Nota de disponibilidad (opcional)', 'Availability note (optional)')}
                     value={petProfile.availabilityNote ?? ''}
                   />
                 </div>
@@ -2054,7 +2821,7 @@ export function AppPetsPage() {
                 <>
               <div className="space-y-2 rounded-xl border border-zinc-700 bg-zinc-900 p-2">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-400">
-                  Social behavior
+                  {tx('Comportamiento social', 'Social behavior')}
                 </p>
                 <div className="grid grid-cols-2 gap-2">
                   <select
@@ -2067,9 +2834,9 @@ export function AppPetsPage() {
                     }
                     value={petProfile.socialWithHumans}
                   >
-                    <option value="yes">Humans: Yes</option>
-                    <option value="no">Humans: No</option>
-                    <option value="depends">Humans: Depends</option>
+                    <option value="yes">{tx('Personas: Si', 'Humans: Yes')}</option>
+                    <option value="no">{tx('Personas: No', 'Humans: No')}</option>
+                    <option value="depends">{tx('Personas: Depende', 'Humans: Depends')}</option>
                   </select>
                   <select
                     className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
@@ -2081,9 +2848,9 @@ export function AppPetsPage() {
                     }
                     value={petProfile.socialWithChildren}
                   >
-                    <option value="yes">Children: Yes</option>
-                    <option value="no">Children: No</option>
-                    <option value="depends">Children: Depends</option>
+                    <option value="yes">{tx('Ninos: Si', 'Children: Yes')}</option>
+                    <option value="no">{tx('Ninos: No', 'Children: No')}</option>
+                    <option value="depends">{tx('Ninos: Depende', 'Children: Depends')}</option>
                   </select>
                   <select
                     className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
@@ -2095,9 +2862,9 @@ export function AppPetsPage() {
                     }
                     value={petProfile.socialWithDogs}
                   >
-                    <option value="yes">Dogs: Yes</option>
-                    <option value="no">Dogs: No</option>
-                    <option value="depends">Dogs: Depends</option>
+                    <option value="yes">{tx('Perros: Si', 'Dogs: Yes')}</option>
+                    <option value="no">{tx('Perros: No', 'Dogs: No')}</option>
+                    <option value="depends">{tx('Perros: Depende', 'Dogs: Depends')}</option>
                   </select>
                   <select
                     className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
@@ -2109,9 +2876,9 @@ export function AppPetsPage() {
                     }
                     value={petProfile.socialWithCats}
                   >
-                    <option value="yes">Cats: Yes</option>
-                    <option value="no">Cats: No</option>
-                    <option value="depends">Cats: Depends</option>
+                    <option value="yes">{tx('Gatos: Si', 'Cats: Yes')}</option>
+                    <option value="no">{tx('Gatos: No', 'Cats: No')}</option>
+                    <option value="depends">{tx('Gatos: Depende', 'Cats: Depends')}</option>
                   </select>
                   <select
                     className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
@@ -2123,15 +2890,15 @@ export function AppPetsPage() {
                     }
                     value={petProfile.socialWithOtherAnimals}
                   >
-                    <option value="yes">Other animals: Yes</option>
-                    <option value="no">Other animals: No</option>
-                    <option value="depends">Other animals: Depends</option>
+                    <option value="yes">{tx('Otros animales: Si', 'Other animals: Yes')}</option>
+                    <option value="no">{tx('Otros animales: No', 'Other animals: No')}</option>
+                    <option value="depends">{tx('Otros animales: Depende', 'Other animals: Depends')}</option>
                   </select>
                 </div>
               </div>
               <div className="space-y-2 rounded-xl border border-zinc-700 bg-zinc-900 p-2">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-400">
-                  Temperament & health
+                  {tx('Temperamento y salud', 'Temperament & health')}
                 </p>
                 <div className="grid grid-cols-2 gap-2">
                   <select
@@ -2144,8 +2911,8 @@ export function AppPetsPage() {
                     }
                     value={petProfile.energyLevel}
                   >
-                    <option value="chill">🐢 Chill</option>
-                    <option value="balanced">🚶 Balanced</option>
+                    <option value="chill">{tx('🐢 Relajado', '🐢 Chill')}</option>
+                    <option value="balanced">{tx('🚶 Balanceado', '🚶 Balanced')}</option>
                     <option value="zoomies">🚀 Zoomies</option>
                   </select>
                   <select
@@ -2158,9 +2925,9 @@ export function AppPetsPage() {
                     }
                     value={petProfile.friendliness}
                   >
-                    <option value="shy">Friendliness: Shy</option>
-                    <option value="neutral">Friendliness: Neutral</option>
-                    <option value="friendly">Friendliness: Friendly</option>
+                    <option value="shy">{tx('Amabilidad: Timido', 'Friendliness: Shy')}</option>
+                    <option value="neutral">{tx('Amabilidad: Neutral', 'Friendliness: Neutral')}</option>
+                    <option value="friendly">{tx('Amabilidad: Amigable', 'Friendliness: Friendly')}</option>
                   </select>
                   <select
                     className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
@@ -2172,9 +2939,9 @@ export function AppPetsPage() {
                     }
                     value={petProfile.independence}
                   >
-                    <option value="independent">Independence: Independent</option>
-                    <option value="balanced">Independence: Balanced</option>
-                    <option value="clingy">Independence: Clingy</option>
+                    <option value="independent">{tx('Independencia: Independiente', 'Independence: Independent')}</option>
+                    <option value="balanced">{tx('Independencia: Balanceado', 'Independence: Balanced')}</option>
+                    <option value="clingy">{tx('Independencia: Apegado', 'Independence: Clingy')}</option>
                   </select>
                   <select
                     className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
@@ -2186,9 +2953,9 @@ export function AppPetsPage() {
                     }
                     value={petProfile.affectionLevel}
                   >
-                    <option value="low">Affection: Low</option>
-                    <option value="medium">Affection: Medium</option>
-                    <option value="high">Affection: High</option>
+                    <option value="low">{tx('Afecto: Bajo', 'Affection: Low')}</option>
+                    <option value="medium">{tx('Afecto: Medio', 'Affection: Medium')}</option>
+                    <option value="high">{tx('Afecto: Alto', 'Affection: High')}</option>
                   </select>
                   <select
                     className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
@@ -2200,9 +2967,9 @@ export function AppPetsPage() {
                     }
                     value={petProfile.vaccinated}
                   >
-                    <option value="up_to_date">Vaccinated: Up to date</option>
-                    <option value="partial">Vaccinated: Partial</option>
-                    <option value="no">Vaccinated: No</option>
+                    <option value="up_to_date">{tx('Vacunas: Al dia', 'Vaccinated: Up to date')}</option>
+                    <option value="partial">{tx('Vacunas: Parcial', 'Vaccinated: Partial')}</option>
+                    <option value="no">{tx('Vacunas: No', 'Vaccinated: No')}</option>
                   </select>
                   <select
                     className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
@@ -2214,9 +2981,9 @@ export function AppPetsPage() {
                     }
                     value={petProfile.likesPlaydates}
                   >
-                    <option value="yes">Likes playdates: Yes</option>
-                    <option value="no">Likes playdates: No</option>
-                    <option value="selective">Likes playdates: Selective</option>
+                    <option value="yes">{tx('Le gustan playdates: Si', 'Likes playdates: Yes')}</option>
+                    <option value="no">{tx('Le gustan playdates: No', 'Likes playdates: No')}</option>
+                    <option value="selective">{tx('Le gustan playdates: Selectivo', 'Likes playdates: Selective')}</option>
                   </select>
                   <select
                     className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
@@ -2228,9 +2995,9 @@ export function AppPetsPage() {
                     }
                     value={petProfile.groomingNeeds}
                   >
-                    <option value="low">Grooming: Low</option>
-                    <option value="medium">Grooming: Medium</option>
-                    <option value="high">Grooming: High</option>
+                    <option value="low">{tx('Cuidado de pelo: Bajo', 'Grooming: Low')}</option>
+                    <option value="medium">{tx('Cuidado de pelo: Medio', 'Grooming: Medium')}</option>
+                    <option value="high">{tx('Cuidado de pelo: Alto', 'Grooming: High')}</option>
                   </select>
                   <select
                     className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
@@ -2242,9 +3009,9 @@ export function AppPetsPage() {
                     }
                     value={petProfile.houseTrained}
                   >
-                    <option value="yes">House trained: Yes</option>
-                    <option value="no">House trained: No</option>
-                    <option value="in_progress">House trained: In progress</option>
+                    <option value="yes">{tx('Entrenado en casa: Si', 'House trained: Yes')}</option>
+                    <option value="no">{tx('Entrenado en casa: No', 'House trained: No')}</option>
+                    <option value="in_progress">{tx('Entrenado en casa: En progreso', 'House trained: In progress')}</option>
                   </select>
                   <select
                     className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
@@ -2256,9 +3023,9 @@ export function AppPetsPage() {
                     }
                     value={petProfile.crateTrained}
                   >
-                    <option value="yes">Crate trained: Yes</option>
-                    <option value="no">Crate trained: No</option>
-                    <option value="unknown">Crate trained: Unknown</option>
+                    <option value="yes">{tx('Entrenado en jaula: Si', 'Crate trained: Yes')}</option>
+                    <option value="no">{tx('Entrenado en jaula: No', 'Crate trained: No')}</option>
+                    <option value="unknown">{tx('Entrenado en jaula: Desconocido', 'Crate trained: Unknown')}</option>
                   </select>
                   <select
                     className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
@@ -2270,9 +3037,9 @@ export function AppPetsPage() {
                     }
                     value={petProfile.leashTrained}
                   >
-                    <option value="yes">Leash trained: Yes</option>
-                    <option value="no">Leash trained: No</option>
-                    <option value="in_progress">Leash trained: In progress</option>
+                    <option value="yes">{tx('Entrenado con correa: Si', 'Leash trained: Yes')}</option>
+                    <option value="no">{tx('Entrenado con correa: No', 'Leash trained: No')}</option>
+                    <option value="in_progress">{tx('Entrenado con correa: En progreso', 'Leash trained: In progress')}</option>
                   </select>
                   <select
                     className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
@@ -2284,9 +3051,9 @@ export function AppPetsPage() {
                     }
                     value={petProfile.recallTrained}
                   >
-                    <option value="reliable">Recall: Reliable</option>
-                    <option value="partial">Recall: Partial</option>
-                    <option value="no">Recall: No</option>
+                    <option value="reliable">{tx('Llamado: Confiable', 'Recall: Reliable')}</option>
+                    <option value="partial">{tx('Llamado: Parcial', 'Recall: Partial')}</option>
+                    <option value="no">{tx('Llamado: No', 'Recall: No')}</option>
                   </select>
                   <select
                     className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
@@ -2295,8 +3062,8 @@ export function AppPetsPage() {
                     }
                     value={petProfile.neuteredOrSpayed ? 'yes' : 'no'}
                   >
-                    <option value="yes">Neutered/Spayed: Yes</option>
-                    <option value="no">Neutered/Spayed: No</option>
+                    <option value="yes">{tx('Esterilizado: Si', 'Neutered/Spayed: Yes')}</option>
+                    <option value="no">{tx('Esterilizado: No', 'Neutered/Spayed: No')}</option>
                   </select>
                   <select
                     className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
@@ -2305,8 +3072,8 @@ export function AppPetsPage() {
                     }
                     value={petProfile.specialNeeds ? 'yes' : 'no'}
                   >
-                    <option value="no">Special needs: No</option>
-                    <option value="yes">Special needs: Yes</option>
+                    <option value="no">{tx('Necesidades especiales: No', 'Special needs: No')}</option>
+                    <option value="yes">{tx('Necesidades especiales: Si', 'Special needs: Yes')}</option>
                   </select>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
@@ -2315,7 +3082,7 @@ export function AppPetsPage() {
                     onChange={(event) =>
                       setPetProfile((previous) => ({ ...previous, allergies: event.target.value }))
                     }
-                    placeholder="Allergies (optional)"
+                    placeholder={tx('Alergias (opcional)', 'Allergies (optional)')}
                     value={petProfile.allergies ?? ''}
                   />
                   <input
@@ -2323,7 +3090,7 @@ export function AppPetsPage() {
                     onChange={(event) =>
                       setPetProfile((previous) => ({ ...previous, medications: event.target.value }))
                     }
-                    placeholder="Medications (optional)"
+                    placeholder={tx('Medicamentos (opcional)', 'Medications (optional)')}
                     value={petProfile.medications ?? ''}
                   />
                 </div>
@@ -2334,7 +3101,7 @@ export function AppPetsPage() {
                 <>
               <div className="space-y-2 rounded-xl border border-zinc-700 bg-zinc-900 p-2">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-400">
-                  Behavior traits
+                  {tx('Rasgos de comportamiento', 'Behavior traits')}
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {petBehaviorTraitOptions.map((option) => {
@@ -2355,7 +3122,7 @@ export function AppPetsPage() {
                         }
                         type="button"
                       >
-                        {option.icon} {option.label}
+                        {option.icon} {getBehaviorTraitLabel(option.value)}
                       </button>
                     )
                   })}
@@ -2363,7 +3130,7 @@ export function AppPetsPage() {
               </div>
               <div className="space-y-2 rounded-xl border border-zinc-700 bg-zinc-900 p-2">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-400">
-                  Commands known
+                  {tx('Comandos conocidos', 'Commands known')}
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {petKnownCommandOptions.map((option) => {
@@ -2384,7 +3151,7 @@ export function AppPetsPage() {
                         }
                         type="button"
                       >
-                        {option.icon} {option.label}
+                        {option.icon} {getKnownCommandLabel(option.value)}
                       </button>
                     )
                   })}
@@ -2392,7 +3159,7 @@ export function AppPetsPage() {
               </div>
               <div className="space-y-2 rounded-xl border border-zinc-700 bg-zinc-900 p-2">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-400">
-                  Highlights (pick up to 5)
+                  {tx('Highlights (elige hasta 5)', 'Highlights (pick up to 5)')}
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {petPersonalityHighlightOptions.map((option) => {
@@ -2415,7 +3182,7 @@ export function AppPetsPage() {
                         }
                         type="button"
                       >
-                        {option.icon} {option.label}
+                        {option.icon} {getHighlightLabel(option.value)}
                       </button>
                     )
                   })}
@@ -2423,7 +3190,7 @@ export function AppPetsPage() {
               </div>
               <div className="space-y-2 rounded-xl border border-zinc-700 bg-zinc-900 p-2">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-400">
-                  Preferences & availability
+                  {tx('Preferencias y disponibilidad', 'Preferences & availability')}
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {petPrefersOptions.map((option) => {
@@ -2444,7 +3211,7 @@ export function AppPetsPage() {
                         }
                         type="button"
                       >
-                        {option.icon} {option.label}
+                        {option.icon} {getPrefersLabel(option.value)}
                       </button>
                     )
                   })}
@@ -2468,7 +3235,7 @@ export function AppPetsPage() {
                         }
                         type="button"
                       >
-                        {option.icon} {option.label}
+                        {option.icon} {getAvailableForLabel(option.value)}
                       </button>
                     )
                   })}
@@ -2479,28 +3246,28 @@ export function AppPetsPage() {
               <div className="grid grid-cols-2 gap-2">
                 {petFormStep > 1 ? (
                   <AppButton block onClick={() => setPetFormStep((previous) => (previous > 1 ? ((previous - 1) as 1 | 2 | 3) : previous))} variant="secondary">
-                    Atras
+                    {tx('Atras', 'Back')}
                   </AppButton>
                 ) : (
                   <div />
                 )}
                 {petFormStep < 3 ? (
                   <AppButton block onClick={() => setPetFormStep((previous) => (previous < 3 ? ((previous + 1) as 1 | 2 | 3) : previous))}>
-                    Siguiente
+                    {tx('Siguiente', 'Next')}
                   </AppButton>
                 ) : (
                   <AppButton block disabled={uploadingPhoto} onClick={handleSubmitPetPost}>
                     {uploadingPhoto
-                      ? 'Subiendo foto...'
+                      ? tx('Subiendo foto...', 'Uploading photo...')
                       : editingPetPost
-                        ? 'Guardar cambios'
-                        : 'Publicar mascota'}
+                        ? tx('Guardar cambios', 'Save changes')
+                        : tx('Publicar mascota', 'Publish pet')}
                   </AppButton>
                 )}
               </div>
               {editingPetPost ? (
                 <AppButton block onClick={resetPetForm} variant="secondary">
-                  Cancelar edicion
+                  {tx('Cancelar edicion', 'Cancel edit')}
                 </AppButton>
               ) : null}
             </div>
@@ -2514,7 +3281,7 @@ export function AppPetsPage() {
               <div>
                 <p className="text-base font-semibold text-zinc-100">{selectedPetPost.petName}</p>
                 <p className="text-xs text-zinc-400">
-                  Publicado por: {selectedPetPost.createdByName}
+                  {tx('Publicado por', 'Posted by')}: {selectedPetPost.createdByName}
                 </p>
               </div>
               <AppButton
@@ -2525,12 +3292,12 @@ export function AppPetsPage() {
                 }}
                 variant="secondary"
               >
-                Cerrar
+                {tx('Cerrar', 'Close')}
               </AppButton>
             </div>
             <PetPhoto
               alt={`Mascota ${selectedPetPost.petName}`}
-              className="mb-2 h-40 w-full rounded-xl border border-zinc-700 object-cover"
+              className="mb-2 h-64 w-full rounded-xl border border-zinc-700 bg-zinc-900 object-contain p-1"
               pathOrUrl={selectedPetPost.photoUrl}
             />
             <p className="mb-3 text-sm text-zinc-300">{selectedPetPost.comments}</p>
@@ -2541,17 +3308,17 @@ export function AppPetsPage() {
                     className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-1 text-[10px] font-semibold text-zinc-300"
                     key={trait}
                   >
-                    {trait}
+                    {getBehaviorTraitLabel(trait)}
                   </span>
                 ))}
               </div>
             ) : null}
             <div className="mb-3 space-y-2 rounded-xl border border-zinc-800 bg-zinc-900 p-2">
               <p className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-400">
-                Comentarios
+                {tx('Comentarios', 'Comments')}
               </p>
               {selectedPetComments.length === 0 ? (
-                <p className="text-xs text-zinc-500">Sin comentarios todavia.</p>
+                <p className="text-xs text-zinc-500">{tx('Sin comentarios todavia.', 'No comments yet.')}</p>
               ) : (
                 <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
                   {selectedPetComments.map((comment) => (
@@ -2570,12 +3337,12 @@ export function AppPetsPage() {
               <textarea
                 className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
                 onChange={(event) => setNewCommentText(event.target.value)}
-                placeholder="Escribe un comentario..."
+                placeholder={tx('Escribe un comentario...', 'Write a comment...')}
                 rows={2}
                 value={newCommentText}
               />
               <AppButton block onClick={handleCreatePetComment}>
-                Comentar
+                {tx('Comentar', 'Comment')}
               </AppButton>
             </div>
           </div>
@@ -2673,6 +3440,8 @@ export function AppAddTenantPage() {
 
 export function AppMarketplacePage() {
   const {
+    appComments,
+    createAppComment,
     marketplacePosts,
     createMarketplacePost,
     updateMarketplacePost,
@@ -2699,9 +3468,15 @@ export function AppMarketplacePage() {
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'sold'>('all')
   const [minFilterPrice, setMinFilterPrice] = useState('')
   const [maxFilterPrice, setMaxFilterPrice] = useState('')
+  const [newCommentText, setNewCommentText] = useState('')
+  const [marketReadMap, setMarketReadMap] = useState<Record<string, string>>(() =>
+    readReadMap(MARKET_COMMENTS_READ_KEY)
+  )
 
   const selectedPost = marketplacePosts.find((post) => post.id === selectedPostId) ?? null
   const editingPost = marketplacePosts.find((post) => post.id === editingPostId) ?? null
+  const marketComments = appComments.filter((comment) => comment.targetType === 'marketplace_post')
+  const selectedMarketComments = marketComments.filter((comment) => comment.targetId === selectedPostId)
   const filteredMarketplacePosts = useMemo(
     () =>
       filterMarketplacePosts(marketplacePosts, {
@@ -2764,6 +3539,7 @@ export function AppMarketplacePage() {
     setPhotoUploadProgress(0)
     setIsPostFormOpen(false)
     setEditingPostId(null)
+    setNewCommentText('')
   }
 
   function beginEdit(postId: string) {
@@ -2868,6 +3644,20 @@ export function AppMarketplacePage() {
     return session?.userId === postUserId || session?.role === 'admin'
   }
 
+  function markMarketplaceRead(postId: string) {
+    const timestamp = new Date().toISOString()
+    setMarketReadMap((previous) => {
+      const next = { ...previous, [postId]: timestamp }
+      persistReadMap(MARKET_COMMENTS_READ_KEY, next)
+      return next
+    })
+  }
+
+  function openMarketplacePost(postId: string) {
+    setSelectedPostId(postId)
+    markMarketplaceRead(postId)
+  }
+
   function normalizeWhatsappNumber(value: string) {
     return value.replace(/[^\d]/g, '')
   }
@@ -2889,6 +3679,22 @@ export function AppMarketplacePage() {
     })
     setFeedback(result.ok ? 'Publicacion reportada para moderacion.' : result.error ?? 'No se pudo reportar.')
     setReportingPostId(null)
+  }
+
+  function handleCreateMarketplaceComment() {
+    if (!selectedPostId) {
+      return
+    }
+    const result = createAppComment({
+      targetType: 'marketplace_post',
+      targetId: selectedPostId,
+      message: newCommentText,
+    })
+    setFeedback(result.ok ? 'Comentario publicado.' : result.error ?? 'No se pudo publicar comentario.')
+    if (result.ok) {
+      setNewCommentText('')
+      markMarketplaceRead(selectedPostId)
+    }
   }
 
   return (
@@ -2968,7 +3774,7 @@ export function AppMarketplacePage() {
         ) : (
           filteredMarketplacePosts.map((post) => (
             <AppCard className="space-y-2 border-zinc-800 bg-zinc-950" key={post.id}>
-              <button className="w-full text-left" onClick={() => setSelectedPostId(post.id)} type="button">
+              <button className="w-full text-left" onClick={() => openMarketplacePost(post.id)} type="button">
                 <div className="space-y-2">
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-sm font-semibold text-zinc-100">{post.title}</p>
@@ -2984,7 +3790,7 @@ export function AppMarketplacePage() {
                   </div>
                   <MarketplacePhoto
                     alt={`Producto ${post.title}`}
-                    className="h-36 w-full rounded-xl border border-zinc-700 object-cover"
+                    className="h-52 w-full rounded-xl border border-zinc-700 bg-zinc-900 object-contain p-1"
                     pathOrUrl={post.photoUrl}
                   />
                   <p className="text-xs text-zinc-400">
@@ -2992,6 +3798,17 @@ export function AppMarketplacePage() {
                     {post.condition === 'new' ? 'Nuevo' : 'Usado'}
                   </p>
                   <p className="text-lg font-bold text-white">${post.price.toFixed(2)}</p>
+                  <p className="text-xs font-semibold text-zinc-400">
+                    Comentarios: {marketComments.filter((comment) => comment.targetId === post.id).length}{' '}
+                    {hasUnreadByTarget(
+                      marketComments,
+                      post.id,
+                      session?.userId,
+                      marketReadMap[post.id]
+                    )
+                      ? '🔔'
+                      : ''}
+                  </p>
                 </div>
               </button>
               <div className="grid grid-cols-2 gap-2">
@@ -3146,13 +3963,20 @@ export function AppMarketplacePage() {
                   {selectedPost.status === 'active' ? 'Disponible' : 'Vendido'}
                 </p>
               </div>
-              <AppButton className="px-2 py-1 text-xs" onClick={() => setSelectedPostId(null)} variant="secondary">
+              <AppButton
+                className="px-2 py-1 text-xs"
+                onClick={() => {
+                  setSelectedPostId(null)
+                  setNewCommentText('')
+                }}
+                variant="secondary"
+              >
                 Cerrar
               </AppButton>
             </div>
             <MarketplacePhoto
               alt={`Producto ${selectedPost.title}`}
-              className="mb-2 h-44 w-full rounded-xl border border-zinc-700 object-cover"
+              className="mb-2 h-64 w-full rounded-xl border border-zinc-700 bg-zinc-900 object-contain p-1"
               pathOrUrl={selectedPost.photoUrl}
             />
             <p className="mb-1 text-xl font-bold text-white">${selectedPost.price.toFixed(2)}</p>
@@ -3163,6 +3987,33 @@ export function AppMarketplacePage() {
                 Contacto: {selectedPost.contactMessage}
               </p>
             ) : null}
+            <div className="mt-3 space-y-2 rounded-xl border border-zinc-800 bg-zinc-900 p-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-400">
+                Comentarios ({selectedMarketComments.length})
+              </p>
+              {selectedMarketComments.length === 0 ? (
+                <p className="text-xs text-zinc-400">Sin comentarios por ahora.</p>
+              ) : (
+                <div className="max-h-32 space-y-2 overflow-y-auto pr-1">
+                  {selectedMarketComments.map((comment) => (
+                    <div className="rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2" key={comment.id}>
+                      <p className="text-[11px] text-zinc-400">
+                        {comment.createdByName} | {new Date(comment.createdAt).toLocaleString()}
+                      </p>
+                      <p className="text-xs text-zinc-200">{comment.message}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <textarea
+                className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                onChange={(event) => setNewCommentText(event.target.value)}
+                placeholder="Escribe un comentario"
+                rows={2}
+                value={newCommentText}
+              />
+              <AppButton block onClick={handleCreateMarketplaceComment}>Comentar</AppButton>
+            </div>
             <div className="mt-3 grid grid-cols-2 gap-2">
               <AppButton
                 block
@@ -3212,6 +4063,7 @@ export function AppProfilePage() {
   const [pushMessage, setPushMessage] = useState('')
   const [busyAction, setBusyAction] = useState<'enable' | 'disable' | 'test' | null>(null)
   const [permission, setPermission] = useState(getNotificationPermissionState())
+  const [deviceSubscribed, setDeviceSubscribed] = useState(false)
   const [displayName, setDisplayName] = useState(session?.fullName ?? '')
   const [profileMessage, setProfileMessage] = useState('')
   const [savingDisplayName, setSavingDisplayName] = useState(false)
@@ -3224,12 +4076,14 @@ export function AppProfilePage() {
   const pushSupported = isWebPushSupported()
   const pushConfigured = isWebPushConfigured()
 
-  function refreshPermission() {
+  async function refreshPushStatus() {
     setPermission(getNotificationPermissionState())
+    const subscribed = await hasDevicePushSubscription()
+    setDeviceSubscribed(subscribed)
   }
 
   useEffect(() => {
-    refreshPermission()
+    void refreshPushStatus()
   }, [])
 
   useEffect(() => {
@@ -3253,7 +4107,7 @@ export function AppProfilePage() {
     } catch (error) {
       setPushMessage(error instanceof Error ? error.message : tx('Error inesperado al activar push.', 'Unexpected error enabling push.'))
     } finally {
-      refreshPermission()
+      void refreshPushStatus()
       setBusyAction(null)
     }
   }
@@ -3275,7 +4129,7 @@ export function AppProfilePage() {
     } catch (error) {
       setPushMessage(error instanceof Error ? error.message : tx('Error inesperado al desactivar push.', 'Unexpected error disabling push.'))
     } finally {
-      refreshPermission()
+      void refreshPushStatus()
       setBusyAction(null)
     }
   }
@@ -3455,7 +4309,8 @@ export function AppProfilePage() {
           <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">{tx('Notificaciones push', 'Push notifications')}</p>
           <p className="text-xs text-zinc-300">
             {tx('Soporte', 'Support')}: {pushSupported ? tx('Si', 'Yes') : tx('No', 'No')} | {tx('Configuracion', 'Configuration')}:{' '}
-            {pushConfigured ? tx('Lista', 'Ready') : tx('Falta clave', 'Missing key')} | {tx('Permiso', 'Permission')}: {permission}
+            {pushConfigured ? tx('Lista', 'Ready') : tx('Falta clave', 'Missing key')} | {tx('Permiso', 'Permission')}: {permission}{' '}
+            | {tx('Dispositivo', 'Device')}: {deviceSubscribed ? tx('Suscrito', 'Subscribed') : tx('Sin suscripcion', 'Not subscribed')}
           </p>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             <AppButton

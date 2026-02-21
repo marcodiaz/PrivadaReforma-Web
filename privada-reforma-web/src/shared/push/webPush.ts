@@ -1,6 +1,7 @@
 import { removePushSubscriptionByEndpoint, upsertPushSubscription } from '../supabase/data'
 
 const PUBLIC_VAPID_KEY = import.meta.env.VITE_WEB_PUSH_PUBLIC_KEY?.trim() ?? ''
+const SERVICE_WORKER_READY_TIMEOUT_MS = 8000
 
 function base64UrlToUint8Array(base64Url: string): Uint8Array {
   const padding = '='.repeat((4 - (base64Url.length % 4)) % 4)
@@ -45,6 +46,26 @@ export function getNotificationPermissionState() {
   return Notification.permission
 }
 
+async function getServiceWorkerReadyWithTimeout() {
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    window.setTimeout(() => reject(new Error('Timeout esperando Service Worker.')), SERVICE_WORKER_READY_TIMEOUT_MS)
+  })
+  return (await Promise.race([navigator.serviceWorker.ready, timeoutPromise])) as ServiceWorkerRegistration
+}
+
+export async function hasDevicePushSubscription() {
+  if (!isWebPushSupported()) {
+    return false
+  }
+  try {
+    const registration = await getServiceWorkerReadyWithTimeout()
+    const subscription = await registration.pushManager.getSubscription()
+    return Boolean(subscription)
+  } catch {
+    return false
+  }
+}
+
 export async function subscribeThisDeviceToPush(userId: string) {
   if (!isWebPushSupported()) {
     return { ok: false, error: 'Push no soportado en este navegador.' }
@@ -58,13 +79,23 @@ export async function subscribeThisDeviceToPush(userId: string) {
     return { ok: false, error: 'Permiso de notificaciones no concedido.' }
   }
 
-  const registration = await navigator.serviceWorker.ready
+  let registration: ServiceWorkerRegistration
+  try {
+    registration = await getServiceWorkerReadyWithTimeout()
+  } catch {
+    return { ok: false, error: 'Service Worker no disponible. Recarga la app e intenta de nuevo.' }
+  }
   let subscription = await registration.pushManager.getSubscription()
   if (!subscription) {
-    subscription = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: base64UrlToUint8Array(PUBLIC_VAPID_KEY) as BufferSource,
-    })
+    try {
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: base64UrlToUint8Array(PUBLIC_VAPID_KEY) as BufferSource,
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Error al suscribir push.'
+      return { ok: false, error: `No fue posible crear suscripcion push: ${message}` }
+    }
   }
 
   const keys = getSubscriptionKeys(subscription)
@@ -92,7 +123,12 @@ export async function unsubscribeThisDeviceFromPush(userId: string) {
   if (!isWebPushSupported()) {
     return { ok: false, error: 'Push no soportado en este navegador.' }
   }
-  const registration = await navigator.serviceWorker.ready
+  let registration: ServiceWorkerRegistration
+  try {
+    registration = await getServiceWorkerReadyWithTimeout()
+  } catch {
+    return { ok: false, error: 'Service Worker no disponible. Recarga la app e intenta de nuevo.' }
+  }
   const subscription = await registration.pushManager.getSubscription()
   if (!subscription) {
     return { ok: true }

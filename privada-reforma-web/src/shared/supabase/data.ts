@@ -1,5 +1,7 @@
 import type { UserRole } from '../domain/auth'
 import type {
+  AppComment,
+  DirectoryEntry,
   Incident,
   MaintenanceReport,
   MarketplacePost,
@@ -20,6 +22,8 @@ const MAINTENANCE_BUCKET = 'maintenance-photos'
 const MAINTENANCE_PHOTO_SIGNED_URL_SECONDS = 15 * 60
 const MARKETPLACE_BUCKET = 'marketplace-photos'
 const MARKETPLACE_PHOTO_SIGNED_URL_SECONDS = 15 * 60
+const DIRECTORY_BUCKET = 'directory-photos'
+const DIRECTORY_PHOTO_SIGNED_URL_SECONDS = 15 * 60
 
 type PackageRow = {
   id: string
@@ -133,9 +137,34 @@ type MaintenanceReportRow = {
   title: string
   description: string
   report_type: MaintenanceReport['reportType']
-  photo_url: string
+  photo_url: string | null
   unit_number: string
   status: MaintenanceReport['status']
+  created_at: string
+  created_by_user_id: string
+  created_by_name: string
+}
+
+type DirectoryEntryRow = {
+  id: string
+  provider_name: string
+  contact_name: string | null
+  contact_phone: string
+  contact_whatsapp: string | null
+  notes: string | null
+  service_types: DirectoryEntry['serviceTypes']
+  other_service_type: string | null
+  photo_url: string | null
+  created_at: string
+  created_by_user_id: string
+  created_by_name: string
+}
+
+type AppCommentRow = {
+  id: string
+  target_type: AppComment['targetType']
+  target_id: string
+  message: string
   created_at: string
   created_by_user_id: string
   created_by_name: string
@@ -291,9 +320,38 @@ function mapMaintenanceReportRow(row: MaintenanceReportRow): MaintenanceReport {
     title: row.title,
     description: row.description,
     reportType: row.report_type,
-    photoUrl: row.photo_url,
+    photoUrl: row.photo_url ?? undefined,
     unitNumber: row.unit_number,
     status: row.status,
+    createdAt: row.created_at,
+    createdByUserId: row.created_by_user_id,
+    createdByName: row.created_by_name,
+  }
+}
+
+function mapDirectoryEntryRow(row: DirectoryEntryRow): DirectoryEntry {
+  return {
+    id: row.id,
+    providerName: row.provider_name,
+    contactName: row.contact_name ?? undefined,
+    contactPhone: row.contact_phone,
+    contactWhatsapp: row.contact_whatsapp ?? undefined,
+    notes: row.notes ?? undefined,
+    serviceTypes: row.service_types ?? [],
+    otherServiceType: row.other_service_type ?? undefined,
+    photoUrl: row.photo_url ?? undefined,
+    createdAt: row.created_at,
+    createdByUserId: row.created_by_user_id,
+    createdByName: row.created_by_name,
+  }
+}
+
+function mapAppCommentRow(row: AppCommentRow): AppComment {
+  return {
+    id: row.id,
+    targetType: row.target_type,
+    targetId: row.target_id,
+    message: row.message,
     createdAt: row.created_at,
     createdByUserId: row.created_by_user_id,
     createdByName: row.created_by_name,
@@ -415,9 +473,38 @@ function mapMaintenanceReportToRow(input: MaintenanceReport): MaintenanceReportR
     title: input.title,
     description: input.description,
     report_type: input.reportType,
-    photo_url: input.photoUrl,
+    photo_url: input.photoUrl ?? null,
     unit_number: input.unitNumber,
     status: input.status,
+    created_at: input.createdAt,
+    created_by_user_id: input.createdByUserId,
+    created_by_name: input.createdByName,
+  }
+}
+
+function mapDirectoryEntryToRow(input: DirectoryEntry): DirectoryEntryRow {
+  return {
+    id: input.id,
+    provider_name: input.providerName,
+    contact_name: input.contactName ?? null,
+    contact_phone: input.contactPhone,
+    contact_whatsapp: input.contactWhatsapp ?? null,
+    notes: input.notes ?? null,
+    service_types: input.serviceTypes,
+    other_service_type: input.otherServiceType ?? null,
+    photo_url: input.photoUrl ?? null,
+    created_at: input.createdAt,
+    created_by_user_id: input.createdByUserId,
+    created_by_name: input.createdByName,
+  }
+}
+
+function mapAppCommentToRow(input: AppComment): AppCommentRow {
+  return {
+    id: input.id,
+    target_type: input.targetType,
+    target_id: input.targetId,
+    message: input.message,
     created_at: input.createdAt,
     created_by_user_id: input.createdByUserId,
     created_by_name: input.createdByName,
@@ -601,6 +688,58 @@ export async function createMaintenanceReportInSupabase(report: MaintenanceRepor
     return false
   }
   const { error } = await supabase.from('maintenance_reports').insert(mapMaintenanceReportToRow(report))
+  return !error
+}
+
+export async function fetchDirectoryEntriesFromSupabase() {
+  if (!supabase) {
+    return null
+  }
+
+  const { data, error } = await supabase
+    .from('directory_entries')
+    .select(
+      'id, provider_name, contact_name, contact_phone, contact_whatsapp, notes, service_types, other_service_type, photo_url, created_at, created_by_user_id, created_by_name',
+    )
+    .order('created_at', { ascending: false })
+
+  if (error || !data) {
+    return null
+  }
+
+  return data.map((row) => mapDirectoryEntryRow(row as DirectoryEntryRow))
+}
+
+export async function createDirectoryEntryInSupabase(entry: DirectoryEntry) {
+  if (!supabase) {
+    return false
+  }
+  const { error } = await supabase.from('directory_entries').insert(mapDirectoryEntryToRow(entry))
+  return !error
+}
+
+export async function fetchAppCommentsFromSupabase() {
+  if (!supabase) {
+    return null
+  }
+
+  const { data, error } = await supabase
+    .from('app_comments')
+    .select('id, target_type, target_id, message, created_at, created_by_user_id, created_by_name')
+    .order('created_at', { ascending: false })
+
+  if (error || !data) {
+    return null
+  }
+
+  return data.map((row) => mapAppCommentRow(row as AppCommentRow))
+}
+
+export async function createAppCommentInSupabase(comment: AppComment) {
+  if (!supabase) {
+    return false
+  }
+  const { error } = await supabase.from('app_comments').insert(mapAppCommentToRow(comment))
   return !error
 }
 
@@ -899,11 +1038,21 @@ export async function sendPushTestToUser(input: { userId: string }) {
   if (error) {
     return { ok: false, error: error.message }
   }
-  const ok = Boolean((data as { ok?: boolean } | null)?.ok)
+  const payload = data as { ok?: boolean; error?: string; sent?: number; failed?: number } | null
+  const ok = Boolean(payload?.ok)
   if (!ok) {
     const message =
-      (data as { error?: string } | null)?.error ?? 'No fue posible enviar notificacion de prueba.'
+      payload?.error ?? 'No fue posible enviar notificacion de prueba.'
     return { ok: false, error: message }
+  }
+  if ((payload?.sent ?? 0) <= 0) {
+    return {
+      ok: false,
+      error:
+        payload?.failed && payload.failed > 0
+          ? `No se pudo entregar la notificacion (${payload.failed} fallo/fallos).`
+          : 'No hay dispositivos suscritos para recibir notificaciones.',
+    }
   }
   return { ok: true }
 }
@@ -918,10 +1067,11 @@ export async function emitDomainPushEvent(input: DomainPushEventInput) {
   if (error) {
     return { ok: false, error: error.message }
   }
-  const ok = Boolean((data as { ok?: boolean } | null)?.ok)
+  const payload = data as { ok?: boolean; error?: string } | null
+  const ok = Boolean(payload?.ok)
   if (!ok) {
     const message =
-      (data as { error?: string } | null)?.error ?? 'No fue posible emitir notificacion.'
+      payload?.error ?? 'No fue posible emitir notificacion.'
     return { ok: false, error: message }
   }
   return { ok: true }
@@ -994,6 +1144,36 @@ export async function uploadMaintenancePhoto(file: Blob) {
 
   const path = `maintenance/${new Date().getUTCFullYear()}/${crypto.randomUUID()}.webp`
   const bucket = supabase.storage.from(MAINTENANCE_BUCKET)
+
+  const signedUpload = await bucket.createSignedUploadUrl(path)
+  if (!signedUpload.error && signedUpload.data?.token) {
+    const uploadResult = await bucket.uploadToSignedUrl(path, signedUpload.data.token, file, {
+      contentType: 'image/webp',
+      upsert: false,
+    })
+    if (uploadResult.error) {
+      throw uploadResult.error
+    }
+  } else {
+    const directUpload = await bucket.upload(path, file, {
+      contentType: 'image/webp',
+      upsert: false,
+    })
+    if (directUpload.error) {
+      throw directUpload.error
+    }
+  }
+
+  return path
+}
+
+export async function uploadDirectoryPhoto(file: Blob) {
+  if (!supabase) {
+    throw new Error('Supabase no esta configurado.')
+  }
+
+  const path = `directory/${new Date().getUTCFullYear()}/${crypto.randomUUID()}.webp`
+  const bucket = supabase.storage.from(DIRECTORY_BUCKET)
 
   const signedUpload = await bucket.createSignedUploadUrl(path)
   if (!signedUpload.error && signedUpload.data?.token) {
@@ -1119,6 +1299,31 @@ export async function getSignedMaintenancePhotoUrl(
 
   const { data, error } = await supabase.storage
     .from(MAINTENANCE_BUCKET)
+    .createSignedUrl(path, expiresSeconds)
+
+  if (error || !data?.signedUrl) {
+    throw new Error(error?.message ?? 'No fue posible crear signed URL.')
+  }
+
+  return data.signedUrl
+}
+
+export async function getSignedDirectoryPhotoUrl(
+  path: string,
+  expiresSeconds = DIRECTORY_PHOTO_SIGNED_URL_SECONDS
+): Promise<string> {
+  if (!path) {
+    throw new Error('Storage path requerido.')
+  }
+  if (isDirectDisplayUrl(path)) {
+    return path
+  }
+  if (!supabase) {
+    throw new Error('Supabase no esta configurado.')
+  }
+
+  const { data, error } = await supabase.storage
+    .from(DIRECTORY_BUCKET)
     .createSignedUrl(path, expiresSeconds)
 
   if (error || !data?.signedUrl) {

@@ -4,6 +4,7 @@ export type UiComponent = {
 
 export { AppButton } from './AppButton'
 export { AppCard } from './AppCard'
+export { DirectoryPhoto } from './DirectoryPhoto'
 export { GlobalStatus } from './GlobalStatus'
 export { MaintenancePhoto } from './MaintenancePhoto'
 export { MarketplacePhoto } from './MarketplacePhoto'

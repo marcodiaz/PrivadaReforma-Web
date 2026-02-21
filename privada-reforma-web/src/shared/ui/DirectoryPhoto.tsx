@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLanguage } from '../i18n/LanguageContext'
-import { getSignedMarketplacePhotoUrl, isStorageObjectPath } from '../supabase/data'
+import { getSignedDirectoryPhotoUrl, isStorageObjectPath } from '../supabase/data'
 
-type MarketplacePhotoProps = {
+type DirectoryPhotoProps = {
   pathOrUrl: string
   alt: string
   className?: string
 }
 
-export function MarketplacePhoto({ pathOrUrl, alt, className = '' }: MarketplacePhotoProps) {
+export function DirectoryPhoto({ pathOrUrl, alt, className = '' }: DirectoryPhotoProps) {
   const { tx } = useLanguage()
   const [signedSrcByPath, setSignedSrcByPath] = useState<Record<string, string>>({})
   const [erroredSrc, setErroredSrc] = useState<string | null>(null)
@@ -27,7 +27,7 @@ export function MarketplacePhoto({ pathOrUrl, alt, className = '' }: Marketplace
     let canceled = false
     void (async () => {
       try {
-        const nextSignedUrl = await getSignedMarketplacePhotoUrl(pathOrUrl)
+        const nextSignedUrl = await getSignedDirectoryPhotoUrl(pathOrUrl)
         if (canceled) {
           return
         }

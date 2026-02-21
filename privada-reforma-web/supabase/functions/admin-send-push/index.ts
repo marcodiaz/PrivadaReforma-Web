@@ -192,6 +192,8 @@ Deno.serve(async (req) => {
 
     let sent = 0
     let removed = 0
+    let failed = 0
+    let firstFailureMessage: string | null = null
     for (const subscription of subscriptions) {
       try {
         await webpush.sendNotification(
@@ -213,11 +215,28 @@ Deno.serve(async (req) => {
         if (statusCode === 404 || statusCode === 410) {
           await adminClient.from('push_subscriptions').delete().eq('id', subscription.id)
           removed += 1
+        } else {
+          failed += 1
+          if (!firstFailureMessage) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown push error.'
+            firstFailureMessage = statusCode ? `status ${statusCode}: ${errorMessage}` : errorMessage
+          }
         }
       }
     }
 
-    return json(200, { ok: true, sent, removed, targetUsers: targetUserIds.length })
+    if (sent === 0 && failed > 0) {
+      return json(502, {
+        ok: false,
+        error: `Push provider rejected notifications (${failed} failed). ${firstFailureMessage ?? ''}`.trim(),
+        sent,
+        removed,
+        failed,
+        targetUsers: targetUserIds.length,
+      })
+    }
+
+    return json(200, { ok: true, sent, removed, failed, targetUsers: targetUserIds.length })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unexpected error.'
     return json(500, { ok: false, error: message })

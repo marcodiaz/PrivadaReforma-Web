@@ -9,6 +9,8 @@ import {
 } from 'react'
 import {
   LOCAL_AUDIT_LOG,
+  LOCAL_APP_COMMENTS,
+  LOCAL_DIRECTORY_ENTRIES,
   LOCAL_INCIDENTS,
   LOCAL_OFFLINE_QUEUE,
   LOCAL_PARKING_REPORTS,
@@ -21,8 +23,14 @@ import {
   LOCAL_QR_PASSES,
   LOCAL_RESERVATIONS,
   auditLogSchema,
+  appCommentSchema,
+  appCommentTargetTypeSchema,
+  directoryEntrySchema,
+  directoryServiceTypeSchema,
   type AppSession,
+  type AppComment,
   type AuditLogEntry,
+  type DirectoryEntry,
   type Incident,
   petPostSchema,
   petPostCommentSchema,
@@ -58,6 +66,8 @@ import {
 import { getItem, migrateIfNeeded, removeItem, setItem, storageKeys } from '../storage/storage'
 import {
   createIncidentInSupabase,
+  createDirectoryEntryInSupabase,
+  createAppCommentInSupabase,
   createPetPostCommentInSupabase,
   createPetPostInSupabase,
   createMarketplacePostInSupabase,
@@ -72,6 +82,8 @@ import {
   emitDomainPushEvent,
   endPollInSupabase,
   fetchIncidentsFromSupabase,
+  fetchDirectoryEntriesFromSupabase,
+  fetchAppCommentsFromSupabase,
   fetchPackagesFromSupabase,
   fetchPetPostsFromSupabase,
   fetchPetPostCommentsFromSupabase,
@@ -138,8 +150,10 @@ type DemoDataContextValue = {
   polls: Poll[]
   petPosts: PetPost[]
   petPostComments: PetPostComment[]
+  appComments: AppComment[]
   maintenanceReports: MaintenanceReport[]
   marketplacePosts: MarketplacePost[]
+  directoryEntries: DirectoryEntry[]
   moderationReports: ModerationReport[]
   offlineQueue: OfflineQueueEvent[]
   remoteDataLoading: boolean
@@ -198,6 +212,11 @@ type DemoDataContextValue = {
     ok: boolean
     error?: string
   }
+  createAppComment: (input: {
+    targetType: AppComment['targetType']
+    targetId: string
+    message: string
+  }) => { ok: boolean; error?: string }
   createMarketplacePost: (input: {
     title: string
     description: string
@@ -237,7 +256,17 @@ type DemoDataContextValue = {
     title: string
     description: string
     reportType: MaintenanceReport['reportType']
-    photoUrl: string
+    photoUrl?: string
+  }) => { ok: boolean; error?: string }
+  createDirectoryEntry: (input: {
+    providerName: string
+    contactName?: string
+    contactPhone: string
+    contactWhatsapp?: string
+    notes?: string
+    serviceTypes: DirectoryEntry['serviceTypes']
+    otherServiceType?: string
+    photoUrl?: string
   }) => { ok: boolean; error?: string }
   updateParkingReportStatus: (input: {
     reportId: string
@@ -393,11 +422,17 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
   const [petPostComments, setPetPostComments] = useState<PetPostComment[]>(() =>
     safeReadArray(storageKeys.petPostComments, petPostCommentSchema.array(), LOCAL_PET_POST_COMMENTS)
   )
+  const [appComments, setAppComments] = useState<AppComment[]>(() =>
+    safeReadArray(storageKeys.appComments, appCommentSchema.array(), LOCAL_APP_COMMENTS)
+  )
   const [maintenanceReports, setMaintenanceReports] = useState<MaintenanceReport[]>(() =>
     safeReadArray(storageKeys.maintenanceReports, maintenanceReportSchema.array(), LOCAL_MAINTENANCE_REPORTS)
   )
   const [marketplacePosts, setMarketplacePosts] = useState<MarketplacePost[]>(() =>
     safeReadArray(storageKeys.marketplacePosts, marketplacePostSchema.array(), LOCAL_MARKETPLACE_POSTS)
+  )
+  const [directoryEntries, setDirectoryEntries] = useState<DirectoryEntry[]>(() =>
+    safeReadArray(storageKeys.directoryEntries, directoryEntrySchema.array(), LOCAL_DIRECTORY_ENTRIES)
   )
   const [moderationReports, setModerationReports] = useState<ModerationReport[]>(() =>
     safeReadArray(storageKeys.moderationReports, moderationReportSchema.array(), LOCAL_MODERATION_REPORTS)
@@ -550,6 +585,32 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
         })
         .catch(() => undefined)
 
+      const loadDirectoryEntries = withTimeout(
+        fetchDirectoryEntriesFromSupabase(),
+        REMOTE_BOOTSTRAP_TIMEOUT_MS,
+        'directory_entries'
+      )
+        .then((remoteDirectoryEntries) => {
+          if (!isMounted || !remoteDirectoryEntries) {
+            return
+          }
+          setDirectoryEntries(remoteDirectoryEntries)
+        })
+        .catch(() => undefined)
+
+      const loadAppComments = withTimeout(
+        fetchAppCommentsFromSupabase(),
+        REMOTE_BOOTSTRAP_TIMEOUT_MS,
+        'app_comments'
+      )
+        .then((remoteAppComments) => {
+          if (!isMounted || !remoteAppComments) {
+            return
+          }
+          setAppComments(remoteAppComments)
+        })
+        .catch(() => undefined)
+
       await Promise.allSettled([
         loadPackages,
         loadIncidents,
@@ -559,6 +620,8 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
         loadMarketplace,
         loadModerationReports,
         loadMaintenanceReports,
+        loadDirectoryEntries,
+        loadAppComments,
       ])
       if (isMounted) {
         setRemoteDataLoading(false)
@@ -586,8 +649,10 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       setItem(storageKeys.polls, polls)
       setItem(storageKeys.petPosts, petPosts)
       setItem(storageKeys.petPostComments, petPostComments)
+      setItem(storageKeys.appComments, appComments)
       setItem(storageKeys.maintenanceReports, maintenanceReports)
       setItem(storageKeys.marketplacePosts, marketplacePosts)
+      setItem(storageKeys.directoryEntries, directoryEntries)
       setItem(storageKeys.moderationReports, moderationReports)
     }, 300)
     return () => {
@@ -606,8 +671,10 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     polls,
     petPosts,
     petPostComments,
+    appComments,
     maintenanceReports,
     marketplacePosts,
+    directoryEntries,
     moderationReports,
   ])
 
@@ -666,8 +733,10 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     setPolls(LOCAL_POLLS)
     setPetPosts(LOCAL_PET_POSTS)
     setPetPostComments(LOCAL_PET_POST_COMMENTS)
+    setAppComments(LOCAL_APP_COMMENTS)
     setMaintenanceReports(LOCAL_MAINTENANCE_REPORTS)
     setMarketplacePosts(LOCAL_MARKETPLACE_POSTS)
+    setDirectoryEntries(LOCAL_DIRECTORY_ENTRIES)
     setModerationReports(LOCAL_MODERATION_REPORTS)
     removeItem(storageKeys.incidents)
     removeItem(storageKeys.qrPasses)
@@ -679,8 +748,10 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     removeItem(storageKeys.polls)
     removeItem(storageKeys.petPosts)
     removeItem(storageKeys.petPostComments)
+    removeItem(storageKeys.appComments)
     removeItem(storageKeys.maintenanceReports)
     removeItem(storageKeys.marketplacePosts)
+    removeItem(storageKeys.directoryEntries)
     removeItem(storageKeys.moderationReports)
   }
 
@@ -1331,6 +1402,53 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     return { ok: true }
   }
 
+  function createAppComment(input: {
+    targetType: AppComment['targetType']
+    targetId: string
+    message: string
+  }) {
+    if (!session) {
+      return { ok: false, error: 'Sesion requerida.' }
+    }
+    if (!appCommentTargetTypeSchema.safeParse(input.targetType).success) {
+      return { ok: false, error: 'Tipo de comentario invalido.' }
+    }
+    const targetId = input.targetId.trim()
+    const message = input.message.trim()
+    if (!targetId) {
+      return { ok: false, error: 'Contenido no encontrado.' }
+    }
+    if (!message) {
+      return { ok: false, error: 'Escribe un comentario.' }
+    }
+
+    const targetExists =
+      (input.targetType === 'poll' && polls.some((poll) => poll.id === targetId)) ||
+      (input.targetType === 'marketplace_post' &&
+        marketplacePosts.some((post) => post.id === targetId)) ||
+      (input.targetType === 'directory_entry' &&
+        directoryEntries.some((entry) => entry.id === targetId))
+
+    if (!targetExists) {
+      return { ok: false, error: 'Contenido no encontrado.' }
+    }
+
+    const comment: AppComment = {
+      id: randomId('cmt'),
+      targetType: input.targetType,
+      targetId,
+      message,
+      createdAt: new Date().toISOString(),
+      createdByUserId: session.userId,
+      createdByName: session.fullName,
+    }
+    setAppComments((previous) => [comment, ...previous])
+    if (isSupabaseConfigured && isOnline) {
+      void createAppCommentInSupabase(comment)
+    }
+    return { ok: true }
+  }
+
   function createMarketplacePost(input: {
     title: string
     description: string
@@ -1610,7 +1728,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     title: string
     description: string
     reportType: MaintenanceReport['reportType']
-    photoUrl: string
+    photoUrl?: string
   }) {
     if (!session) {
       return { ok: false, error: 'Sesion requerida.' }
@@ -1623,15 +1741,12 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     }
     const title = input.title.trim()
     const description = input.description.trim()
-    const photoUrl = input.photoUrl.trim()
+    const photoUrl = input.photoUrl?.trim()
     if (!title) {
       return { ok: false, error: 'Titulo obligatorio.' }
     }
     if (!description) {
       return { ok: false, error: 'Descripcion obligatoria.' }
-    }
-    if (!photoUrl) {
-      return { ok: false, error: 'Foto obligatoria.' }
     }
     if (!maintenanceReportTypeSchema.safeParse(input.reportType).success) {
       return { ok: false, error: 'Tipo de reporte invalido.' }
@@ -1642,7 +1757,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       title,
       description,
       reportType: input.reportType,
-      photoUrl,
+      photoUrl: photoUrl || undefined,
       unitNumber: session.unitNumber,
       status: 'open',
       createdAt: new Date().toISOString(),
@@ -1652,6 +1767,70 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     setMaintenanceReports((previous) => [report, ...previous])
     if (isSupabaseConfigured && isOnline) {
       void createMaintenanceReportInSupabase(report)
+    }
+    return { ok: true }
+  }
+
+  function createDirectoryEntry(input: {
+    providerName: string
+    contactName?: string
+    contactPhone: string
+    contactWhatsapp?: string
+    notes?: string
+    serviceTypes: DirectoryEntry['serviceTypes']
+    otherServiceType?: string
+    photoUrl?: string
+  }) {
+    if (!session) {
+      return { ok: false, error: 'Sesion requerida.' }
+    }
+    if (!['resident', 'tenant', 'board', 'admin'].includes(session.role)) {
+      return { ok: false, error: 'Solo residentes/comite pueden publicar en directorio.' }
+    }
+
+    const providerName = input.providerName.trim()
+    const contactPhone = input.contactPhone.trim()
+    const contactName = input.contactName?.trim()
+    const contactWhatsapp = input.contactWhatsapp?.trim()
+    const notes = input.notes?.trim()
+    const otherServiceType = input.otherServiceType?.trim()
+    const photoUrl = input.photoUrl?.trim()
+    const serviceTypes = Array.from(new Set(input.serviceTypes))
+
+    if (!providerName) {
+      return { ok: false, error: 'Nombre del proveedor obligatorio.' }
+    }
+    if (!contactPhone) {
+      return { ok: false, error: 'Telefono de contacto obligatorio.' }
+    }
+    if (serviceTypes.length === 0) {
+      return { ok: false, error: 'Selecciona al menos un tipo de servicio.' }
+    }
+    if (serviceTypes.some((type) => !directoryServiceTypeSchema.safeParse(type).success)) {
+      return { ok: false, error: 'Tipo de servicio invalido.' }
+    }
+    if (serviceTypes.includes('other') && !otherServiceType) {
+      return { ok: false, error: 'Especifica el servicio en "Otro".' }
+    }
+
+    const entry: DirectoryEntry = {
+      id: randomId('dir'),
+      providerName,
+      contactName: contactName || undefined,
+      contactPhone,
+      contactWhatsapp: contactWhatsapp || undefined,
+      notes: notes || undefined,
+      serviceTypes,
+      otherServiceType: otherServiceType || undefined,
+      photoUrl: photoUrl || undefined,
+      createdAt: new Date().toISOString(),
+      createdByUserId: session.userId,
+      createdByName: session.fullName,
+    }
+
+    setDirectoryEntries((previous) => [entry, ...previous])
+    if (isSupabaseConfigured && isOnline) {
+      void createDirectoryEntryInSupabase(entry)
     }
     return { ok: true }
   }
@@ -2017,8 +2196,10 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     polls,
     petPosts,
     petPostComments,
+    appComments,
     maintenanceReports,
     marketplacePosts,
+    directoryEntries,
     moderationReports,
     remoteDataLoading,
     offlineQueue,
@@ -2046,6 +2227,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     createPetPost,
     updatePetPost,
     createPetPostComment,
+    createAppComment,
     createMarketplacePost,
     updateMarketplacePost,
     deleteMarketplacePost,
@@ -2053,6 +2235,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     dismissModerationReport,
     actionModerationReportDeleteTarget,
     createMaintenanceReport,
+    createDirectoryEntry,
     createParkingReport,
     updateParkingReportStatus,
     getAssignedParkingForUnit,

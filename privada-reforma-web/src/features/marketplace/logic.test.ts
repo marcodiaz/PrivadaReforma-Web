@@ -38,8 +38,8 @@ const samplePosts: MarketplacePost[] = [
     updatedAt: '2026-02-20T10:00:00.000Z',
     createdByUserId: 'u-2',
     createdByName: 'Ana',
-    contactMessage: null,
-    whatsappNumber: null,
+    contactMessage: undefined,
+    whatsappNumber: undefined,
   },
 ]
 
