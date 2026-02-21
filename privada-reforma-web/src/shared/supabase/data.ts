@@ -16,6 +16,8 @@ const PACKAGE_BUCKET = 'package-photos'
 const PACKAGE_PHOTO_SIGNED_URL_SECONDS = 15 * 60
 const PET_BUCKET = 'pet-photos'
 const PET_PHOTO_SIGNED_URL_SECONDS = 15 * 60
+const MARKETPLACE_BUCKET = 'marketplace-photos'
+const MARKETPLACE_PHOTO_SIGNED_URL_SECONDS = 15 * 60
 
 type PackageRow = {
   id: string
@@ -959,7 +961,7 @@ export async function uploadMarketplacePhoto(file: Blob) {
   }
 
   const path = `marketplace/${new Date().getUTCFullYear()}/${crypto.randomUUID()}.webp`
-  const bucket = supabase.storage.from(PET_BUCKET)
+  const bucket = supabase.storage.from(MARKETPLACE_BUCKET)
 
   const signedUpload = await bucket.createSignedUploadUrl(path)
   if (!signedUpload.error && signedUpload.data?.token) {
@@ -1036,6 +1038,31 @@ export async function getSignedPetPhotoUrl(
   }
 
   const { data, error } = await supabase.storage.from(PET_BUCKET).createSignedUrl(path, expiresSeconds)
+
+  if (error || !data?.signedUrl) {
+    throw new Error(error?.message ?? 'No fue posible crear signed URL.')
+  }
+
+  return data.signedUrl
+}
+
+export async function getSignedMarketplacePhotoUrl(
+  path: string,
+  expiresSeconds = MARKETPLACE_PHOTO_SIGNED_URL_SECONDS
+): Promise<string> {
+  if (!path) {
+    throw new Error('Storage path requerido.')
+  }
+  if (isDirectDisplayUrl(path)) {
+    return path
+  }
+  if (!supabase) {
+    throw new Error('Supabase no esta configurado.')
+  }
+
+  const { data, error } = await supabase.storage
+    .from(MARKETPLACE_BUCKET)
+    .createSignedUrl(path, expiresSeconds)
 
   if (error || !data?.signedUrl) {
     throw new Error(error?.message ?? 'No fue posible crear signed URL.')

@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState, type ChangeEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { AppButton, AppCard, ModulePlaceholder, PetPhoto } from '../../shared/ui'
+import { AppButton, AppCard, MarketplacePhoto, ModulePlaceholder, PetPhoto } from '../../shared/ui'
 import { useDemoData } from '../../shared/state/DemoDataContext'
 import { sortIncidentsForGuard } from '../incidents/logic'
+import { filterMarketplacePosts } from '../marketplace/logic'
 import type { Incident, PetProfile, Poll } from '../../shared/domain/demoData'
 import {
   buildQrImageUrl,
@@ -46,6 +47,7 @@ function incidentEmphasis(score: number) {
 
 const reportActionClass =
   'border-zinc-700/80 bg-zinc-900/80 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100'
+const MAX_MARKETPLACE_UPLOAD_BYTES = 15 * 1024 * 1024
 
 const petBehaviorTraitOptions: Array<{ value: PetProfile['behaviorTraits'][number]; label: string; icon: string }> = [
   { value: 'playful', label: 'Playful', icon: '🎾' },
@@ -162,6 +164,39 @@ async function compressImageForUpload(file: File, maxDimension = 1600, quality =
   if (!file.type.startsWith('image/')) {
     return file
   }
+  if (file.type.includes('heic') || file.type.includes('heif')) {
+    throw new Error('Formato HEIC/HEIF no compatible en este navegador. Usa JPG o PNG.')
+  }
+
+  const toCanvasBlob = async (width: number, height: number, draw: (ctx: CanvasRenderingContext2D) => void) => {
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const context = canvas.getContext('2d')
+    if (!context) {
+      return file
+    }
+    draw(context)
+    const blob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob(resolve, 'image/webp', quality)
+    })
+    return blob ?? file
+  }
+
+  if ('createImageBitmap' in window) {
+    const imageBitmap = await createImageBitmap(file, { imageOrientation: 'from-image' } as ImageBitmapOptions)
+    try {
+      const largestSide = Math.max(imageBitmap.width, imageBitmap.height)
+      const scale = largestSide > maxDimension ? maxDimension / largestSide : 1
+      const width = Math.max(1, Math.round(imageBitmap.width * scale))
+      const height = Math.max(1, Math.round(imageBitmap.height * scale))
+      return await toCanvasBlob(width, height, (ctx) => {
+        ctx.drawImage(imageBitmap, 0, 0, width, height)
+      })
+    } finally {
+      imageBitmap.close()
+    }
+  }
 
   const imageUrl = URL.createObjectURL(file)
   try {
@@ -171,25 +206,13 @@ async function compressImageForUpload(file: File, maxDimension = 1600, quality =
       node.onerror = () => reject(new Error('No fue posible procesar la imagen.'))
       node.src = imageUrl
     })
-
     const largestSide = Math.max(image.naturalWidth, image.naturalHeight)
     const scale = largestSide > maxDimension ? maxDimension / largestSide : 1
     const width = Math.max(1, Math.round(image.naturalWidth * scale))
     const height = Math.max(1, Math.round(image.naturalHeight * scale))
-
-    const canvas = document.createElement('canvas')
-    canvas.width = width
-    canvas.height = height
-    const context = canvas.getContext('2d')
-    if (!context) {
-      return file
-    }
-    context.drawImage(image, 0, 0, width, height)
-
-    const blob = await new Promise<Blob | null>((resolve) => {
-      canvas.toBlob(resolve, 'image/webp', quality)
+    return await toCanvasBlob(width, height, (ctx) => {
+      ctx.drawImage(image, 0, 0, width, height)
     })
-    return blob ?? file
   } finally {
     URL.revokeObjectURL(imageUrl)
   }
@@ -2569,26 +2592,51 @@ export function AppMarketplacePage() {
   const [whatsappNumber, setWhatsappNumber] = useState('')
   const [photoUrl, setPhotoUrl] = useState('')
   const [isPostFormOpen, setIsPostFormOpen] = useState(false)
+  const [photoUploadProgress, setPhotoUploadProgress] = useState(0)
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null)
   const [editingPostId, setEditingPostId] = useState<string | null>(null)
   const [feedback, setFeedback] = useState('')
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const [reportingPostId, setReportingPostId] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [filterCondition, setFilterCondition] = useState<'all' | 'new' | 'used'>('all')
+  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'sold'>('all')
+  const [minFilterPrice, setMinFilterPrice] = useState('')
+  const [maxFilterPrice, setMaxFilterPrice] = useState('')
 
   const selectedPost = marketplacePosts.find((post) => post.id === selectedPostId) ?? null
   const editingPost = marketplacePosts.find((post) => post.id === editingPostId) ?? null
+  const filteredMarketplacePosts = useMemo(
+    () =>
+      filterMarketplacePosts(marketplacePosts, {
+        query: searchQuery,
+        condition: filterCondition,
+        status: filterStatus,
+        minPrice: minFilterPrice,
+        maxPrice: maxFilterPrice,
+      }),
+    [marketplacePosts, searchQuery, filterCondition, filterStatus, minFilterPrice, maxFilterPrice]
+  )
 
   async function handlePhotoUpload(file: File | null) {
     if (!file) {
       return
     }
+    if (file.size > MAX_MARKETPLACE_UPLOAD_BYTES) {
+      setFeedback('La foto excede 15 MB. Selecciona una imagen mas ligera.')
+      return
+    }
     setUploadingPhoto(true)
+    setPhotoUploadProgress(5)
     setFeedback('')
     try {
+      setPhotoUploadProgress(20)
       const imageBlob = await compressImageForUpload(file)
+      setPhotoUploadProgress(55)
       if (isSupabaseConfigured && navigator.onLine) {
         const objectPath = await uploadMarketplacePhoto(imageBlob)
         setPhotoUrl(objectPath)
+        setPhotoUploadProgress(100)
         setFeedback('Foto cargada correctamente.')
       } else {
         const dataUrl = await new Promise<string>((resolve, reject) => {
@@ -2598,9 +2646,11 @@ export function AppMarketplacePage() {
           reader.readAsDataURL(imageBlob)
         })
         setPhotoUrl(dataUrl)
+        setPhotoUploadProgress(100)
         setFeedback('Foto guardada localmente (modo sin red).')
       }
     } catch (error) {
+      setPhotoUploadProgress(0)
       setFeedback(error instanceof Error ? error.message : 'No se pudo cargar la foto.')
     } finally {
       setUploadingPhoto(false)
@@ -2615,6 +2665,7 @@ export function AppMarketplacePage() {
     setContactMessage('')
     setWhatsappNumber('')
     setPhotoUrl('')
+    setPhotoUploadProgress(0)
     setIsPostFormOpen(false)
     setEditingPostId(null)
   }
@@ -2632,6 +2683,7 @@ export function AppMarketplacePage() {
     setContactMessage(post.contactMessage ?? '')
     setWhatsappNumber(post.whatsappNumber ?? '')
     setPhotoUrl(post.photoUrl)
+    setPhotoUploadProgress(0)
     setIsPostFormOpen(true)
     setFeedback('')
   }
@@ -2645,6 +2697,7 @@ export function AppMarketplacePage() {
     setContactMessage('')
     setWhatsappNumber('')
     setPhotoUrl('')
+    setPhotoUploadProgress(0)
     setFeedback('')
     setIsPostFormOpen(true)
   }
@@ -2760,12 +2813,64 @@ export function AppMarketplacePage() {
         </button>
       </div>
       {feedback ? <p className="text-xs text-zinc-300">{feedback}</p> : null}
+      <AppCard className="space-y-2 border-zinc-800 bg-zinc-950">
+        <input
+          className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+          onChange={(event) => setSearchQuery(event.target.value)}
+          placeholder="Buscar por titulo, descripcion o vendedor"
+          value={searchQuery}
+        />
+        <div className="grid grid-cols-2 gap-2">
+          <select
+            className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+            onChange={(event) => setFilterCondition(event.target.value as 'all' | 'new' | 'used')}
+            value={filterCondition}
+          >
+            <option value="all">Condicion: Todas</option>
+            <option value="used">Condicion: Usado</option>
+            <option value="new">Condicion: Nuevo</option>
+          </select>
+          <select
+            className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+            onChange={(event) => setFilterStatus(event.target.value as 'all' | 'active' | 'sold')}
+            value={filterStatus}
+          >
+            <option value="all">Estado: Todos</option>
+            <option value="active">Estado: Disponible</option>
+            <option value="sold">Estado: Vendido</option>
+          </select>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <input
+            className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+            min="0"
+            onChange={(event) => setMinFilterPrice(event.target.value)}
+            placeholder="Precio minimo"
+            step="0.01"
+            type="number"
+            value={minFilterPrice}
+          />
+          <input
+            className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+            min="0"
+            onChange={(event) => setMaxFilterPrice(event.target.value)}
+            placeholder="Precio maximo"
+            step="0.01"
+            type="number"
+            value={maxFilterPrice}
+          />
+        </div>
+      </AppCard>
 
       <div className="space-y-2">
-        {marketplacePosts.length === 0 ? (
-          <AppCard className="text-sm text-zinc-300">Aun no hay publicaciones.</AppCard>
+        {filteredMarketplacePosts.length === 0 ? (
+          <AppCard className="text-sm text-zinc-300">
+            {marketplacePosts.length === 0
+              ? 'Aun no hay publicaciones.'
+              : 'No hay resultados con los filtros actuales.'}
+          </AppCard>
         ) : (
-          marketplacePosts.map((post) => (
+          filteredMarketplacePosts.map((post) => (
             <AppCard className="space-y-2 border-zinc-800 bg-zinc-950" key={post.id}>
               <button className="w-full text-left" onClick={() => setSelectedPostId(post.id)} type="button">
                 <div className="space-y-2">
@@ -2781,7 +2886,7 @@ export function AppMarketplacePage() {
                       {post.status === 'active' ? 'Disponible' : 'Vendido'}
                     </span>
                   </div>
-                  <PetPhoto
+                  <MarketplacePhoto
                     alt={`Producto ${post.title}`}
                     className="h-36 w-full rounded-xl border border-zinc-700 object-cover"
                     pathOrUrl={post.photoUrl}
@@ -2901,6 +3006,23 @@ export function AppMarketplacePage() {
                   type="file"
                 />
               </label>
+              {photoUploadProgress > 0 ? (
+                <div className="space-y-1">
+                  <div className="h-2 w-full overflow-hidden rounded-full border border-zinc-700 bg-zinc-900">
+                    <div
+                      className="h-full rounded-full bg-emerald-500 transition-all"
+                      style={{ width: `${photoUploadProgress}%` }}
+                    />
+                  </div>
+                  <p className="text-[11px] text-zinc-400">
+                    {uploadingPhoto
+                      ? `Procesando imagen ${photoUploadProgress}%`
+                      : photoUploadProgress === 100
+                        ? 'Foto lista.'
+                        : ''}
+                  </p>
+                </div>
+              ) : null}
               <AppButton block disabled={uploadingPhoto} onClick={handleSubmitPost}>
                 {uploadingPhoto
                   ? 'Subiendo foto...'
@@ -2932,7 +3054,7 @@ export function AppMarketplacePage() {
                 Cerrar
               </AppButton>
             </div>
-            <PetPhoto
+            <MarketplacePhoto
               alt={`Producto ${selectedPost.title}`}
               className="mb-2 h-44 w-full rounded-xl border border-zinc-700 object-cover"
               pathOrUrl={selectedPost.photoUrl}
