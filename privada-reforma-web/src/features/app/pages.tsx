@@ -11,7 +11,7 @@ import {
   normalizeDepartmentCode,
 } from '../access/qrLogic'
 import { isSupabaseConfigured, supabase } from '../../shared/supabase/client'
-import { sendPushTestToUser, uploadPetPhoto } from '../../shared/supabase/data'
+import { sendPushTestToUser, uploadMarketplacePhoto, uploadPetPhoto } from '../../shared/supabase/data'
 import {
   getNotificationPermissionState,
   isWebPushConfigured,
@@ -155,6 +155,43 @@ function normalizePetProfile(input?: PetProfile): PetProfile {
     ...base,
     ...input,
     energyLevel: normalizeEnergyLevel(input.energyLevel),
+  }
+}
+
+async function compressImageForUpload(file: File, maxDimension = 1600, quality = 0.82): Promise<Blob> {
+  if (!file.type.startsWith('image/')) {
+    return file
+  }
+
+  const imageUrl = URL.createObjectURL(file)
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const node = new Image()
+      node.onload = () => resolve(node)
+      node.onerror = () => reject(new Error('No fue posible procesar la imagen.'))
+      node.src = imageUrl
+    })
+
+    const largestSide = Math.max(image.naturalWidth, image.naturalHeight)
+    const scale = largestSide > maxDimension ? maxDimension / largestSide : 1
+    const width = Math.max(1, Math.round(image.naturalWidth * scale))
+    const height = Math.max(1, Math.round(image.naturalHeight * scale))
+
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const context = canvas.getContext('2d')
+    if (!context) {
+      return file
+    }
+    context.drawImage(image, 0, 0, width, height)
+
+    const blob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob(resolve, 'image/webp', quality)
+    })
+    return blob ?? file
+  } finally {
+    URL.revokeObjectURL(imageUrl)
   }
 }
 
@@ -2531,6 +2568,7 @@ export function AppMarketplacePage() {
   const [contactMessage, setContactMessage] = useState('')
   const [whatsappNumber, setWhatsappNumber] = useState('')
   const [photoUrl, setPhotoUrl] = useState('')
+  const [isPostFormOpen, setIsPostFormOpen] = useState(false)
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null)
   const [editingPostId, setEditingPostId] = useState<string | null>(null)
   const [feedback, setFeedback] = useState('')
@@ -2547,8 +2585,9 @@ export function AppMarketplacePage() {
     setUploadingPhoto(true)
     setFeedback('')
     try {
+      const imageBlob = await compressImageForUpload(file)
       if (isSupabaseConfigured && navigator.onLine) {
-        const objectPath = await uploadPetPhoto(file)
+        const objectPath = await uploadMarketplacePhoto(imageBlob)
         setPhotoUrl(objectPath)
         setFeedback('Foto cargada correctamente.')
       } else {
@@ -2556,7 +2595,7 @@ export function AppMarketplacePage() {
           const reader = new FileReader()
           reader.onload = () => resolve(String(reader.result))
           reader.onerror = () => reject(new Error('No fue posible leer la foto.'))
-          reader.readAsDataURL(file)
+          reader.readAsDataURL(imageBlob)
         })
         setPhotoUrl(dataUrl)
         setFeedback('Foto guardada localmente (modo sin red).')
@@ -2576,6 +2615,8 @@ export function AppMarketplacePage() {
     setContactMessage('')
     setWhatsappNumber('')
     setPhotoUrl('')
+    setIsPostFormOpen(false)
+    setEditingPostId(null)
   }
 
   function beginEdit(postId: string) {
@@ -2591,7 +2632,21 @@ export function AppMarketplacePage() {
     setContactMessage(post.contactMessage ?? '')
     setWhatsappNumber(post.whatsappNumber ?? '')
     setPhotoUrl(post.photoUrl)
+    setIsPostFormOpen(true)
     setFeedback('')
+  }
+
+  function openCreatePost() {
+    setEditingPostId(null)
+    setTitle('')
+    setDescription('')
+    setPrice('')
+    setCondition('used')
+    setContactMessage('')
+    setWhatsappNumber('')
+    setPhotoUrl('')
+    setFeedback('')
+    setIsPostFormOpen(true)
   }
 
   function handleSubmitPost() {
@@ -2610,7 +2665,6 @@ export function AppMarketplacePage() {
       })
       setFeedback(result.ok ? 'Publicacion actualizada.' : result.error ?? 'No se pudo actualizar.')
       if (result.ok) {
-        setEditingPostId(null)
         resetForm()
       }
       return
@@ -2657,7 +2711,6 @@ export function AppMarketplacePage() {
       setSelectedPostId(null)
     }
     if (result.ok && editingPostId === postId) {
-      setEditingPostId(null)
       resetForm()
     }
   }
@@ -2696,84 +2749,17 @@ export function AppMarketplacePage() {
         title="Marketplace"
         description="Compra y venta entre vecinos de la privada."
       />
-      <AppCard className="space-y-3 border-zinc-800 bg-zinc-950">
-        <p className="text-sm font-semibold text-zinc-100">
-          {editingPost ? 'Editar publicacion' : 'Nueva publicacion'}
-        </p>
-        <input
-          className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
-          onChange={(event) => setTitle(event.target.value)}
-          placeholder="Titulo del articulo"
-          value={title}
-        />
-        <textarea
-          className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
-          onChange={(event) => setDescription(event.target.value)}
-          placeholder="Descripcion"
-          rows={3}
-          value={description}
-        />
-        <div className="grid grid-cols-2 gap-2">
-          <input
-            className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
-            min="0"
-            onChange={(event) => setPrice(event.target.value)}
-            placeholder="Precio MXN"
-            step="0.01"
-            type="number"
-            value={price}
-          />
-          <select
-            className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
-            onChange={(event) => setCondition(event.target.value as 'new' | 'used')}
-            value={condition}
-          >
-            <option value="used">Usado</option>
-            <option value="new">Nuevo</option>
-          </select>
-        </div>
-        <input
-          className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
-          onChange={(event) => setContactMessage(event.target.value)}
-          placeholder="Mensaje de contacto (ej. WhatsApp 55...)"
-          value={contactMessage}
-        />
-        <input
-          className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
-          onChange={(event) => setWhatsappNumber(event.target.value)}
-          placeholder="WhatsApp (ej. 5215512345678)"
-          value={whatsappNumber}
-        />
-        <label className="space-y-1">
-          <span className="block text-[11px] uppercase tracking-[0.08em] text-zinc-400">Foto</span>
-          <input
-            accept="image/*"
-            className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 file:mr-3 file:rounded-lg file:border-0 file:bg-zinc-800 file:px-3 file:py-1 file:text-xs file:font-semibold file:text-zinc-100"
-            onChange={(event) => void handlePhotoUpload(event.target.files?.[0] ?? null)}
-            type="file"
-          />
-        </label>
-        <AppButton block disabled={uploadingPhoto} onClick={handleSubmitPost}>
-          {uploadingPhoto
-            ? 'Subiendo foto...'
-            : editingPost
-              ? 'Guardar cambios'
-              : 'Publicar en marketplace'}
-        </AppButton>
-        {editingPost ? (
-          <AppButton
-            block
-            onClick={() => {
-              setEditingPostId(null)
-              resetForm()
-            }}
-            variant="secondary"
-          >
-            Cancelar edicion
-          </AppButton>
-        ) : null}
-        {feedback ? <p className="text-xs text-zinc-300">{feedback}</p> : null}
-      </AppCard>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-zinc-200">Publicaciones de marketplace</p>
+        <button
+          className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-zinc-700 bg-zinc-900 text-xl font-semibold leading-none text-zinc-100 transition hover:border-zinc-500"
+          onClick={openCreatePost}
+          type="button"
+        >
+          +
+        </button>
+      </div>
+      {feedback ? <p className="text-xs text-zinc-300">{feedback}</p> : null}
 
       <div className="space-y-2">
         {marketplacePosts.length === 0 ? (
@@ -2850,6 +2836,87 @@ export function AppMarketplacePage() {
         )}
       </div>
 
+      {isPostFormOpen ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 sm:items-center">
+          <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-950 p-3 shadow-2xl">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <p className="text-sm font-semibold text-zinc-100">
+                {editingPost ? 'Editar publicacion' : 'Nueva publicacion'}
+              </p>
+              <AppButton className="px-2 py-1 text-xs" onClick={resetForm} variant="secondary">
+                Cerrar
+              </AppButton>
+            </div>
+            <div className="space-y-3">
+              <input
+                className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                onChange={(event) => setTitle(event.target.value)}
+                placeholder="Titulo del articulo"
+                value={title}
+              />
+              <textarea
+                className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                onChange={(event) => setDescription(event.target.value)}
+                placeholder="Descripcion"
+                rows={3}
+                value={description}
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                  min="0"
+                  onChange={(event) => setPrice(event.target.value)}
+                  placeholder="Precio MXN"
+                  step="0.01"
+                  type="number"
+                  value={price}
+                />
+                <select
+                  className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                  onChange={(event) => setCondition(event.target.value as 'new' | 'used')}
+                  value={condition}
+                >
+                  <option value="used">Usado</option>
+                  <option value="new">Nuevo</option>
+                </select>
+              </div>
+              <input
+                className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                onChange={(event) => setContactMessage(event.target.value)}
+                placeholder="Mensaje de contacto (ej. WhatsApp 55...)"
+                value={contactMessage}
+              />
+              <input
+                className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                onChange={(event) => setWhatsappNumber(event.target.value)}
+                placeholder="WhatsApp (ej. 5215512345678)"
+                value={whatsappNumber}
+              />
+              <label className="space-y-1">
+                <span className="block text-[11px] uppercase tracking-[0.08em] text-zinc-400">Foto</span>
+                <input
+                  accept="image/*"
+                  className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 file:mr-3 file:rounded-lg file:border-0 file:bg-zinc-800 file:px-3 file:py-1 file:text-xs file:font-semibold file:text-zinc-100"
+                  onChange={(event) => void handlePhotoUpload(event.target.files?.[0] ?? null)}
+                  type="file"
+                />
+              </label>
+              <AppButton block disabled={uploadingPhoto} onClick={handleSubmitPost}>
+                {uploadingPhoto
+                  ? 'Subiendo foto...'
+                  : editingPost
+                    ? 'Guardar cambios'
+                    : 'Publicar en marketplace'}
+              </AppButton>
+              {editingPost ? (
+                <AppButton block onClick={resetForm} variant="secondary">
+                  Cancelar edicion
+                </AppButton>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
       {selectedPost ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/55 p-4 sm:items-center">
           <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-950 p-3 shadow-2xl">

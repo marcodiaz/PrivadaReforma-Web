@@ -953,6 +953,36 @@ export async function uploadPetPhoto(file: Blob) {
   return path
 }
 
+export async function uploadMarketplacePhoto(file: Blob) {
+  if (!supabase) {
+    throw new Error('Supabase no esta configurado.')
+  }
+
+  const path = `marketplace/${new Date().getUTCFullYear()}/${crypto.randomUUID()}.webp`
+  const bucket = supabase.storage.from(PET_BUCKET)
+
+  const signedUpload = await bucket.createSignedUploadUrl(path)
+  if (!signedUpload.error && signedUpload.data?.token) {
+    const uploadResult = await bucket.uploadToSignedUrl(path, signedUpload.data.token, file, {
+      contentType: 'image/webp',
+      upsert: false,
+    })
+    if (uploadResult.error) {
+      throw uploadResult.error
+    }
+  } else {
+    const directUpload = await bucket.upload(path, file, {
+      contentType: 'image/webp',
+      upsert: false,
+    })
+    if (directUpload.error) {
+      throw directUpload.error
+    }
+  }
+
+  return path
+}
+
 function isDirectDisplayUrl(value: string) {
   return (
     value.startsWith('http://') ||
