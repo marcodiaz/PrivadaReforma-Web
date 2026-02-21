@@ -140,11 +140,111 @@ export const pollSchema = z.object({
 
 export type Poll = z.infer<typeof pollSchema>
 
+export const petSocialChoiceSchema = z.enum(['yes', 'no', 'depends'])
+export const petEnergyLevelSchema = z.enum(['low', 'medium', 'high'])
+export const petFriendlinessSchema = z.enum(['shy', 'neutral', 'friendly'])
+export const petIndependenceSchema = z.enum(['independent', 'balanced', 'clingy'])
+export const petTrainingProgressSchema = z.enum(['yes', 'no', 'in_progress'])
+export const petCrateTrainingSchema = z.enum(['yes', 'no', 'unknown'])
+export const petRecallSchema = z.enum(['reliable', 'partial', 'no'])
+export const petVaccinationSchema = z.enum(['up_to_date', 'partial', 'no'])
+export const petSpeciesSchema = z.enum(['dog', 'cat', 'other'])
+export const petSizeSchema = z.enum(['xs', 's', 'm', 'l', 'xl'])
+export const petGenderSchema = z.enum(['female', 'male', 'other'])
+export const petPlaydatePreferenceSchema = z.enum(['yes', 'no', 'selective'])
+export const petGroomingNeedSchema = z.enum(['low', 'medium', 'high'])
+
+export const petBehaviorTraitSchema = z.enum([
+  'playful',
+  'calm',
+  'protective',
+  'curious',
+  'anxious',
+  'stubborn',
+  'gentle',
+  'vocal',
+  'alert',
+  'lazy',
+])
+
+export const petKnownCommandSchema = z.enum([
+  'sit',
+  'stay',
+  'come',
+  'down',
+  'heel',
+  'leave_it',
+  'drop_it',
+])
+
+export const petPrefersSchema = z.enum([
+  'small_dogs',
+  'large_dogs',
+  'calm_pets',
+  'energetic_pets',
+])
+
+export const petAvailableForSchema = z.enum([
+  'playdates',
+  'breeding',
+  'adoption',
+  'training_buddies',
+  'walk_groups',
+])
+
+export const petPersonalityHighlightSchema = z.enum([
+  'loves_people',
+  'high_energy',
+  'great_with_kids',
+  'needs_training',
+  'independent',
+])
+
+export const petProfileSchema = z.object({
+  socialWithHumans: petSocialChoiceSchema.default('depends'),
+  socialWithChildren: petSocialChoiceSchema.default('depends'),
+  socialWithDogs: petSocialChoiceSchema.default('depends'),
+  socialWithCats: petSocialChoiceSchema.default('depends'),
+  socialWithOtherAnimals: petSocialChoiceSchema.default('depends'),
+  energyLevel: petEnergyLevelSchema.default('medium'),
+  friendliness: petFriendlinessSchema.default('neutral'),
+  independence: petIndependenceSchema.default('balanced'),
+  affectionLevel: petEnergyLevelSchema.default('medium'),
+  behaviorTraits: petBehaviorTraitSchema.array().default([]),
+  vaccinated: petVaccinationSchema.default('up_to_date'),
+  neuteredOrSpayed: z.boolean().optional(),
+  specialNeeds: z.boolean().default(false),
+  allergies: z.string().optional(),
+  medications: z.string().optional(),
+  groomingNeeds: petGroomingNeedSchema.default('medium'),
+  houseTrained: petTrainingProgressSchema.default('in_progress'),
+  crateTrained: petCrateTrainingSchema.default('unknown'),
+  leashTrained: petTrainingProgressSchema.default('in_progress'),
+  recallTrained: petRecallSchema.default('partial'),
+  commandsKnown: petKnownCommandSchema.array().default([]),
+  species: petSpeciesSchema.default('dog'),
+  breed: z.string().optional(),
+  age: z.string().optional(),
+  size: petSizeSchema.default('m'),
+  weight: z.string().optional(),
+  gender: petGenderSchema.optional(),
+  birthday: z.string().optional(),
+  locationCity: z.string().optional(),
+  availabilityNote: z.string().optional(),
+  personalityHighlights: petPersonalityHighlightSchema.array().max(5).default([]),
+  likesPlaydates: petPlaydatePreferenceSchema.default('selective'),
+  prefers: petPrefersSchema.array().default([]),
+  availableFor: petAvailableForSchema.array().default([]),
+})
+
+export type PetProfile = z.infer<typeof petProfileSchema>
+
 export const petPostSchema = z.object({
   id: z.string(),
   petName: z.string(),
   photoUrl: z.string(),
   comments: z.string(),
+  profile: petProfileSchema.optional(),
   createdAt: z.string(),
   createdByUserId: z.string(),
   createdByName: z.string(),
@@ -162,6 +262,32 @@ export const petPostCommentSchema = z.object({
 })
 
 export type PetPostComment = z.infer<typeof petPostCommentSchema>
+
+export const maintenanceReportTypeSchema = z.enum([
+  'plumbing',
+  'electrical',
+  'lighting',
+  'common_area',
+  'security',
+  'other',
+])
+
+export const maintenanceReportStatusSchema = z.enum(['open', 'in_progress', 'resolved'])
+
+export const maintenanceReportSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  description: z.string(),
+  reportType: maintenanceReportTypeSchema,
+  photoUrl: z.string(),
+  unitNumber: z.string(),
+  status: maintenanceReportStatusSchema,
+  createdAt: z.string(),
+  createdByUserId: z.string(),
+  createdByName: z.string(),
+})
+
+export type MaintenanceReport = z.infer<typeof maintenanceReportSchema>
 
 export const marketplaceConditionSchema = z.enum(['new', 'used'])
 export const marketplaceStatusSchema = z.enum(['active', 'sold'])
@@ -364,3 +490,4 @@ export const LOCAL_PET_POSTS: PetPost[] = []
 export const LOCAL_PET_POST_COMMENTS: PetPostComment[] = []
 export const LOCAL_MARKETPLACE_POSTS: MarketplacePost[] = []
 export const LOCAL_MODERATION_REPORTS: ModerationReport[] = []
+export const LOCAL_MAINTENANCE_REPORTS: MaintenanceReport[] = []

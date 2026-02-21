@@ -13,6 +13,7 @@ import {
   LOCAL_OFFLINE_QUEUE,
   LOCAL_PARKING_REPORTS,
   LOCAL_MARKETPLACE_POSTS,
+  LOCAL_MAINTENANCE_REPORTS,
   LOCAL_MODERATION_REPORTS,
   LOCAL_PET_POST_COMMENTS,
   LOCAL_PET_POSTS,
@@ -32,8 +33,12 @@ import {
   moderationReportStatusSchema,
   moderationTargetTypeSchema,
   type MarketplacePost,
+  maintenanceReportSchema,
+  maintenanceReportTypeSchema,
+  type MaintenanceReport,
   type ModerationReport,
   type PetPostComment,
+  type PetProfile,
   type PetPost,
   pollSchema,
   type Poll,
@@ -56,6 +61,7 @@ import {
   createPetPostCommentInSupabase,
   createPetPostInSupabase,
   createMarketplacePostInSupabase,
+  createMaintenanceReportInSupabase,
   createModerationReportInSupabase,
   createPollInSupabase,
   deleteMarketplacePostInSupabase,
@@ -70,6 +76,7 @@ import {
   fetchPetPostsFromSupabase,
   fetchPetPostCommentsFromSupabase,
   fetchMarketplacePostsFromSupabase,
+  fetchMaintenanceReportsFromSupabase,
   fetchModerationReportsFromSupabase,
   fetchPollsFromSupabase,
   markPackageReadyInSupabase,
@@ -131,6 +138,7 @@ type DemoDataContextValue = {
   polls: Poll[]
   petPosts: PetPost[]
   petPostComments: PetPostComment[]
+  maintenanceReports: MaintenanceReport[]
   marketplacePosts: MarketplacePost[]
   moderationReports: ModerationReport[]
   offlineQueue: OfflineQueueEvent[]
@@ -170,7 +178,12 @@ type DemoDataContextValue = {
   votePoll: (pollId: string, optionId: string) => { ok: boolean; error?: string }
   endPoll: (pollId: string) => { ok: boolean; error?: string }
   deletePoll: (pollId: string) => { ok: boolean; error?: string }
-  createPetPost: (input: { petName: string; photoUrl: string; comments: string }) => {
+  createPetPost: (input: {
+    petName: string
+    photoUrl: string
+    comments: string
+    profile?: PetProfile
+  }) => {
     ok: boolean
     error?: string
   }
@@ -179,6 +192,7 @@ type DemoDataContextValue = {
     petName: string
     photoUrl: string
     comments: string
+    profile?: PetProfile
   }) => { ok: boolean; error?: string }
   createPetPostComment: (input: { petPostId: string; message: string }) => {
     ok: boolean
@@ -217,6 +231,12 @@ type DemoDataContextValue = {
     description: string
     reportType: 'own_spot' | 'visitor_spot'
     visitorParkingSpot?: string
+    photoUrl: string
+  }) => { ok: boolean; error?: string }
+  createMaintenanceReport: (input: {
+    title: string
+    description: string
+    reportType: MaintenanceReport['reportType']
     photoUrl: string
   }) => { ok: boolean; error?: string }
   updateParkingReportStatus: (input: {
@@ -373,6 +393,9 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
   const [petPostComments, setPetPostComments] = useState<PetPostComment[]>(() =>
     safeReadArray(storageKeys.petPostComments, petPostCommentSchema.array(), LOCAL_PET_POST_COMMENTS)
   )
+  const [maintenanceReports, setMaintenanceReports] = useState<MaintenanceReport[]>(() =>
+    safeReadArray(storageKeys.maintenanceReports, maintenanceReportSchema.array(), LOCAL_MAINTENANCE_REPORTS)
+  )
   const [marketplacePosts, setMarketplacePosts] = useState<MarketplacePost[]>(() =>
     safeReadArray(storageKeys.marketplacePosts, marketplacePostSchema.array(), LOCAL_MARKETPLACE_POSTS)
   )
@@ -514,6 +537,19 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
         })
         .catch(() => undefined)
 
+      const loadMaintenanceReports = withTimeout(
+        fetchMaintenanceReportsFromSupabase(),
+        REMOTE_BOOTSTRAP_TIMEOUT_MS,
+        'maintenance_reports'
+      )
+        .then((remoteMaintenanceReports) => {
+          if (!isMounted || !remoteMaintenanceReports) {
+            return
+          }
+          setMaintenanceReports(remoteMaintenanceReports)
+        })
+        .catch(() => undefined)
+
       await Promise.allSettled([
         loadPackages,
         loadIncidents,
@@ -522,6 +558,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
         loadPetComments,
         loadMarketplace,
         loadModerationReports,
+        loadMaintenanceReports,
       ])
       if (isMounted) {
         setRemoteDataLoading(false)
@@ -549,6 +586,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       setItem(storageKeys.polls, polls)
       setItem(storageKeys.petPosts, petPosts)
       setItem(storageKeys.petPostComments, petPostComments)
+      setItem(storageKeys.maintenanceReports, maintenanceReports)
       setItem(storageKeys.marketplacePosts, marketplacePosts)
       setItem(storageKeys.moderationReports, moderationReports)
     }, 300)
@@ -568,6 +606,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     polls,
     petPosts,
     petPostComments,
+    maintenanceReports,
     marketplacePosts,
     moderationReports,
   ])
@@ -627,6 +666,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     setPolls(LOCAL_POLLS)
     setPetPosts(LOCAL_PET_POSTS)
     setPetPostComments(LOCAL_PET_POST_COMMENTS)
+    setMaintenanceReports(LOCAL_MAINTENANCE_REPORTS)
     setMarketplacePosts(LOCAL_MARKETPLACE_POSTS)
     setModerationReports(LOCAL_MODERATION_REPORTS)
     removeItem(storageKeys.incidents)
@@ -639,6 +679,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     removeItem(storageKeys.polls)
     removeItem(storageKeys.petPosts)
     removeItem(storageKeys.petPostComments)
+    removeItem(storageKeys.maintenanceReports)
     removeItem(storageKeys.marketplacePosts)
     removeItem(storageKeys.moderationReports)
   }
@@ -1166,7 +1207,12 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     return { ok: true }
   }
 
-  function createPetPost(input: { petName: string; photoUrl: string; comments: string }) {
+  function createPetPost(input: {
+    petName: string
+    photoUrl: string
+    comments: string
+    profile?: PetProfile
+  }) {
     if (!session) {
       return { ok: false, error: 'Sesion requerida.' }
     }
@@ -1189,6 +1235,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       petName,
       photoUrl,
       comments,
+      profile: input.profile,
       createdAt: new Date().toISOString(),
       createdByUserId: session.userId,
       createdByName: session.fullName,
@@ -1201,7 +1248,13 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     return { ok: true }
   }
 
-  function updatePetPost(input: { postId: string; petName: string; photoUrl: string; comments: string }) {
+  function updatePetPost(input: {
+    postId: string
+    petName: string
+    photoUrl: string
+    comments: string
+    profile?: PetProfile
+  }) {
     if (!session) {
       return { ok: false, error: 'Sesion requerida.' }
     }
@@ -1231,6 +1284,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       petName,
       photoUrl,
       comments,
+      profile: input.profile,
     }
     setPetPosts((previous) =>
       previous.map((entry) => (entry.id === input.postId ? updatedPost : entry))
@@ -1548,6 +1602,56 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     )
     if (isSupabaseConfigured && isOnline) {
       void updateModerationReportInSupabase(updatedReport)
+    }
+    return { ok: true }
+  }
+
+  function createMaintenanceReport(input: {
+    title: string
+    description: string
+    reportType: MaintenanceReport['reportType']
+    photoUrl: string
+  }) {
+    if (!session) {
+      return { ok: false, error: 'Sesion requerida.' }
+    }
+    if (!['resident', 'tenant', 'board', 'admin'].includes(session.role)) {
+      return { ok: false, error: 'Solo residentes/comite pueden reportar mantenimiento.' }
+    }
+    if (!session.unitNumber?.trim()) {
+      return { ok: false, error: 'Tu cuenta no tiene departamento asignado.' }
+    }
+    const title = input.title.trim()
+    const description = input.description.trim()
+    const photoUrl = input.photoUrl.trim()
+    if (!title) {
+      return { ok: false, error: 'Titulo obligatorio.' }
+    }
+    if (!description) {
+      return { ok: false, error: 'Descripcion obligatoria.' }
+    }
+    if (!photoUrl) {
+      return { ok: false, error: 'Foto obligatoria.' }
+    }
+    if (!maintenanceReportTypeSchema.safeParse(input.reportType).success) {
+      return { ok: false, error: 'Tipo de reporte invalido.' }
+    }
+
+    const report: MaintenanceReport = {
+      id: randomId('maint'),
+      title,
+      description,
+      reportType: input.reportType,
+      photoUrl,
+      unitNumber: session.unitNumber,
+      status: 'open',
+      createdAt: new Date().toISOString(),
+      createdByUserId: session.userId,
+      createdByName: session.fullName,
+    }
+    setMaintenanceReports((previous) => [report, ...previous])
+    if (isSupabaseConfigured && isOnline) {
+      void createMaintenanceReportInSupabase(report)
     }
     return { ok: true }
   }
@@ -1913,6 +2017,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     polls,
     petPosts,
     petPostComments,
+    maintenanceReports,
     marketplacePosts,
     moderationReports,
     remoteDataLoading,
@@ -1947,6 +2052,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     createModerationReport,
     dismissModerationReport,
     actionModerationReportDeleteTarget,
+    createMaintenanceReport,
     createParkingReport,
     updateParkingReportStatus,
     getAssignedParkingForUnit,

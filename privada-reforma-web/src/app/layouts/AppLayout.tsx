@@ -6,7 +6,8 @@ import { useLanguage } from '../../shared/i18n/LanguageContext'
 
 type NavItem = {
   to: string
-  label: string
+  labelEs: string
+  labelEn: string
   kind?: 'packages' | 'reports'
 }
 
@@ -14,33 +15,33 @@ type AdminSection = 'ops' | 'moderation' | 'finance'
 const ADMIN_SECTION_STORAGE_KEY = 'admin_nav_section_v1'
 
 const residentNav: NavItem[] = [
-  { to: '/app/home', label: 'Inicio' },
-  { to: '/app/visits', label: 'Visitas' },
-  { to: '/app/packages', label: 'Paquetes', kind: 'packages' },
-  { to: '/app/incidents', label: 'Incidencias' },
-  { to: '/app/profile', label: 'Perfil' },
+  { to: '/app/home', labelEs: 'Inicio', labelEn: 'Home' },
+  { to: '/app/visits', labelEs: 'Visitas', labelEn: 'Visits' },
+  { to: '/app/packages', labelEs: 'Paquetes', labelEn: 'Packages', kind: 'packages' },
+  { to: '/app/incidents', labelEs: 'Incidencias', labelEn: 'Incidents' },
+  { to: '/app/profile', labelEs: 'Perfil', labelEn: 'Profile' },
 ]
 
-const adminSectionLabels: Record<AdminSection, string> = {
-  ops: 'Operacion',
-  moderation: 'Moderacion',
-  finance: 'Finanzas',
+const adminSectionLabels: Record<AdminSection, { es: string; en: string }> = {
+  ops: { es: 'Operacion', en: 'Ops' },
+  moderation: { es: 'Moderacion', en: 'Moderation' },
+  finance: { es: 'Finanzas', en: 'Finance' },
 }
 
 const adminNavBySection: Record<AdminSection, NavItem[]> = {
   ops: [
-    { to: '/admin/dashboard', label: 'Panel' },
-    { to: '/admin/users', label: 'Usuarios' },
-    { to: '/admin/push', label: 'Push' },
+    { to: '/admin/dashboard', labelEs: 'Panel', labelEn: 'Dashboard' },
+    { to: '/admin/users', labelEs: 'Usuarios', labelEn: 'Users' },
+    { to: '/admin/push', labelEs: 'Push', labelEn: 'Push' },
   ],
   moderation: [
-    { to: '/admin/reports', label: 'Reports', kind: 'reports' },
-    { to: '/admin/packages', label: 'Paquetes', kind: 'packages' },
+    { to: '/admin/reports', labelEs: 'Reportes', labelEn: 'Reports', kind: 'reports' },
+    { to: '/admin/packages', labelEs: 'Paquetes', labelEn: 'Packages', kind: 'packages' },
   ],
   finance: [
-    { to: '/admin/debts', label: 'Adeudos' },
-    { to: '/admin/finance', label: 'Finanzas' },
-    { to: '/admin/exports', label: 'Reportes' },
+    { to: '/admin/debts', labelEs: 'Adeudos', labelEn: 'Debts' },
+    { to: '/admin/finance', labelEs: 'Finanzas', labelEn: 'Finance' },
+    { to: '/admin/exports', labelEs: 'Reportes', labelEn: 'Exports' },
   ],
 }
 
@@ -102,7 +103,7 @@ function AuthLoadingShell() {
 export function AppLayout() {
   const { pathname } = useLocation()
   const navigate = useNavigate()
-  const { t } = useLanguage()
+  const { t, tx } = useLanguage()
   const { authLoading, getHeldPackageCountForUser, logout, moderationReports, session } = useDemoData()
   const isAdmin = pathname.startsWith('/admin')
   const activeAdminSection = resolveAdminSection(pathname)
@@ -150,23 +151,23 @@ export function AppLayout() {
 
   return (
     <div className="min-h-dvh bg-[var(--color-bg)]">
-      <header className="sticky top-0 z-10 border-b border-[var(--color-border)] bg-black/95 px-4 pb-3 pt-3 shadow-lg backdrop-blur">
+      <header className="sticky top-0 z-10 border-b border-[var(--color-border)] bg-[var(--color-surface)]/95 px-4 pb-3 pt-3 shadow-lg backdrop-blur">
         <div className="mx-auto flex w-full max-w-md items-start justify-between gap-2">
           <div>
-            <p className="text-xs uppercase tracking-[0.08em] text-zinc-400">
+            <p className="text-xs uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
               Privada Reforma
             </p>
-            <h1 className="text-base font-semibold text-white">
+            <h1 className="text-base font-semibold text-[var(--color-text)]">
               {resolveTitle(pathname, { adminOperation: t('adminOperation'), residence: t('residence') })}
             </h1>
             {shouldShowTopPackages ? (
-              <p className="mt-1 text-xs font-semibold text-zinc-400">
+              <p className="mt-1 text-xs font-semibold text-[var(--color-text-muted)]">
                 {t('packagesCount')}: {heldPackages}
               </p>
             ) : null}
           </div>
           <button
-            className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-zinc-100"
+            className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-1.5 text-xs font-semibold text-[var(--color-text)]"
             onClick={async () => {
               await logout()
               navigate('/login')
@@ -182,7 +183,7 @@ export function AppLayout() {
         <Outlet />
       </main>
 
-      <nav className="fixed bottom-0 left-0 right-0 border-t border-slate-700 bg-slate-950/95 px-2 pb-[calc(0.65rem+env(safe-area-inset-bottom))] pt-2 backdrop-blur">
+      <nav className="fixed bottom-0 left-0 right-0 border-t border-[var(--color-border)] bg-[var(--color-surface)]/95 px-2 pb-[calc(0.65rem+env(safe-area-inset-bottom))] pt-2 backdrop-blur">
         {isAdmin ? (
           <ul className="mx-auto mb-2 grid w-full max-w-md grid-cols-3 gap-2">
             {adminSectionOrder.map((section) => (
@@ -190,8 +191,8 @@ export function AppLayout() {
                 <button
                   className={`block w-full rounded-lg border px-2 py-1.5 text-center text-[11px] font-semibold transition-colors ${
                     section === activeAdminSection
-                      ? 'border-zinc-400 text-zinc-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]'
-                      : 'border-zinc-800 text-slate-400'
+                      ? 'border-[var(--color-border)] text-[var(--color-text)] shadow-[inset_0_0_0_1px_rgba(127,127,127,0.12)]'
+                      : 'border-[var(--color-border)] text-[var(--color-text-muted)]'
                   }`}
                   onClick={() => {
                     writeStoredAdminSection(section)
@@ -199,7 +200,7 @@ export function AppLayout() {
                   }}
                   type="button"
                 >
-                  {adminSectionLabels[section]}
+                  {tx(adminSectionLabels[section].es, adminSectionLabels[section].en)}
                 </button>
               </li>
             ))}
@@ -213,13 +214,13 @@ export function AppLayout() {
                 className={({ isActive }) =>
                   `relative block rounded-xl border px-2 py-2 text-center text-xs font-medium transition-colors ${
                     isActive
-                      ? 'border-zinc-400 text-zinc-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]'
-                      : 'border-transparent text-slate-400'
+                      ? 'border-[var(--color-border)] text-[var(--color-text)] shadow-[inset_0_0_0_1px_rgba(127,127,127,0.12)]'
+                      : 'border-transparent text-[var(--color-text-muted)]'
                   }`
                 }
               >
                 <span className="inline-flex items-center justify-center gap-1 whitespace-nowrap">
-                  <span>{item.label}</span>
+                  <span>{tx(item.labelEs, item.labelEn)}</span>
                 </span>
                 {item.kind === 'packages' && heldPackages > 0 ? (
                   <span className="absolute -right-1 -top-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-zinc-900 bg-white px-1 text-[10px] font-black leading-none text-zinc-900 shadow-[0_0_14px_rgba(255,255,255,0.85)]">

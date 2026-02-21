@@ -1,8 +1,10 @@
 import { useEffect } from 'react'
 import { useDemoData } from '../state/DemoDataContext'
 import { DevProfileTools } from '../auth/DevProfileTools'
+import { useLanguage } from '../i18n/LanguageContext'
 
 export function GlobalStatus() {
+  const { tx } = useLanguage()
   const { isOnline, syncToast, dismissSyncToast } = useDemoData()
 
   useEffect(() => {
@@ -17,7 +19,10 @@ export function GlobalStatus() {
     <>
       {!isOnline ? (
         <div className="fixed left-0 right-0 top-0 z-50 bg-amber-500 px-3 py-2 text-center text-xs font-semibold text-amber-950">
-          Modo offline activo: operaciones de guardia se encolan localmente.
+          {tx(
+            'Modo offline activo: operaciones de guardia se encolan localmente.',
+            'Offline mode active: guard operations are queued locally.',
+          )}
         </div>
       ) : null}
       {syncToast ? (

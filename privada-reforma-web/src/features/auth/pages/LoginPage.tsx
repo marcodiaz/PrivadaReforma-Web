@@ -4,6 +4,7 @@ import { getRoleLandingPath } from '../../../shared/domain/auth'
 import { useDemoData } from '../../../shared/state/DemoDataContext'
 import { supabase } from '../../../shared/supabase/client'
 import { AppButton, AppCard } from '../../../shared/ui'
+import { useLanguage } from '../../../shared/i18n/LanguageContext'
 
 function detectAuthFlowFromUrl() {
   const hash = window.location.hash.startsWith('#')
@@ -19,6 +20,7 @@ function detectAuthFlowFromUrl() {
 
 export function LoginPage() {
   const navigate = useNavigate()
+  const { tx } = useLanguage()
   const { session, authLoading, login } = useDemoData()
   const authFlow = detectAuthFlowFromUrl()
   const [authMode, setAuthMode] = useState<'password' | 'magic_link'>('password')
@@ -65,14 +67,14 @@ export function LoginPage() {
 
   async function handleLogin() {
     if (!email.trim() || !password.trim()) {
-      setErrorMessage('Correo y contrasena son obligatorios.')
+      setErrorMessage(tx('Correo y contrasena son obligatorios.', 'Email and password are required.'))
       return
     }
     setSubmitting(true)
 
     const result = await login(email, password)
     if (!result.ok) {
-      setErrorMessage(result.error ?? 'No fue posible iniciar sesion.')
+      setErrorMessage(result.error ?? tx('No fue posible iniciar sesion.', 'Could not sign in.'))
       setSubmitting(false)
       return
     }
@@ -82,11 +84,11 @@ export function LoginPage() {
 
   async function handleMagicLinkLogin() {
     if (!email.trim()) {
-      setErrorMessage('Correo obligatorio para enviar magic link.')
+      setErrorMessage(tx('Correo obligatorio para enviar magic link.', 'Email is required for magic link.'))
       return
     }
     if (!supabase) {
-      setErrorMessage('Supabase no esta configurado.')
+      setErrorMessage(tx('Supabase no esta configurado.', 'Supabase is not configured.'))
       return
     }
 
@@ -108,28 +110,28 @@ export function LoginPage() {
       setErrorMessage(result.error.message)
       return
     }
-    setMagicLinkMessage('Revisa tu correo. Te enviamos un enlace de acceso.')
+    setMagicLinkMessage(tx('Revisa tu correo. Te enviamos un enlace de acceso.', 'Check your email. We sent a sign-in link.'))
   }
 
   async function handleSetPassword() {
     if (!session) {
-      setPasswordSetupError('Primero valida la invitacion e inicia sesion con el enlace.')
+      setPasswordSetupError(tx('Primero valida la invitacion e inicia sesion con el enlace.', 'First validate the invitation and sign in with the link.'))
       return
     }
     if (!newPassword.trim() || !confirmPassword.trim()) {
-      setPasswordSetupError('Debes capturar y confirmar la nueva contrasena.')
+      setPasswordSetupError(tx('Debes capturar y confirmar la nueva contrasena.', 'You must enter and confirm the new password.'))
       return
     }
     if (newPassword.length < 8) {
-      setPasswordSetupError('La contrasena debe tener al menos 8 caracteres.')
+      setPasswordSetupError(tx('La contrasena debe tener al menos 8 caracteres.', 'Password must be at least 8 characters.'))
       return
     }
     if (newPassword !== confirmPassword) {
-      setPasswordSetupError('La confirmacion no coincide.')
+      setPasswordSetupError(tx('La confirmacion no coincide.', 'Confirmation does not match.'))
       return
     }
     if (!supabase) {
-      setPasswordSetupError('Supabase no esta configurado.')
+      setPasswordSetupError(tx('Supabase no esta configurado.', 'Supabase is not configured.'))
       return
     }
 
@@ -158,7 +160,7 @@ export function LoginPage() {
   }, [authFlow.isInviteOrRecovery, navigate, needsPasswordSetup, session])
 
   if (authLoading) {
-    return <AppCard className="text-sm text-[var(--color-text-muted)]">Validando sesion...</AppCard>
+    return <AppCard className="text-sm text-[var(--color-text-muted)]">{tx('Validando sesion...', 'Validating session...')}</AppCard>
   }
 
   if (needsPasswordSetup) {
@@ -166,39 +168,39 @@ export function LoginPage() {
       <AppCard className="space-y-4">
         <header className="space-y-1">
           <p className="text-xs font-medium uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
-            Invitacion
+            {tx('Invitacion', 'Invitation')}
           </p>
-          <h1 className="text-xl font-semibold">Configura tu contrasena</h1>
+          <h1 className="text-xl font-semibold">{tx('Configura tu contrasena', 'Set your password')}</h1>
           <p className="text-sm text-[var(--color-text-muted)]">
-            Antes de entrar, define la contrasena para tu cuenta.
+            {tx('Antes de entrar, define la contrasena para tu cuenta.', 'Before entering, set a password for your account.')}
           </p>
         </header>
 
         {!session ? (
           <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
-            Validando enlace de invitacion, espera unos segundos.
+            {tx('Validando enlace de invitacion, espera unos segundos.', 'Validating invitation link, wait a few seconds.')}
           </p>
         ) : null}
 
         <label className="block space-y-1">
-          <span className="text-sm font-medium">Nueva contrasena</span>
+          <span className="text-sm font-medium">{tx('Nueva contrasena', 'New password')}</span>
           <input
             className="w-full rounded-xl border border-[var(--color-border)] bg-white px-3 py-3 text-sm text-slate-900 caret-slate-900 outline-none placeholder:text-slate-500 ring-offset-2 focus:ring-2 focus:ring-[var(--color-brand)]"
             type="password"
             value={newPassword}
             onChange={(event) => setNewPassword(event.target.value)}
-            placeholder="Minimo 8 caracteres"
+            placeholder={tx('Minimo 8 caracteres', 'Minimum 8 characters')}
           />
         </label>
 
         <label className="block space-y-1">
-          <span className="text-sm font-medium">Confirmar contrasena</span>
+          <span className="text-sm font-medium">{tx('Confirmar contrasena', 'Confirm password')}</span>
           <input
             className="w-full rounded-xl border border-[var(--color-border)] bg-white px-3 py-3 text-sm text-slate-900 caret-slate-900 outline-none placeholder:text-slate-500 ring-offset-2 focus:ring-2 focus:ring-[var(--color-brand)]"
             type="password"
             value={confirmPassword}
             onChange={(event) => setConfirmPassword(event.target.value)}
-            placeholder="Repite la contrasena"
+            placeholder={tx('Repite la contrasena', 'Repeat password')}
           />
         </label>
 
@@ -207,25 +209,25 @@ export function LoginPage() {
         ) : null}
 
         <AppButton block disabled={settingPassword || !session} onClick={() => void handleSetPassword()}>
-          {settingPassword ? 'Guardando...' : 'Guardar contrasena'}
+          {settingPassword ? tx('Guardando...', 'Saving...') : tx('Guardar contrasena', 'Save password')}
         </AppButton>
       </AppCard>
     )
   }
 
   if (session) {
-    return <AppCard className="text-sm text-[var(--color-text-muted)]">Redirigiendo...</AppCard>
+    return <AppCard className="text-sm text-[var(--color-text-muted)]">{tx('Redirigiendo...', 'Redirecting...')}</AppCard>
   }
 
   return (
     <AppCard className="space-y-4">
       <header className="space-y-1">
         <p className="text-xs font-medium uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
-          Acceso seguro
+          {tx('Acceso seguro', 'Secure access')}
         </p>
         <h1 className="text-xl font-semibold">Privada Reforma</h1>
         <p className="text-sm text-[var(--color-text-muted)]">
-          Acceso con contrasena o magic link.
+          {tx('Acceso con contrasena o magic link.', 'Access with password or magic link.')}
         </p>
       </header>
 
@@ -239,7 +241,7 @@ export function LoginPage() {
           }}
           variant={authMode === 'password' ? 'primary' : 'secondary'}
         >
-          Contrasena
+          {tx('Contrasena', 'Password')}
         </AppButton>
         <AppButton
           block
@@ -250,12 +252,12 @@ export function LoginPage() {
           }}
           variant={authMode === 'magic_link' ? 'primary' : 'secondary'}
         >
-          Magic link
+          {tx('Magic link', 'Magic link')}
         </AppButton>
       </div>
 
       <label className="block space-y-1">
-        <span className="text-sm font-medium">Correo</span>
+        <span className="text-sm font-medium">{tx('Correo', 'Email')}</span>
         <input
           className="w-full rounded-xl border border-[var(--color-border)] bg-white px-3 py-3 text-sm text-slate-900 caret-slate-900 outline-none placeholder:text-slate-500 ring-offset-2 focus:ring-2 focus:ring-[var(--color-brand)]"
           type="email"
@@ -267,7 +269,7 @@ export function LoginPage() {
 
       {authMode === 'password' ? (
         <label className="block space-y-1">
-          <span className="text-sm font-medium">Contrasena</span>
+          <span className="text-sm font-medium">{tx('Contrasena', 'Password')}</span>
           <div className="relative">
             <input
               className="w-full rounded-xl border border-[var(--color-border)] bg-white px-3 py-3 pr-16 text-sm text-slate-900 caret-slate-900 outline-none placeholder:text-slate-500 ring-offset-2 focus:ring-2 focus:ring-[var(--color-brand)]"
@@ -281,13 +283,13 @@ export function LoginPage() {
               onClick={() => setShowPassword((previous) => !previous)}
               type="button"
             >
-              {showPassword ? 'Ocultar' : 'Ver'}
+              {showPassword ? tx('Ocultar', 'Hide') : tx('Ver', 'Show')}
             </button>
           </div>
         </label>
       ) : (
         <p className="text-xs text-[var(--color-text-muted)]">
-          Enviaremos un enlace de acceso seguro a tu correo.
+          {tx('Enviaremos un enlace de acceso seguro a tu correo.', 'We will send a secure sign-in link to your email.')}
         </p>
       )}
 
@@ -304,11 +306,11 @@ export function LoginPage() {
 
       {authMode === 'password' ? (
         <AppButton block disabled={submitting} onClick={handleLogin}>
-          {submitting ? 'Entrando...' : 'Entrar'}
+          {submitting ? tx('Entrando...', 'Signing in...') : tx('Entrar', 'Sign in')}
         </AppButton>
       ) : (
         <AppButton block disabled={submitting} onClick={() => void handleMagicLinkLogin()}>
-          {submitting ? 'Enviando...' : 'Enviar magic link'}
+          {submitting ? tx('Enviando...', 'Sending...') : tx('Enviar magic link', 'Send magic link')}
         </AppButton>
       )}
     </AppCard>

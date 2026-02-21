@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { AppButton, AppCard, ModulePlaceholder, PetPhoto } from '../../shared/ui'
 import { useDemoData } from '../../shared/state/DemoDataContext'
 import { sortIncidentsForGuard } from '../incidents/logic'
-import type { Incident, Poll } from '../../shared/domain/demoData'
+import type { Incident, PetProfile, Poll } from '../../shared/domain/demoData'
 import {
   buildQrImageUrl,
   buildQrPayload,
@@ -21,6 +21,7 @@ import {
 } from '../../shared/push/webPush'
 import { adminCreateOrInviteUser } from '../../shared/supabase/admin'
 import { useLanguage } from '../../shared/i18n/LanguageContext'
+import { useTheme } from '../../shared/theme/ThemeContext'
 export { AppPackagesPage } from '../packages/pages'
 
 function priorityBadge(priority: Incident['priority']) {
@@ -46,7 +47,95 @@ function incidentEmphasis(score: number) {
 const reportActionClass =
   'border-zinc-700/80 bg-zinc-900/80 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100'
 
+const petBehaviorTraitOptions: Array<{ value: PetProfile['behaviorTraits'][number]; label: string; icon: string }> = [
+  { value: 'playful', label: 'Playful', icon: '🎾' },
+  { value: 'calm', label: 'Calm', icon: '😌' },
+  { value: 'protective', label: 'Protective', icon: '🛡️' },
+  { value: 'curious', label: 'Curious', icon: '🧭' },
+  { value: 'anxious', label: 'Anxious', icon: '😟' },
+  { value: 'stubborn', label: 'Stubborn', icon: '🧱' },
+  { value: 'gentle', label: 'Gentle', icon: '🤍' },
+  { value: 'vocal', label: 'Vocal', icon: '🔊' },
+  { value: 'alert', label: 'Alert', icon: '👀' },
+  { value: 'lazy', label: 'Lazy', icon: '🛋️' },
+]
+
+const petKnownCommandOptions: Array<{ value: PetProfile['commandsKnown'][number]; label: string; icon: string }> = [
+  { value: 'sit', label: 'Sit', icon: '🪑' },
+  { value: 'stay', label: 'Stay', icon: '✋' },
+  { value: 'come', label: 'Come', icon: '📣' },
+  { value: 'down', label: 'Down', icon: '⬇️' },
+  { value: 'heel', label: 'Heel', icon: '🦶' },
+  { value: 'leave_it', label: 'Leave it', icon: '🚫' },
+  { value: 'drop_it', label: 'Drop it', icon: '📦' },
+]
+
+const petPersonalityHighlightOptions: Array<{
+  value: PetProfile['personalityHighlights'][number]
+  label: string
+  icon: string
+}> = [
+  { value: 'loves_people', label: 'Loves people', icon: '💞' },
+  { value: 'high_energy', label: 'High energy', icon: '⚡' },
+  { value: 'great_with_kids', label: 'Great with kids', icon: '🧒' },
+  { value: 'needs_training', label: 'Needs training', icon: '🎓' },
+  { value: 'independent', label: 'Independent', icon: '🧠' },
+]
+
+const petPrefersOptions: Array<{ value: PetProfile['prefers'][number]; label: string; icon: string }> = [
+  { value: 'small_dogs', label: 'Small dogs', icon: '🐕' },
+  { value: 'large_dogs', label: 'Large dogs', icon: '🐕‍🦺' },
+  { value: 'calm_pets', label: 'Calm pets', icon: '🧘' },
+  { value: 'energetic_pets', label: 'Energetic pets', icon: '⚡' },
+]
+
+const petAvailableForOptions: Array<{
+  value: PetProfile['availableFor'][number]
+  label: string
+  icon: string
+}> = [
+  { value: 'playdates', label: 'Playdates', icon: '🎉' },
+  { value: 'breeding', label: 'Breeding', icon: '🧬' },
+  { value: 'adoption', label: 'Adoption', icon: '🏡' },
+  { value: 'training_buddies', label: 'Training buddies', icon: '🏋️' },
+  { value: 'walk_groups', label: 'Walk groups', icon: '🚶' },
+]
+
+function toggleInArray<T extends string>(current: T[], value: T) {
+  return current.includes(value) ? current.filter((entry) => entry !== value) : [...current, value]
+}
+
+function createDefaultPetProfile(): PetProfile {
+  return {
+    socialWithHumans: 'depends',
+    socialWithChildren: 'depends',
+    socialWithDogs: 'depends',
+    socialWithCats: 'depends',
+    socialWithOtherAnimals: 'depends',
+    energyLevel: 'medium',
+    friendliness: 'neutral',
+    independence: 'balanced',
+    affectionLevel: 'medium',
+    behaviorTraits: [],
+    vaccinated: 'up_to_date',
+    specialNeeds: false,
+    groomingNeeds: 'medium',
+    houseTrained: 'in_progress',
+    crateTrained: 'unknown',
+    leashTrained: 'in_progress',
+    recallTrained: 'partial',
+    commandsKnown: [],
+    species: 'dog',
+    size: 'm',
+    personalityHighlights: [],
+    likesPlaydates: 'selective',
+    prefers: [],
+    availableFor: [],
+  }
+}
+
 export function AppHomePage() {
+  const { tx } = useLanguage()
   const {
     incidents,
     qrPasses,
@@ -54,6 +143,7 @@ export function AppHomePage() {
     parkingReports,
     polls,
     petPosts,
+    maintenanceReports,
     marketplacePosts,
     remoteDataLoading,
     session,
@@ -68,23 +158,27 @@ export function AppHomePage() {
   ).length
   const activePolls = polls.length
   const activePetPosts = petPosts.length
+  const activeMaintenanceReports = maintenanceReports.filter(
+    (report) => report.status === 'open' && report.createdByUserId === session?.userId
+  ).length
   const activeMarketPosts = marketplacePosts.filter((post) => post.status === 'active').length
-  const profileTitle = `${session?.fullName ?? 'Usuario'} - ${session?.unitNumber ?? 'Sin departamento'}`
+  const profileTitle = `${session?.fullName ?? tx('Usuario', 'User')} - ${session?.unitNumber ?? tx('Sin departamento', 'No unit')}`
   const menuItems = [
-    { label: 'Comunicados', icon: 'CO', action: () => navigate('/app/announcements') },
-    { label: 'Visitas', icon: 'VI', action: () => navigate('/app/visits') },
-    { label: 'Reservaciones', icon: 'RE', action: () => navigate('/app/reservations') },
-    { label: 'Estacionamiento', icon: 'ES', action: () => navigate('/app/parking') },
-    { label: 'Votaciones', icon: 'VO', action: () => navigate('/app/polls') },
-    { label: 'Mascotas', icon: 'MA', action: () => navigate('/app/pets') },
+    { label: tx('Comunicados', 'Announcements'), icon: 'CO', action: () => navigate('/app/announcements') },
+    { label: tx('Visitas', 'Visits'), icon: 'VI', action: () => navigate('/app/visits') },
+    { label: tx('Reservaciones', 'Reservations'), icon: 'RE', action: () => navigate('/app/reservations') },
+    { label: tx('Estacionamiento', 'Parking'), icon: 'ES', action: () => navigate('/app/parking') },
+    { label: tx('Votaciones', 'Polls'), icon: 'VO', action: () => navigate('/app/polls') },
+    { label: tx('Mascotas', 'Pets'), icon: 'MA', action: () => navigate('/app/pets') },
+    { label: tx('Rep. Manto', 'Maint. Report'), icon: 'RM', action: () => navigate('/app/maintenance') },
     { label: 'Marketplace', icon: 'MK', action: () => navigate('/app/marketplace') },
     ...(session?.role === 'resident'
-      ? [{ label: 'Agregar Inquilino', icon: 'TI', action: () => navigate('/app/add-tenant') }]
+      ? [{ label: tx('Agregar Inquilino', 'Add Tenant'), icon: 'TI', action: () => navigate('/app/add-tenant') }]
       : []),
-    { label: 'Paquetes', icon: 'PA', action: () => navigate('/app/packages') },
-    { label: 'Incidencias', icon: 'IN', action: () => navigate('/app/incidents') },
-    { label: 'Perfil', icon: 'PE', action: () => navigate('/app/profile') },
-    { label: 'Estado de Cuenta', icon: 'EC', action: () => navigate('/app/finance') },
+    { label: tx('Paquetes', 'Packages'), icon: 'PA', action: () => navigate('/app/packages') },
+    { label: tx('Incidencias', 'Incidents'), icon: 'IN', action: () => navigate('/app/incidents') },
+    { label: tx('Perfil', 'Profile'), icon: 'PE', action: () => navigate('/app/profile') },
+    { label: tx('Estado de Cuenta', 'Account Statement'), icon: 'EC', action: () => navigate('/app/finance') },
   ]
 
   return (
@@ -92,30 +186,30 @@ export function AppHomePage() {
       <ModulePlaceholder
         role="Residente / Inquilino"
         title={profileTitle}
-        description="Accesos, comunicados y modulos principales."
+        description={tx('Accesos, comunicados y modulos principales.', 'Access, announcements, and main modules.')}
       />
       {remoteDataLoading ? (
         <AppCard className="rounded-xl border-zinc-700 bg-zinc-900 p-3">
           <p className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-300">
-            Sincronizando datos...
+            {tx('Sincronizando datos...', 'Syncing data...')}
           </p>
         </AppCard>
       ) : null}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <button onClick={() => navigate('/app/visits')} type="button">
           <AppCard className="rounded-xl border-zinc-800 bg-zinc-950 p-3 text-center transition hover:border-zinc-500">
-            <p className="text-[11px] uppercase text-slate-400">QR activos</p>
+            <p className="text-[11px] uppercase text-slate-400">{tx('QR activos', 'Active QR')}</p>
             <p className="text-2xl font-bold text-white">{activeQr}</p>
           </AppCard>
         </button>
         <button onClick={() => navigate('/app/incidents?highlight=alert')} type="button">
           <AppCard className="rounded-xl border-zinc-800 bg-zinc-950 p-3 text-center transition hover:border-zinc-500">
-            <p className="text-[11px] uppercase text-slate-400">Alertas</p>
+            <p className="text-[11px] uppercase text-slate-400">{tx('Alertas', 'Alerts')}</p>
             <p className="text-2xl font-bold text-white">{activeAlerts}</p>
           </AppCard>
         </button>
         <AppCard className="rounded-xl border-zinc-800 bg-zinc-950 p-3 text-center">
-          <p className="text-[11px] uppercase text-slate-400">Auditoria</p>
+          <p className="text-[11px] uppercase text-slate-400">{tx('Auditoria', 'Audit')}</p>
           <p className="text-2xl font-bold text-white">{auditLog.length}</p>
         </AppCard>
         <button onClick={() => navigate('/app/parking')} type="button">
@@ -126,14 +220,20 @@ export function AppHomePage() {
         </button>
         <button onClick={() => navigate('/app/polls')} type="button">
           <AppCard className="rounded-xl border-zinc-800 bg-zinc-950 p-3 text-center transition hover:border-zinc-500">
-            <p className="text-[11px] uppercase text-slate-400">Votaciones</p>
+            <p className="text-[11px] uppercase text-slate-400">{tx('Votaciones', 'Polls')}</p>
             <p className="text-2xl font-bold text-white">{activePolls}</p>
           </AppCard>
         </button>
         <button onClick={() => navigate('/app/pets')} type="button">
           <AppCard className="rounded-xl border-zinc-800 bg-zinc-950 p-3 text-center transition hover:border-zinc-500">
-            <p className="text-[11px] uppercase text-slate-400">Mascotas</p>
+            <p className="text-[11px] uppercase text-slate-400">{tx('Mascotas', 'Pets')}</p>
             <p className="text-2xl font-bold text-white">{activePetPosts}</p>
+          </AppCard>
+        </button>
+        <button onClick={() => navigate('/app/maintenance')} type="button">
+          <AppCard className="rounded-xl border-zinc-800 bg-zinc-950 p-3 text-center transition hover:border-zinc-500">
+            <p className="text-[11px] uppercase text-slate-400">{tx('Mantenimiento', 'Maintenance')}</p>
+            <p className="text-2xl font-bold text-white">{activeMaintenanceReports}</p>
           </AppCard>
         </button>
         <button onClick={() => navigate('/app/marketplace')} type="button">
@@ -145,10 +245,10 @@ export function AppHomePage() {
       </div>
       <div className="grid grid-cols-2 gap-2">
         <AppButton block onClick={() => navigate('/app/reservations')} variant="secondary">
-          Reservaciones
+          {tx('Reservaciones', 'Reservations')}
         </AppButton>
         <AppButton block onClick={() => navigate('/app/parking')} variant="secondary">
-          Reporte Estacionamiento
+          {tx('Reporte Estacionamiento', 'Parking Report')}
         </AppButton>
       </div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -952,6 +1052,190 @@ export function AppIncidentsPage() {
   )
 }
 
+export function AppMaintenancePage() {
+  const { createMaintenanceReport, maintenanceReports, session } = useDemoData()
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+  const [title, setTitle] = useState('')
+  const [description, setDescription] = useState('')
+  const [reportType, setReportType] = useState<
+    'plumbing' | 'electrical' | 'lighting' | 'common_area' | 'security' | 'other'
+  >('plumbing')
+  const [photoUrl, setPhotoUrl] = useState('')
+  const [photoName, setPhotoName] = useState('')
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const [feedback, setFeedback] = useState('')
+
+  const myReports = maintenanceReports.filter((report) => report.createdByUserId === session?.userId)
+
+  async function handlePhotoUpload(file: File | null) {
+    if (!file) {
+      return
+    }
+    setUploadingPhoto(true)
+    setFeedback('')
+    try {
+      if (isSupabaseConfigured && navigator.onLine) {
+        const objectPath = await uploadPetPhoto(file)
+        setPhotoUrl(objectPath)
+        setPhotoName(file.name)
+      } else {
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve(String(reader.result))
+          reader.onerror = () => reject(new Error('No fue posible leer la foto.'))
+          reader.readAsDataURL(file)
+        })
+        setPhotoUrl(dataUrl)
+        setPhotoName(file.name)
+      }
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : 'No se pudo cargar foto.')
+    } finally {
+      setUploadingPhoto(false)
+    }
+  }
+
+  function clearForm() {
+    setTitle('')
+    setDescription('')
+    setReportType('plumbing')
+    setPhotoUrl('')
+    setPhotoName('')
+  }
+
+  function handleSubmit() {
+    const result = createMaintenanceReport({
+      title,
+      description,
+      reportType,
+      photoUrl,
+    })
+    setFeedback(result.ok ? 'Reporte enviado.' : result.error ?? 'No se pudo enviar.')
+    if (result.ok) {
+      clearForm()
+      setIsCreateModalOpen(false)
+    }
+  }
+
+  function reportTypeLabel(type: typeof reportType) {
+    if (type === 'plumbing') return 'Plomeria'
+    if (type === 'electrical') return 'Electrico'
+    if (type === 'lighting') return 'Iluminacion'
+    if (type === 'common_area') return 'Area comun'
+    if (type === 'security') return 'Seguridad'
+    return 'Otro'
+  }
+
+  return (
+    <div className="space-y-3">
+      <ModulePlaceholder
+        role="Residente / Inquilino"
+        title="Reporte Mantenimiento"
+        description="Reporta incidencias de mantenimiento con evidencia fotografica."
+      />
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-zinc-200">Reportes de mantenimiento</p>
+        <button
+          className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-zinc-700 bg-zinc-900 text-xl font-semibold leading-none text-zinc-100 transition hover:border-zinc-500"
+          onClick={() => setIsCreateModalOpen(true)}
+          type="button"
+        >
+          +
+        </button>
+      </div>
+      {feedback ? <p className="text-xs text-zinc-300">{feedback}</p> : null}
+      <div className="max-h-[52vh] space-y-2 overflow-y-auto pr-1">
+        {myReports.length === 0 ? (
+          <AppCard className="text-sm text-zinc-300">Aun no has enviado reportes.</AppCard>
+        ) : (
+          myReports.map((report) => (
+            <AppCard className="space-y-2 border-zinc-800 bg-zinc-950" key={report.id}>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-semibold text-zinc-100">{report.title}</p>
+                <span className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-1 text-[10px] font-semibold uppercase text-zinc-300">
+                  {reportTypeLabel(report.reportType)}
+                </span>
+              </div>
+              <PetPhoto
+                alt={`Evidencia ${report.title}`}
+                className="h-36 w-full rounded-xl border border-zinc-700 object-cover"
+                pathOrUrl={report.photoUrl}
+              />
+              <p className="text-xs text-zinc-300">{report.description}</p>
+              <p className="text-xs text-zinc-400">{new Date(report.createdAt).toLocaleString()}</p>
+            </AppCard>
+          ))
+        )}
+      </div>
+      {isCreateModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 sm:items-center">
+          <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-950 p-3 shadow-2xl">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <p className="text-sm font-semibold text-zinc-100">Nuevo reporte mantenimiento</p>
+              <AppButton className="px-2 py-1 text-xs" onClick={() => setIsCreateModalOpen(false)} variant="secondary">
+                Cerrar
+              </AppButton>
+            </div>
+            <div className="space-y-3">
+              <input
+                className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                onChange={(event) => setTitle(event.target.value)}
+                placeholder="Titulo (ej. Fuga en pasillo)"
+                value={title}
+              />
+              <select
+                className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                onChange={(event) =>
+                  setReportType(
+                    event.target.value as
+                      | 'plumbing'
+                      | 'electrical'
+                      | 'lighting'
+                      | 'common_area'
+                      | 'security'
+                      | 'other'
+                  )
+                }
+                value={reportType}
+              >
+                <option value="plumbing">Plomeria</option>
+                <option value="electrical">Electrico</option>
+                <option value="lighting">Iluminacion</option>
+                <option value="common_area">Area comun</option>
+                <option value="security">Seguridad</option>
+                <option value="other">Otro</option>
+              </select>
+              <textarea
+                className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                onChange={(event) => setDescription(event.target.value)}
+                placeholder="Descripcion"
+                rows={3}
+                value={description}
+              />
+              <label className="space-y-1">
+                <span className="block text-[11px] uppercase tracking-[0.08em] text-zinc-400">
+                  Foto
+                </span>
+                <input
+                  accept="image/*"
+                  capture="environment"
+                  className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 file:mr-3 file:rounded-lg file:border-0 file:bg-zinc-800 file:px-3 file:py-1 file:text-xs file:font-semibold file:text-zinc-100"
+                  onChange={(event) => void handlePhotoUpload(event.target.files?.[0] ?? null)}
+                  type="file"
+                />
+                {photoName ? <p className="text-xs text-zinc-400">Archivo: {photoName}</p> : null}
+              </label>
+              <AppButton block disabled={uploadingPhoto} onClick={handleSubmit}>
+                {uploadingPhoto ? 'Subiendo foto...' : 'Enviar reporte'}
+              </AppButton>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 export function AppAnnouncementsPage() {
   const navigate = useNavigate()
   const { incidents } = useDemoData()
@@ -1202,6 +1486,8 @@ export function AppPetsPage() {
   const [petName, setPetName] = useState('')
   const [comments, setComments] = useState('')
   const [photoUrl, setPhotoUrl] = useState('')
+  const [petProfile, setPetProfile] = useState<PetProfile>(createDefaultPetProfile)
+  const [isPetFormOpen, setIsPetFormOpen] = useState(false)
   const [selectedPetPostId, setSelectedPetPostId] = useState<string | null>(null)
   const [editingPetPostId, setEditingPetPostId] = useState<string | null>(null)
   const [newCommentText, setNewCommentText] = useState('')
@@ -1245,6 +1531,8 @@ export function AppPetsPage() {
     setPetName('')
     setComments('')
     setPhotoUrl('')
+    setPetProfile(createDefaultPetProfile())
+    setIsPetFormOpen(false)
     setSelectedPetPostId(null)
     setEditingPetPostId(null)
     setNewCommentText('')
@@ -1259,11 +1547,23 @@ export function AppPetsPage() {
     if (!post) {
       return
     }
+    setIsPetFormOpen(true)
     setEditingPetPostId(post.id)
     setPetName(post.petName)
     setComments(post.comments)
     setPhotoUrl(post.photoUrl)
+    setPetProfile(post.profile ?? createDefaultPetProfile())
     setFeedback('')
+  }
+
+  function openCreatePetPost() {
+    setEditingPetPostId(null)
+    setPetName('')
+    setComments('')
+    setPhotoUrl('')
+    setPetProfile(createDefaultPetProfile())
+    setFeedback('')
+    setIsPetFormOpen(true)
   }
 
   function handleSubmitPetPost() {
@@ -1273,6 +1573,7 @@ export function AppPetsPage() {
         petName,
         photoUrl,
         comments,
+        profile: petProfile,
       })
       setFeedback(
         result.ok ? 'Publicacion de mascota actualizada.' : result.error ?? 'No se pudo actualizar.'
@@ -1283,7 +1584,7 @@ export function AppPetsPage() {
       return
     }
 
-    const result = createPetPost({ petName, photoUrl, comments })
+    const result = createPetPost({ petName, photoUrl, comments, profile: petProfile })
     setFeedback(
       result.ok ? 'Mascota publicada correctamente.' : result.error ?? 'No se pudo publicar.'
     )
@@ -1323,46 +1624,17 @@ export function AppPetsPage() {
         title="Mascotas"
         description="Comparte a tu mascota con foto y experiencia para la comunidad."
       />
-      <AppCard className="space-y-3 border-zinc-800 bg-zinc-950">
-        <p className="text-sm font-semibold text-zinc-100">
-          {editingPetPost ? 'Editar mascota' : 'Nueva mascota'}
-        </p>
-        <input
-          className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
-          onChange={(event) => setPetName(event.target.value)}
-          placeholder="Nombre de la mascota"
-          value={petName}
-        />
-        <label className="space-y-1">
-          <span className="block text-[11px] uppercase tracking-[0.08em] text-zinc-400">Foto</span>
-          <input
-            accept="image/*"
-            className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 file:mr-3 file:rounded-lg file:border-0 file:bg-zinc-800 file:px-3 file:py-1 file:text-xs file:font-semibold file:text-zinc-100"
-            onChange={(event) => void handleFileChange(event.target.files?.[0] ?? null)}
-            type="file"
-          />
-        </label>
-        <textarea
-          className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
-          onChange={(event) => setComments(event.target.value)}
-          placeholder="Comentarios / experiencia"
-          rows={3}
-          value={comments}
-        />
-        <AppButton block disabled={uploadingPhoto} onClick={handleSubmitPetPost}>
-          {uploadingPhoto
-            ? 'Subiendo foto...'
-            : editingPetPost
-              ? 'Guardar cambios'
-              : 'Publicar mascota'}
-        </AppButton>
-        {editingPetPost ? (
-          <AppButton block onClick={resetPetForm} variant="secondary">
-            Cancelar edicion
-          </AppButton>
-        ) : null}
-        {feedback ? <p className="text-xs text-zinc-300">{feedback}</p> : null}
-      </AppCard>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-zinc-200">Mascotas de la comunidad</p>
+        <button
+          className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-zinc-700 bg-zinc-900 text-xl font-semibold leading-none text-zinc-100 transition hover:border-zinc-500"
+          onClick={openCreatePetPost}
+          type="button"
+        >
+          +
+        </button>
+      </div>
+      {feedback ? <p className="text-xs text-zinc-300">{feedback}</p> : null}
       <div className="space-y-2">
         {petPosts.length === 0 ? (
           <AppCard className="text-sm text-zinc-300">Aun no hay mascotas publicadas.</AppCard>
@@ -1385,6 +1657,18 @@ export function AppPetsPage() {
                 pathOrUrl={petPost.photoUrl}
               />
               <p className="text-sm text-zinc-300">{petPost.comments}</p>
+              {petPost.profile?.personalityHighlights?.length ? (
+                <div className="flex flex-wrap gap-1">
+                  {petPost.profile.personalityHighlights.map((highlight) => (
+                    <span
+                      className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-1 text-[10px] font-semibold text-zinc-300"
+                      key={highlight}
+                    >
+                      {highlight.replaceAll('_', ' ')}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
               <p className="text-xs font-semibold text-zinc-400">
                 Comentarios: {petPostComments.filter((comment) => comment.petPostId === petPost.id).length}
               </p>
@@ -1417,6 +1701,576 @@ export function AppPetsPage() {
           ))
         )}
       </div>
+      {isPetFormOpen ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 sm:items-center">
+          <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-950 p-3 shadow-2xl">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <p className="text-sm font-semibold text-zinc-100">
+                {editingPetPost ? 'Editar mascota' : 'Nueva mascota'}
+              </p>
+              <AppButton className="px-2 py-1 text-xs" onClick={resetPetForm} variant="secondary">
+                Cerrar
+              </AppButton>
+            </div>
+            <div className="space-y-3">
+              <input
+                className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                onChange={(event) => setPetName(event.target.value)}
+                placeholder="Nombre de la mascota"
+                value={petName}
+              />
+              <label className="space-y-1">
+                <span className="block text-[11px] uppercase tracking-[0.08em] text-zinc-400">Foto</span>
+                <input
+                  accept="image/*"
+                  className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 file:mr-3 file:rounded-lg file:border-0 file:bg-zinc-800 file:px-3 file:py-1 file:text-xs file:font-semibold file:text-zinc-100"
+                  onChange={(event) => void handleFileChange(event.target.files?.[0] ?? null)}
+                  type="file"
+                />
+              </label>
+              <textarea
+                className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                onChange={(event) => setComments(event.target.value)}
+                placeholder="Comentarios / experiencia"
+                rows={3}
+                value={comments}
+              />
+              <div className="space-y-2 rounded-xl border border-zinc-700 bg-zinc-900 p-2">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-400">
+                  Basic profile
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <select
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
+                    onChange={(event) =>
+                      setPetProfile((previous) => ({
+                        ...previous,
+                        species: event.target.value as PetProfile['species'],
+                      }))
+                    }
+                    value={petProfile.species}
+                  >
+                    <option value="dog">Dog</option>
+                    <option value="cat">Cat</option>
+                    <option value="other">Other</option>
+                  </select>
+                  <select
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
+                    onChange={(event) =>
+                      setPetProfile((previous) => ({
+                        ...previous,
+                        size: event.target.value as PetProfile['size'],
+                      }))
+                    }
+                    value={petProfile.size}
+                  >
+                    <option value="xs">XS</option>
+                    <option value="s">S</option>
+                    <option value="m">M</option>
+                    <option value="l">L</option>
+                    <option value="xl">XL</option>
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
+                    onChange={(event) =>
+                      setPetProfile((previous) => ({ ...previous, breed: event.target.value }))
+                    }
+                    placeholder="Breed"
+                    value={petProfile.breed ?? ''}
+                  />
+                  <input
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
+                    onChange={(event) =>
+                      setPetProfile((previous) => ({ ...previous, age: event.target.value }))
+                    }
+                    placeholder="Age"
+                    value={petProfile.age ?? ''}
+                  />
+                  <input
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
+                    onChange={(event) =>
+                      setPetProfile((previous) => ({ ...previous, weight: event.target.value }))
+                    }
+                    placeholder="Weight"
+                    value={petProfile.weight ?? ''}
+                  />
+                  <select
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
+                    onChange={(event) =>
+                      setPetProfile((previous) => ({
+                        ...previous,
+                        gender: event.target.value as PetProfile['gender'],
+                      }))
+                    }
+                    value={petProfile.gender ?? 'other'}
+                  >
+                    <option value="female">Gender: Female</option>
+                    <option value="male">Gender: Male</option>
+                    <option value="other">Gender: Other</option>
+                  </select>
+                  <input
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
+                    onChange={(event) =>
+                      setPetProfile((previous) => ({ ...previous, locationCity: event.target.value }))
+                    }
+                    placeholder="City (optional)"
+                    value={petProfile.locationCity ?? ''}
+                  />
+                  <input
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
+                    onChange={(event) =>
+                      setPetProfile((previous) => ({ ...previous, birthday: event.target.value }))
+                    }
+                    placeholder="Birthday (optional)"
+                    type="date"
+                    value={petProfile.birthday ?? ''}
+                  />
+                  <input
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
+                    onChange={(event) =>
+                      setPetProfile((previous) => ({ ...previous, availabilityNote: event.target.value }))
+                    }
+                    placeholder="Availability note (optional)"
+                    value={petProfile.availabilityNote ?? ''}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2 rounded-xl border border-zinc-700 bg-zinc-900 p-2">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-400">
+                  Social behavior
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <select
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
+                    onChange={(event) =>
+                      setPetProfile((previous) => ({
+                        ...previous,
+                        socialWithHumans: event.target.value as PetProfile['socialWithHumans'],
+                      }))
+                    }
+                    value={petProfile.socialWithHumans}
+                  >
+                    <option value="yes">Humans: Yes</option>
+                    <option value="no">Humans: No</option>
+                    <option value="depends">Humans: Depends</option>
+                  </select>
+                  <select
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
+                    onChange={(event) =>
+                      setPetProfile((previous) => ({
+                        ...previous,
+                        socialWithChildren: event.target.value as PetProfile['socialWithChildren'],
+                      }))
+                    }
+                    value={petProfile.socialWithChildren}
+                  >
+                    <option value="yes">Children: Yes</option>
+                    <option value="no">Children: No</option>
+                    <option value="depends">Children: Depends</option>
+                  </select>
+                  <select
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
+                    onChange={(event) =>
+                      setPetProfile((previous) => ({
+                        ...previous,
+                        socialWithDogs: event.target.value as PetProfile['socialWithDogs'],
+                      }))
+                    }
+                    value={petProfile.socialWithDogs}
+                  >
+                    <option value="yes">Dogs: Yes</option>
+                    <option value="no">Dogs: No</option>
+                    <option value="depends">Dogs: Depends</option>
+                  </select>
+                  <select
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
+                    onChange={(event) =>
+                      setPetProfile((previous) => ({
+                        ...previous,
+                        socialWithCats: event.target.value as PetProfile['socialWithCats'],
+                      }))
+                    }
+                    value={petProfile.socialWithCats}
+                  >
+                    <option value="yes">Cats: Yes</option>
+                    <option value="no">Cats: No</option>
+                    <option value="depends">Cats: Depends</option>
+                  </select>
+                  <select
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
+                    onChange={(event) =>
+                      setPetProfile((previous) => ({
+                        ...previous,
+                        socialWithOtherAnimals: event.target.value as PetProfile['socialWithOtherAnimals'],
+                      }))
+                    }
+                    value={petProfile.socialWithOtherAnimals}
+                  >
+                    <option value="yes">Other animals: Yes</option>
+                    <option value="no">Other animals: No</option>
+                    <option value="depends">Other animals: Depends</option>
+                  </select>
+                </div>
+              </div>
+              <div className="space-y-2 rounded-xl border border-zinc-700 bg-zinc-900 p-2">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-400">
+                  Temperament & health
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <select
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
+                    onChange={(event) =>
+                      setPetProfile((previous) => ({
+                        ...previous,
+                        energyLevel: event.target.value as PetProfile['energyLevel'],
+                      }))
+                    }
+                    value={petProfile.energyLevel}
+                  >
+                    <option value="low">Energy: Low</option>
+                    <option value="medium">Energy: Medium</option>
+                    <option value="high">Energy: High</option>
+                  </select>
+                  <select
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
+                    onChange={(event) =>
+                      setPetProfile((previous) => ({
+                        ...previous,
+                        friendliness: event.target.value as PetProfile['friendliness'],
+                      }))
+                    }
+                    value={petProfile.friendliness}
+                  >
+                    <option value="shy">Friendliness: Shy</option>
+                    <option value="neutral">Friendliness: Neutral</option>
+                    <option value="friendly">Friendliness: Friendly</option>
+                  </select>
+                  <select
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
+                    onChange={(event) =>
+                      setPetProfile((previous) => ({
+                        ...previous,
+                        independence: event.target.value as PetProfile['independence'],
+                      }))
+                    }
+                    value={petProfile.independence}
+                  >
+                    <option value="independent">Independence: Independent</option>
+                    <option value="balanced">Independence: Balanced</option>
+                    <option value="clingy">Independence: Clingy</option>
+                  </select>
+                  <select
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
+                    onChange={(event) =>
+                      setPetProfile((previous) => ({
+                        ...previous,
+                        affectionLevel: event.target.value as PetProfile['affectionLevel'],
+                      }))
+                    }
+                    value={petProfile.affectionLevel}
+                  >
+                    <option value="low">Affection: Low</option>
+                    <option value="medium">Affection: Medium</option>
+                    <option value="high">Affection: High</option>
+                  </select>
+                  <select
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
+                    onChange={(event) =>
+                      setPetProfile((previous) => ({
+                        ...previous,
+                        vaccinated: event.target.value as PetProfile['vaccinated'],
+                      }))
+                    }
+                    value={petProfile.vaccinated}
+                  >
+                    <option value="up_to_date">Vaccinated: Up to date</option>
+                    <option value="partial">Vaccinated: Partial</option>
+                    <option value="no">Vaccinated: No</option>
+                  </select>
+                  <select
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
+                    onChange={(event) =>
+                      setPetProfile((previous) => ({
+                        ...previous,
+                        likesPlaydates: event.target.value as PetProfile['likesPlaydates'],
+                      }))
+                    }
+                    value={petProfile.likesPlaydates}
+                  >
+                    <option value="yes">Likes playdates: Yes</option>
+                    <option value="no">Likes playdates: No</option>
+                    <option value="selective">Likes playdates: Selective</option>
+                  </select>
+                  <select
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
+                    onChange={(event) =>
+                      setPetProfile((previous) => ({
+                        ...previous,
+                        groomingNeeds: event.target.value as PetProfile['groomingNeeds'],
+                      }))
+                    }
+                    value={petProfile.groomingNeeds}
+                  >
+                    <option value="low">Grooming: Low</option>
+                    <option value="medium">Grooming: Medium</option>
+                    <option value="high">Grooming: High</option>
+                  </select>
+                  <select
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
+                    onChange={(event) =>
+                      setPetProfile((previous) => ({
+                        ...previous,
+                        houseTrained: event.target.value as PetProfile['houseTrained'],
+                      }))
+                    }
+                    value={petProfile.houseTrained}
+                  >
+                    <option value="yes">House trained: Yes</option>
+                    <option value="no">House trained: No</option>
+                    <option value="in_progress">House trained: In progress</option>
+                  </select>
+                  <select
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
+                    onChange={(event) =>
+                      setPetProfile((previous) => ({
+                        ...previous,
+                        crateTrained: event.target.value as PetProfile['crateTrained'],
+                      }))
+                    }
+                    value={petProfile.crateTrained}
+                  >
+                    <option value="yes">Crate trained: Yes</option>
+                    <option value="no">Crate trained: No</option>
+                    <option value="unknown">Crate trained: Unknown</option>
+                  </select>
+                  <select
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
+                    onChange={(event) =>
+                      setPetProfile((previous) => ({
+                        ...previous,
+                        leashTrained: event.target.value as PetProfile['leashTrained'],
+                      }))
+                    }
+                    value={petProfile.leashTrained}
+                  >
+                    <option value="yes">Leash trained: Yes</option>
+                    <option value="no">Leash trained: No</option>
+                    <option value="in_progress">Leash trained: In progress</option>
+                  </select>
+                  <select
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
+                    onChange={(event) =>
+                      setPetProfile((previous) => ({
+                        ...previous,
+                        recallTrained: event.target.value as PetProfile['recallTrained'],
+                      }))
+                    }
+                    value={petProfile.recallTrained}
+                  >
+                    <option value="reliable">Recall: Reliable</option>
+                    <option value="partial">Recall: Partial</option>
+                    <option value="no">Recall: No</option>
+                  </select>
+                  <select
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
+                    onChange={(event) =>
+                      setPetProfile((previous) => ({ ...previous, neuteredOrSpayed: event.target.value === 'yes' }))
+                    }
+                    value={petProfile.neuteredOrSpayed ? 'yes' : 'no'}
+                  >
+                    <option value="yes">Neutered/Spayed: Yes</option>
+                    <option value="no">Neutered/Spayed: No</option>
+                  </select>
+                  <select
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
+                    onChange={(event) =>
+                      setPetProfile((previous) => ({ ...previous, specialNeeds: event.target.value === 'yes' }))
+                    }
+                    value={petProfile.specialNeeds ? 'yes' : 'no'}
+                  >
+                    <option value="no">Special needs: No</option>
+                    <option value="yes">Special needs: Yes</option>
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
+                    onChange={(event) =>
+                      setPetProfile((previous) => ({ ...previous, allergies: event.target.value }))
+                    }
+                    placeholder="Allergies (optional)"
+                    value={petProfile.allergies ?? ''}
+                  />
+                  <input
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
+                    onChange={(event) =>
+                      setPetProfile((previous) => ({ ...previous, medications: event.target.value }))
+                    }
+                    placeholder="Medications (optional)"
+                    value={petProfile.medications ?? ''}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2 rounded-xl border border-zinc-700 bg-zinc-900 p-2">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-400">
+                  Behavior traits
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {petBehaviorTraitOptions.map((option) => {
+                    const selected = petProfile.behaviorTraits.includes(option.value)
+                    return (
+                      <button
+                        className={`rounded-full border px-2 py-1 text-xs ${
+                          selected
+                            ? 'border-emerald-400 bg-emerald-500/10 text-emerald-200'
+                            : 'border-zinc-700 bg-zinc-950 text-zinc-300'
+                        }`}
+                        key={option.value}
+                        onClick={() =>
+                          setPetProfile((previous) => ({
+                            ...previous,
+                            behaviorTraits: toggleInArray(previous.behaviorTraits, option.value),
+                          }))
+                        }
+                        type="button"
+                      >
+                        {option.icon} {option.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+              <div className="space-y-2 rounded-xl border border-zinc-700 bg-zinc-900 p-2">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-400">
+                  Commands known
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {petKnownCommandOptions.map((option) => {
+                    const selected = petProfile.commandsKnown.includes(option.value)
+                    return (
+                      <button
+                        className={`rounded-full border px-2 py-1 text-xs ${
+                          selected
+                            ? 'border-emerald-400 bg-emerald-500/10 text-emerald-200'
+                            : 'border-zinc-700 bg-zinc-950 text-zinc-300'
+                        }`}
+                        key={option.value}
+                        onClick={() =>
+                          setPetProfile((previous) => ({
+                            ...previous,
+                            commandsKnown: toggleInArray(previous.commandsKnown, option.value),
+                          }))
+                        }
+                        type="button"
+                      >
+                        {option.icon} {option.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+              <div className="space-y-2 rounded-xl border border-zinc-700 bg-zinc-900 p-2">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-400">
+                  Highlights (pick up to 5)
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {petPersonalityHighlightOptions.map((option) => {
+                    const selected = petProfile.personalityHighlights.includes(option.value)
+                    const canAdd = selected || petProfile.personalityHighlights.length < 5
+                    return (
+                      <button
+                        className={`rounded-full border px-2 py-1 text-xs ${
+                          selected
+                            ? 'border-emerald-400 bg-emerald-500/10 text-emerald-200'
+                            : 'border-zinc-700 bg-zinc-950 text-zinc-300'
+                        } ${canAdd ? '' : 'opacity-50'}`}
+                        disabled={!canAdd}
+                        key={option.value}
+                        onClick={() =>
+                          setPetProfile((previous) => ({
+                            ...previous,
+                            personalityHighlights: toggleInArray(previous.personalityHighlights, option.value),
+                          }))
+                        }
+                        type="button"
+                      >
+                        {option.icon} {option.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+              <div className="space-y-2 rounded-xl border border-zinc-700 bg-zinc-900 p-2">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-400">
+                  Preferences & availability
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {petPrefersOptions.map((option) => {
+                    const selected = petProfile.prefers.includes(option.value)
+                    return (
+                      <button
+                        className={`rounded-full border px-2 py-1 text-xs ${
+                          selected
+                            ? 'border-emerald-400 bg-emerald-500/10 text-emerald-200'
+                            : 'border-zinc-700 bg-zinc-950 text-zinc-300'
+                        }`}
+                        key={option.value}
+                        onClick={() =>
+                          setPetProfile((previous) => ({
+                            ...previous,
+                            prefers: toggleInArray(previous.prefers, option.value),
+                          }))
+                        }
+                        type="button"
+                      >
+                        {option.icon} {option.label}
+                      </button>
+                    )
+                  })}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {petAvailableForOptions.map((option) => {
+                    const selected = petProfile.availableFor.includes(option.value)
+                    return (
+                      <button
+                        className={`rounded-full border px-2 py-1 text-xs ${
+                          selected
+                            ? 'border-emerald-400 bg-emerald-500/10 text-emerald-200'
+                            : 'border-zinc-700 bg-zinc-950 text-zinc-300'
+                        }`}
+                        key={option.value}
+                        onClick={() =>
+                          setPetProfile((previous) => ({
+                            ...previous,
+                            availableFor: toggleInArray(previous.availableFor, option.value),
+                          }))
+                        }
+                        type="button"
+                      >
+                        {option.icon} {option.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+              <AppButton block disabled={uploadingPhoto} onClick={handleSubmitPetPost}>
+                {uploadingPhoto
+                  ? 'Subiendo foto...'
+                  : editingPetPost
+                    ? 'Guardar cambios'
+                    : 'Publicar mascota'}
+              </AppButton>
+              {editingPetPost ? (
+                <AppButton block onClick={resetPetForm} variant="secondary">
+                  Cancelar edicion
+                </AppButton>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
       {selectedPetPost ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/55 p-4 sm:items-center">
           <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-950 p-3 shadow-2xl">
@@ -1444,6 +2298,18 @@ export function AppPetsPage() {
               pathOrUrl={selectedPetPost.photoUrl}
             />
             <p className="mb-3 text-sm text-zinc-300">{selectedPetPost.comments}</p>
+            {selectedPetPost.profile?.behaviorTraits?.length ? (
+              <div className="mb-3 flex flex-wrap gap-1">
+                {selectedPetPost.profile.behaviorTraits.map((trait) => (
+                  <span
+                    className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-1 text-[10px] font-semibold text-zinc-300"
+                    key={trait}
+                  >
+                    {trait}
+                  </span>
+                ))}
+              </div>
+            ) : null}
             <div className="mb-3 space-y-2 rounded-xl border border-zinc-800 bg-zinc-900 p-2">
               <p className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-400">
                 Comentarios
@@ -1976,7 +2842,8 @@ export function AppFinancePage() {
 
 export function AppProfilePage() {
   const { session } = useDemoData()
-  const { language, setLanguage, t } = useLanguage()
+  const { language, setLanguage, t, tx } = useLanguage()
+  const { theme, setTheme } = useTheme()
   const [pushMessage, setPushMessage] = useState('')
   const [busyAction, setBusyAction] = useState<'enable' | 'disable' | 'test' | null>(null)
   const [permission, setPermission] = useState(getNotificationPermissionState())
@@ -2006,7 +2873,7 @@ export function AppProfilePage() {
 
   async function handleEnablePush() {
     if (!session?.userId) {
-      setPushMessage('No hay sesion activa.')
+      setPushMessage(tx('No hay sesion activa.', 'There is no active session.'))
       return
     }
     setBusyAction('enable')
@@ -2014,12 +2881,12 @@ export function AppProfilePage() {
     try {
       const result = await subscribeThisDeviceToPush(session.userId)
       if (!result.ok) {
-        setPushMessage(result.error ?? 'No fue posible activar notificaciones.')
+        setPushMessage(result.error ?? tx('No fue posible activar notificaciones.', 'Could not enable notifications.'))
       } else {
-        setPushMessage('Notificaciones activadas para este dispositivo.')
+        setPushMessage(tx('Notificaciones activadas para este dispositivo.', 'Notifications enabled for this device.'))
       }
     } catch (error) {
-      setPushMessage(error instanceof Error ? error.message : 'Error inesperado al activar push.')
+      setPushMessage(error instanceof Error ? error.message : tx('Error inesperado al activar push.', 'Unexpected error enabling push.'))
     } finally {
       refreshPermission()
       setBusyAction(null)
@@ -2028,7 +2895,7 @@ export function AppProfilePage() {
 
   async function handleDisablePush() {
     if (!session?.userId) {
-      setPushMessage('No hay sesion activa.')
+      setPushMessage(tx('No hay sesion activa.', 'There is no active session.'))
       return
     }
     setBusyAction('disable')
@@ -2036,12 +2903,12 @@ export function AppProfilePage() {
     try {
       const result = await unsubscribeThisDeviceFromPush(session.userId)
       if (!result.ok) {
-        setPushMessage(result.error ?? 'No fue posible desactivar notificaciones.')
+        setPushMessage(result.error ?? tx('No fue posible desactivar notificaciones.', 'Could not disable notifications.'))
       } else {
-        setPushMessage('Notificaciones desactivadas en este dispositivo.')
+        setPushMessage(tx('Notificaciones desactivadas en este dispositivo.', 'Notifications disabled on this device.'))
       }
     } catch (error) {
-      setPushMessage(error instanceof Error ? error.message : 'Error inesperado al desactivar push.')
+      setPushMessage(error instanceof Error ? error.message : tx('Error inesperado al desactivar push.', 'Unexpected error disabling push.'))
     } finally {
       refreshPermission()
       setBusyAction(null)
@@ -2050,7 +2917,7 @@ export function AppProfilePage() {
 
   async function handleSendPushTest() {
     if (!session?.userId) {
-      setPushMessage('No hay sesion activa.')
+      setPushMessage(tx('No hay sesion activa.', 'There is no active session.'))
       return
     }
     setBusyAction('test')
@@ -2058,12 +2925,12 @@ export function AppProfilePage() {
     try {
       const result = await sendPushTestToUser({ userId: session.userId })
       if (!result.ok) {
-        setPushMessage(result.error ?? 'No fue posible enviar notificacion de prueba.')
+        setPushMessage(result.error ?? tx('No fue posible enviar notificacion de prueba.', 'Could not send test notification.'))
       } else {
-        setPushMessage('Notificacion de prueba enviada. Revisa este dispositivo.')
+        setPushMessage(tx('Notificacion de prueba enviada. Revisa este dispositivo.', 'Test notification sent. Check this device.'))
       }
     } catch (error) {
-      setPushMessage(error instanceof Error ? error.message : 'Error inesperado al enviar prueba.')
+      setPushMessage(error instanceof Error ? error.message : tx('Error inesperado al enviar prueba.', 'Unexpected error sending test.'))
     } finally {
       setBusyAction(null)
     }
@@ -2071,11 +2938,11 @@ export function AppProfilePage() {
 
   async function handleUpdateDisplayName() {
     if (!supabase || !session) {
-      setProfileMessage('Sesion no disponible para actualizar nombre.')
+      setProfileMessage(tx('Sesion no disponible para actualizar nombre.', 'Session unavailable to update name.'))
       return
     }
     if (!displayName.trim()) {
-      setProfileMessage('El nombre visible no puede estar vacio.')
+      setProfileMessage(tx('El nombre visible no puede estar vacio.', 'Display name cannot be empty.'))
       return
     }
     setSavingDisplayName(true)
@@ -2090,24 +2957,24 @@ export function AppProfilePage() {
       setProfileMessage(result.error.message)
       return
     }
-    setProfileMessage('Nombre actualizado.')
+    setProfileMessage(tx('Nombre actualizado.', 'Name updated.'))
   }
 
   async function handleUpdatePassword() {
     if (!supabase || !session) {
-      setPasswordMessage('Sesion no disponible para actualizar contrasena.')
+      setPasswordMessage(tx('Sesion no disponible para actualizar contrasena.', 'Session unavailable to update password.'))
       return
     }
     if (!newPassword.trim() || !confirmPassword.trim()) {
-      setPasswordMessage('Completa nueva contrasena y confirmacion.')
+      setPasswordMessage(tx('Completa nueva contrasena y confirmacion.', 'Enter a new password and confirmation.'))
       return
     }
     if (newPassword.length < 8) {
-      setPasswordMessage('La contrasena debe tener al menos 8 caracteres.')
+      setPasswordMessage(tx('La contrasena debe tener al menos 8 caracteres.', 'Password must be at least 8 characters.'))
       return
     }
     if (newPassword !== confirmPassword) {
-      setPasswordMessage('La confirmacion no coincide.')
+      setPasswordMessage(tx('La confirmacion no coincide.', 'Confirmation does not match.'))
       return
     }
     setSavingPassword(true)
@@ -2120,7 +2987,7 @@ export function AppProfilePage() {
       setPasswordMessage(result.error.message)
       return
     }
-    setPasswordMessage('Contrasena actualizada.')
+    setPasswordMessage(tx('Contrasena actualizada.', 'Password updated.'))
     setNewPassword('')
     setConfirmPassword('')
   }
@@ -2157,25 +3024,36 @@ export function AppProfilePage() {
           </div>
         </div>
         <div className="space-y-2 rounded-xl border border-zinc-800 bg-zinc-900 p-3">
-          <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">Nombre visible</p>
+          <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">{tx('Tema', 'Theme')}</p>
+          <div className="grid grid-cols-2 gap-2">
+            <AppButton block onClick={() => setTheme('dark')} variant={theme === 'dark' ? 'primary' : 'secondary'}>
+              {tx('Oscuro', 'Dark')}
+            </AppButton>
+            <AppButton block onClick={() => setTheme('light')} variant={theme === 'light' ? 'primary' : 'secondary'}>
+              {tx('Claro', 'Light')}
+            </AppButton>
+          </div>
+        </div>
+        <div className="space-y-2 rounded-xl border border-zinc-800 bg-zinc-900 p-3">
+          <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">{tx('Nombre visible', 'Display name')}</p>
           <input
             className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
             onChange={(event) => setDisplayName(event.target.value)}
-            placeholder="Tu nombre para mostrar"
+            placeholder={tx('Tu nombre para mostrar', 'Your display name')}
             value={displayName}
           />
           <AppButton block disabled={savingDisplayName} onClick={() => void handleUpdateDisplayName()}>
-            {savingDisplayName ? 'Guardando...' : 'Actualizar nombre'}
+            {savingDisplayName ? tx('Guardando...', 'Saving...') : tx('Actualizar nombre', 'Update name')}
           </AppButton>
           {profileMessage ? <p className="text-xs text-zinc-300">{profileMessage}</p> : null}
         </div>
         <div className="space-y-2 rounded-xl border border-zinc-800 bg-zinc-900 p-3">
-          <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">Cambiar contrasena</p>
+          <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">{tx('Cambiar contrasena', 'Change password')}</p>
           <div className="relative">
             <input
               className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 pr-16 text-sm text-zinc-100"
               onChange={(event) => setNewPassword(event.target.value)}
-              placeholder="Nueva contrasena"
+              placeholder={tx('Nueva contrasena', 'New password')}
               type={showNewPassword ? 'text' : 'password'}
               value={newPassword}
             />
@@ -2184,14 +3062,14 @@ export function AppProfilePage() {
               onClick={() => setShowNewPassword((previous) => !previous)}
               type="button"
             >
-              {showNewPassword ? 'Ocultar' : 'Ver'}
+              {showNewPassword ? tx('Ocultar', 'Hide') : tx('Ver', 'Show')}
             </button>
           </div>
           <div className="relative">
             <input
               className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 pr-16 text-sm text-zinc-100"
               onChange={(event) => setConfirmPassword(event.target.value)}
-              placeholder="Confirmar nueva contrasena"
+              placeholder={tx('Confirmar nueva contrasena', 'Confirm new password')}
               type={showConfirmPassword ? 'text' : 'password'}
               value={confirmPassword}
             />
@@ -2200,19 +3078,19 @@ export function AppProfilePage() {
               onClick={() => setShowConfirmPassword((previous) => !previous)}
               type="button"
             >
-              {showConfirmPassword ? 'Ocultar' : 'Ver'}
+              {showConfirmPassword ? tx('Ocultar', 'Hide') : tx('Ver', 'Show')}
             </button>
           </div>
           <AppButton block disabled={savingPassword} onClick={() => void handleUpdatePassword()}>
-            {savingPassword ? 'Guardando...' : 'Actualizar contrasena'}
+            {savingPassword ? tx('Guardando...', 'Saving...') : tx('Actualizar contrasena', 'Update password')}
           </AppButton>
           {passwordMessage ? <p className="text-xs text-zinc-300">{passwordMessage}</p> : null}
         </div>
         <div className="space-y-2 rounded-xl border border-zinc-800 bg-zinc-900 p-3">
-          <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">Notificaciones push</p>
+          <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">{tx('Notificaciones push', 'Push notifications')}</p>
           <p className="text-xs text-zinc-300">
-            Soporte: {pushSupported ? 'Si' : 'No'} | Configuracion: {pushConfigured ? 'Lista' : 'Falta clave'} |
-            Permiso: {permission}
+            {tx('Soporte', 'Support')}: {pushSupported ? tx('Si', 'Yes') : tx('No', 'No')} | {tx('Configuracion', 'Configuration')}:{' '}
+            {pushConfigured ? tx('Lista', 'Ready') : tx('Falta clave', 'Missing key')} | {tx('Permiso', 'Permission')}: {permission}
           </p>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             <AppButton
@@ -2221,7 +3099,7 @@ export function AppProfilePage() {
               onClick={() => void handleEnablePush()}
               variant="secondary"
             >
-              {busyAction === 'enable' ? 'Activando...' : 'Activar en este dispositivo'}
+              {busyAction === 'enable' ? tx('Activando...', 'Enabling...') : tx('Activar en este dispositivo', 'Enable on this device')}
             </AppButton>
             <AppButton
               block
@@ -2229,14 +3107,14 @@ export function AppProfilePage() {
               onClick={() => void handleDisablePush()}
               variant="secondary"
             >
-              {busyAction === 'disable' ? 'Desactivando...' : 'Desactivar en este dispositivo'}
+              {busyAction === 'disable' ? tx('Desactivando...', 'Disabling...') : tx('Desactivar en este dispositivo', 'Disable on this device')}
             </AppButton>
             <AppButton
               block
               disabled={!pushSupported || !pushConfigured || busyAction !== null}
               onClick={() => void handleSendPushTest()}
             >
-              {busyAction === 'test' ? 'Enviando...' : 'Enviar prueba'}
+              {busyAction === 'test' ? tx('Enviando...', 'Sending...') : tx('Enviar prueba', 'Send test')}
             </AppButton>
           </div>
           {pushMessage ? <p className="text-xs text-zinc-300">{pushMessage}</p> : null}

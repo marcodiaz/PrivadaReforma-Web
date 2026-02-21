@@ -1,9 +1,11 @@
 import type { UserRole } from '../domain/auth'
 import type {
   Incident,
+  MaintenanceReport,
   MarketplacePost,
   ModerationReport,
   PetPost,
+  PetProfile,
   PetPostComment,
   Poll,
 } from '../domain/demoData'
@@ -76,6 +78,7 @@ type PetPostRow = {
   pet_name: string
   photo_url: string
   comments: string
+  profile: PetProfile | null
   created_at: string
   created_by_user_id: string
   created_by_name: string
@@ -119,6 +122,19 @@ type ModerationReportRow = {
   created_by_name: string
   handled_by_user_id: string | null
   handled_note: string | null
+}
+
+type MaintenanceReportRow = {
+  id: string
+  title: string
+  description: string
+  report_type: MaintenanceReport['reportType']
+  photo_url: string
+  unit_number: string
+  status: MaintenanceReport['status']
+  created_at: string
+  created_by_user_id: string
+  created_by_name: string
 }
 
 type RpcPackageTransitionRow = {
@@ -212,6 +228,7 @@ function mapPetPostRow(row: PetPostRow): PetPost {
     petName: row.pet_name,
     photoUrl: row.photo_url,
     comments: row.comments,
+    profile: row.profile ?? undefined,
     createdAt: row.created_at,
     createdByUserId: row.created_by_user_id,
     createdByName: row.created_by_name,
@@ -261,6 +278,21 @@ function mapModerationReportRow(row: ModerationReportRow): ModerationReport {
     createdByName: row.created_by_name,
     handledByUserId: row.handled_by_user_id ?? undefined,
     handledNote: row.handled_note ?? undefined,
+  }
+}
+
+function mapMaintenanceReportRow(row: MaintenanceReportRow): MaintenanceReport {
+  return {
+    id: row.id,
+    title: row.title,
+    description: row.description,
+    reportType: row.report_type,
+    photoUrl: row.photo_url,
+    unitNumber: row.unit_number,
+    status: row.status,
+    createdAt: row.created_at,
+    createdByUserId: row.created_by_user_id,
+    createdByName: row.created_by_name,
   }
 }
 
@@ -320,6 +352,7 @@ function mapPetPostToRow(input: PetPost): PetPostRow {
     pet_name: input.petName,
     photo_url: input.photoUrl,
     comments: input.comments,
+    profile: input.profile ?? null,
     created_at: input.createdAt,
     created_by_user_id: input.createdByUserId,
     created_by_name: input.createdByName,
@@ -369,6 +402,21 @@ function mapModerationReportToRow(input: ModerationReport): ModerationReportRow 
     created_by_name: input.createdByName,
     handled_by_user_id: input.handledByUserId ?? null,
     handled_note: input.handledNote ?? null,
+  }
+}
+
+function mapMaintenanceReportToRow(input: MaintenanceReport): MaintenanceReportRow {
+  return {
+    id: input.id,
+    title: input.title,
+    description: input.description,
+    report_type: input.reportType,
+    photo_url: input.photoUrl,
+    unit_number: input.unitNumber,
+    status: input.status,
+    created_at: input.createdAt,
+    created_by_user_id: input.createdByUserId,
+    created_by_name: input.createdByName,
   }
 }
 
@@ -491,7 +539,7 @@ export async function fetchPetPostsFromSupabase() {
 
   const { data, error } = await supabase
     .from('pet_posts')
-    .select('id, pet_name, photo_url, comments, created_at, created_by_user_id, created_by_name')
+    .select('id, pet_name, photo_url, comments, profile, created_at, created_by_user_id, created_by_name')
     .order('created_at', { ascending: false })
 
   if (error || !data) {
@@ -519,8 +567,36 @@ export async function updatePetPostInSupabase(post: PetPost) {
       pet_name: post.petName,
       photo_url: post.photoUrl,
       comments: post.comments,
+      profile: post.profile ?? null,
     })
     .eq('id', post.id)
+  return !error
+}
+
+export async function fetchMaintenanceReportsFromSupabase() {
+  if (!supabase) {
+    return null
+  }
+
+  const { data, error } = await supabase
+    .from('maintenance_reports')
+    .select(
+      'id, title, description, report_type, photo_url, unit_number, status, created_at, created_by_user_id, created_by_name',
+    )
+    .order('created_at', { ascending: false })
+
+  if (error || !data) {
+    return null
+  }
+
+  return data.map((row) => mapMaintenanceReportRow(row as MaintenanceReportRow))
+}
+
+export async function createMaintenanceReportInSupabase(report: MaintenanceReport) {
+  if (!supabase) {
+    return false
+  }
+  const { error } = await supabase.from('maintenance_reports').insert(mapMaintenanceReportToRow(report))
   return !error
 }
 

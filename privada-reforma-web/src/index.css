@@ -12,6 +12,51 @@
   --color-danger: #cf3f3f;
 }
 
+:root[data-theme='light'] {
+  --color-bg: #f4f5f7;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f2f4f7;
+  --color-border: #d6dae0;
+  --color-text: #171a1f;
+  --color-text-muted: #5f6977;
+  --color-brand: #1f2937;
+  --color-brand-2: #e8edf5;
+  --color-danger: #d04646;
+}
+
+:root[data-theme='light'] .bg-zinc-950,
+:root[data-theme='light'] .bg-slate-950 {
+  background-color: #ffffff !important;
+}
+
+:root[data-theme='light'] .bg-zinc-900,
+:root[data-theme='light'] .bg-slate-900 {
+  background-color: #f2f4f7 !important;
+}
+
+:root[data-theme='light'] .border-zinc-800,
+:root[data-theme='light'] .border-zinc-700,
+:root[data-theme='light'] .border-slate-700 {
+  border-color: #d6dae0 !important;
+}
+
+:root[data-theme='light'] .text-zinc-100,
+:root[data-theme='light'] .text-zinc-200,
+:root[data-theme='light'] .text-zinc-300,
+:root[data-theme='light'] .text-slate-100,
+:root[data-theme='light'] .text-slate-200,
+:root[data-theme='light'] .text-white {
+  color: #171a1f !important;
+}
+
+:root[data-theme='light'] .text-zinc-400,
+:root[data-theme='light'] .text-zinc-500,
+:root[data-theme='light'] .text-slate-300,
+:root[data-theme='light'] .text-slate-400,
+:root[data-theme='light'] .text-slate-500 {
+  color: #5f6977 !important;
+}
+
 * {
   box-sizing: border-box;
 }

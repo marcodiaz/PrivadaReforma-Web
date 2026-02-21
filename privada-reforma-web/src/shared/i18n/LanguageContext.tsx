@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useState, type PropsWithChildren } from 'react'
+import { createContext, useContext, useEffect, useMemo, useState, type PropsWithChildren } from 'react'
 
 export type AppLanguage = 'es' | 'en'
 
@@ -43,6 +43,7 @@ type LanguageContextValue = {
   language: AppLanguage
   setLanguage: (language: AppLanguage) => void
   t: (key: TranslationKey) => string
+  tx: (spanish: string, english: string) => string
 }
 
 const LanguageContext = createContext<LanguageContextValue | null>(null)
@@ -70,9 +71,18 @@ export function LanguageProvider({ children }: PropsWithChildren) {
       t(key: TranslationKey) {
         return translations[language][key]
       },
+      tx(spanish: string, english: string) {
+        return language === 'es' ? spanish : english
+      },
     }),
     [language],
   )
+
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.documentElement.lang = language
+    }
+  }, [language])
 
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>
 }
