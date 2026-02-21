@@ -105,6 +105,18 @@ function toggleInArray<T extends string>(current: T[], value: T) {
   return current.includes(value) ? current.filter((entry) => entry !== value) : [...current, value]
 }
 
+function normalizeEnergyLevel(
+  value: PetProfile['energyLevel'] | undefined
+): 'chill' | 'balanced' | 'zoomies' {
+  if (value === 'low' || value === 'chill') {
+    return 'chill'
+  }
+  if (value === 'high' || value === 'zoomies') {
+    return 'zoomies'
+  }
+  return 'balanced'
+}
+
 function createDefaultPetProfile(): PetProfile {
   return {
     socialWithHumans: 'depends',
@@ -112,7 +124,7 @@ function createDefaultPetProfile(): PetProfile {
     socialWithDogs: 'depends',
     socialWithCats: 'depends',
     socialWithOtherAnimals: 'depends',
-    energyLevel: 'medium',
+    energyLevel: 'balanced',
     friendliness: 'neutral',
     independence: 'balanced',
     affectionLevel: 'medium',
@@ -131,6 +143,18 @@ function createDefaultPetProfile(): PetProfile {
     likesPlaydates: 'selective',
     prefers: [],
     availableFor: [],
+  }
+}
+
+function normalizePetProfile(input?: PetProfile): PetProfile {
+  const base = createDefaultPetProfile()
+  if (!input) {
+    return base
+  }
+  return {
+    ...base,
+    ...input,
+    energyLevel: normalizeEnergyLevel(input.energyLevel),
   }
 }
 
@@ -1486,7 +1510,8 @@ export function AppPetsPage() {
   const [petName, setPetName] = useState('')
   const [comments, setComments] = useState('')
   const [photoUrl, setPhotoUrl] = useState('')
-  const [petProfile, setPetProfile] = useState<PetProfile>(createDefaultPetProfile)
+  const [petProfile, setPetProfile] = useState<PetProfile>(normalizePetProfile)
+  const [petFormStep, setPetFormStep] = useState<1 | 2 | 3>(1)
   const [isPetFormOpen, setIsPetFormOpen] = useState(false)
   const [selectedPetPostId, setSelectedPetPostId] = useState<string | null>(null)
   const [editingPetPostId, setEditingPetPostId] = useState<string | null>(null)
@@ -1531,7 +1556,8 @@ export function AppPetsPage() {
     setPetName('')
     setComments('')
     setPhotoUrl('')
-    setPetProfile(createDefaultPetProfile())
+    setPetProfile(normalizePetProfile())
+    setPetFormStep(1)
     setIsPetFormOpen(false)
     setSelectedPetPostId(null)
     setEditingPetPostId(null)
@@ -1552,7 +1578,8 @@ export function AppPetsPage() {
     setPetName(post.petName)
     setComments(post.comments)
     setPhotoUrl(post.photoUrl)
-    setPetProfile(post.profile ?? createDefaultPetProfile())
+    setPetProfile(normalizePetProfile(post.profile))
+    setPetFormStep(1)
     setFeedback('')
   }
 
@@ -1561,7 +1588,8 @@ export function AppPetsPage() {
     setPetName('')
     setComments('')
     setPhotoUrl('')
-    setPetProfile(createDefaultPetProfile())
+    setPetProfile(normalizePetProfile())
+    setPetFormStep(1)
     setFeedback('')
     setIsPetFormOpen(true)
   }
@@ -1573,7 +1601,7 @@ export function AppPetsPage() {
         petName,
         photoUrl,
         comments,
-        profile: petProfile,
+        profile: normalizePetProfile(petProfile),
       })
       setFeedback(
         result.ok ? 'Publicacion de mascota actualizada.' : result.error ?? 'No se pudo actualizar.'
@@ -1584,7 +1612,12 @@ export function AppPetsPage() {
       return
     }
 
-    const result = createPetPost({ petName, photoUrl, comments, profile: petProfile })
+    const result = createPetPost({
+      petName,
+      photoUrl,
+      comments,
+      profile: normalizePetProfile(petProfile),
+    })
     setFeedback(
       result.ok ? 'Mascota publicada correctamente.' : result.error ?? 'No se pudo publicar.'
     )
@@ -1713,6 +1746,28 @@ export function AppPetsPage() {
               </AppButton>
             </div>
             <div className="space-y-3">
+              <div className="grid grid-cols-3 gap-2">
+                {(['Basic', 'Social', 'Advanced'] as const).map((label, index) => {
+                  const step = (index + 1) as 1 | 2 | 3
+                  const isActive = petFormStep === step
+                  return (
+                    <button
+                      className={`rounded-lg border px-2 py-1 text-xs font-semibold transition ${
+                        isActive
+                          ? 'border-emerald-500 bg-emerald-500/15 text-emerald-200'
+                          : 'border-zinc-700 bg-zinc-900 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200'
+                      }`}
+                      key={label}
+                      onClick={() => setPetFormStep(step)}
+                      type="button"
+                    >
+                      {index + 1}. {label}
+                    </button>
+                  )
+                })}
+              </div>
+              {petFormStep === 1 ? (
+                <>
               <input
                 className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
                 onChange={(event) => setPetName(event.target.value)}
@@ -1837,6 +1892,10 @@ export function AppPetsPage() {
                   />
                 </div>
               </div>
+                </>
+              ) : null}
+              {petFormStep === 2 ? (
+                <>
               <div className="space-y-2 rounded-xl border border-zinc-700 bg-zinc-900 p-2">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-400">
                   Social behavior
@@ -1929,9 +1988,9 @@ export function AppPetsPage() {
                     }
                     value={petProfile.energyLevel}
                   >
-                    <option value="low">Energy: Low</option>
-                    <option value="medium">Energy: Medium</option>
-                    <option value="high">Energy: High</option>
+                    <option value="chill">🐢 Chill</option>
+                    <option value="balanced">🚶 Balanced</option>
+                    <option value="zoomies">🚀 Zoomies</option>
                   </select>
                   <select
                     className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-zinc-100"
@@ -2113,6 +2172,10 @@ export function AppPetsPage() {
                   />
                 </div>
               </div>
+                </>
+              ) : null}
+              {petFormStep === 3 ? (
+                <>
               <div className="space-y-2 rounded-xl border border-zinc-700 bg-zinc-900 p-2">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-400">
                   Behavior traits
@@ -2255,13 +2318,30 @@ export function AppPetsPage() {
                   })}
                 </div>
               </div>
-              <AppButton block disabled={uploadingPhoto} onClick={handleSubmitPetPost}>
-                {uploadingPhoto
-                  ? 'Subiendo foto...'
-                  : editingPetPost
-                    ? 'Guardar cambios'
-                    : 'Publicar mascota'}
-              </AppButton>
+                </>
+              ) : null}
+              <div className="grid grid-cols-2 gap-2">
+                {petFormStep > 1 ? (
+                  <AppButton block onClick={() => setPetFormStep((previous) => (previous > 1 ? ((previous - 1) as 1 | 2 | 3) : previous))} variant="secondary">
+                    Atras
+                  </AppButton>
+                ) : (
+                  <div />
+                )}
+                {petFormStep < 3 ? (
+                  <AppButton block onClick={() => setPetFormStep((previous) => (previous < 3 ? ((previous + 1) as 1 | 2 | 3) : previous))}>
+                    Siguiente
+                  </AppButton>
+                ) : (
+                  <AppButton block disabled={uploadingPhoto} onClick={handleSubmitPetPost}>
+                    {uploadingPhoto
+                      ? 'Subiendo foto...'
+                      : editingPetPost
+                        ? 'Guardar cambios'
+                        : 'Publicar mascota'}
+                  </AppButton>
+                )}
+              </div>
               {editingPetPost ? (
                 <AppButton block onClick={resetPetForm} variant="secondary">
                   Cancelar edicion

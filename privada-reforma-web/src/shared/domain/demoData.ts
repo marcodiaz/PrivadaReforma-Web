@@ -141,9 +141,10 @@ export const pollSchema = z.object({
 export type Poll = z.infer<typeof pollSchema>
 
 export const petSocialChoiceSchema = z.enum(['yes', 'no', 'depends'])
-export const petEnergyLevelSchema = z.enum(['low', 'medium', 'high'])
+export const petEnergyLevelSchema = z.enum(['chill', 'balanced', 'zoomies', 'low', 'medium', 'high'])
 export const petFriendlinessSchema = z.enum(['shy', 'neutral', 'friendly'])
 export const petIndependenceSchema = z.enum(['independent', 'balanced', 'clingy'])
+export const petAffectionLevelSchema = z.enum(['low', 'medium', 'high'])
 export const petTrainingProgressSchema = z.enum(['yes', 'no', 'in_progress'])
 export const petCrateTrainingSchema = z.enum(['yes', 'no', 'unknown'])
 export const petRecallSchema = z.enum(['reliable', 'partial', 'no'])
@@ -206,10 +207,10 @@ export const petProfileSchema = z.object({
   socialWithDogs: petSocialChoiceSchema.default('depends'),
   socialWithCats: petSocialChoiceSchema.default('depends'),
   socialWithOtherAnimals: petSocialChoiceSchema.default('depends'),
-  energyLevel: petEnergyLevelSchema.default('medium'),
+  energyLevel: petEnergyLevelSchema.default('balanced'),
   friendliness: petFriendlinessSchema.default('neutral'),
   independence: petIndependenceSchema.default('balanced'),
-  affectionLevel: petEnergyLevelSchema.default('medium'),
+  affectionLevel: petAffectionLevelSchema.default('medium'),
   behaviorTraits: petBehaviorTraitSchema.array().default([]),
   vaccinated: petVaccinationSchema.default('up_to_date'),
   neuteredOrSpayed: z.boolean().optional(),
