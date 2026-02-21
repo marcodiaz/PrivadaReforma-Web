@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useDemoData } from '../../shared/state/DemoDataContext'
 import { getRoleLandingPath } from '../../shared/domain/auth'
@@ -105,6 +105,7 @@ export function AppLayout() {
   const navigate = useNavigate()
   const { t, tx } = useLanguage()
   const { authLoading, getHeldPackageCountForUser, logout, moderationReports, session } = useDemoData()
+  const [signingOut, setSigningOut] = useState(false)
   const isAdmin = pathname.startsWith('/admin')
   const activeAdminSection = resolveAdminSection(pathname)
   const navItems = isAdmin ? adminNavBySection[activeAdminSection] : residentNav
@@ -169,12 +170,21 @@ export function AppLayout() {
           <button
             className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-1.5 text-xs font-semibold text-[var(--color-text)]"
             onClick={async () => {
-              await logout()
-              navigate('/login')
+              if (signingOut) {
+                return
+              }
+              setSigningOut(true)
+              try {
+                await logout()
+              } finally {
+                navigate('/login', { replace: true })
+                setSigningOut(false)
+              }
             }}
+            disabled={signingOut}
             type="button"
           >
-            {t('logout')}
+            {signingOut ? tx('Cerrando...', 'Signing out...') : t('logout')}
           </button>
         </div>
       </header>

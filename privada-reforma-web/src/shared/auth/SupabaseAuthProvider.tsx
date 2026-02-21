@@ -142,6 +142,12 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string)
   })
 }
 
+function delay(ms: number) {
+  return new Promise<void>((resolve) => {
+    window.setTimeout(resolve, ms)
+  })
+}
+
 function buildAppSession(activeSession: Session, profile: ProfileRow): AppSession {
   const email = activeSession.user.email ?? ''
   const fullName =
@@ -312,18 +318,34 @@ export function SupabaseAuthProvider({ children }: PropsWithChildren) {
         return { ok: true }
       },
       async signOut() {
-        if (!supabase || !supabaseSession) {
+        if (!supabase) {
           return
         }
-        try {
-          await unsubscribeThisDeviceFromPush(supabaseSession.user.id)
-        } catch (error) {
-          devLog('push unsubscribe on signOut failed', error)
+
+        const activeUserId = supabaseSession?.user.id
+        if (activeUserId) {
+          void unsubscribeThisDeviceFromPush(activeUserId).catch((error) => {
+            devLog('push unsubscribe on signOut failed', error)
+          })
         }
-        const result = await supabase.auth.signOut()
-        if (result.error) {
-          devLog('signOut failed', result.error)
-          throw result.error
+
+        // Optimistic local sign-out to avoid UI hang on network latency.
+        setSupabaseSession(null)
+        setProfile(null)
+        writeProfileCache(null)
+        setIsLoading(false)
+
+        try {
+          await Promise.race([
+            supabase.auth.signOut({ scope: 'local' }).then((result) => {
+              if (result.error) {
+                throw result.error
+              }
+            }),
+            delay(2500),
+          ])
+        } catch (error) {
+          devLog('signOut failed (continuing with local state cleared)', error)
         }
       },
       async updateMyProfile(input: { role: ProfileRole; unitNumber: string | null }) {

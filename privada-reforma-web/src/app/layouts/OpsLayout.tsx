@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { NavLink, Navigate, Outlet, useNavigate } from 'react-router-dom'
 import { useDemoData } from '../../shared/state/DemoDataContext'
 import { getRoleLandingPath } from '../../shared/domain/auth'
@@ -25,6 +26,7 @@ export function OpsLayout() {
   const { authLoading, getHeldPackageCountGlobal, isOnline, logout, parkingReports, session } =
     useDemoData()
   const navigate = useNavigate()
+  const [signingOut, setSigningOut] = useState(false)
 
   if (authLoading) {
     return <AuthLoadingShell />
@@ -66,12 +68,21 @@ export function OpsLayout() {
             <button
               className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-100"
               onClick={async () => {
-                await logout()
-                navigate('/login')
+                if (signingOut) {
+                  return
+                }
+                setSigningOut(true)
+                try {
+                  await logout()
+                } finally {
+                  navigate('/login', { replace: true })
+                  setSigningOut(false)
+                }
               }}
+              disabled={signingOut}
               type="button"
             >
-              Salir
+              {signingOut ? 'Saliendo...' : 'Salir'}
             </button>
           </div>
         </div>
