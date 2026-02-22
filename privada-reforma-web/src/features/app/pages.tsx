@@ -589,6 +589,14 @@ export function AppVisitsPage() {
     }
   }, [visitorPhotoUrl])
 
+  useEffect(() => {
+    if (accessType === 'delivery') {
+      setVisitorName('')
+      setMaxUses(1)
+      setMaxPersons(1)
+    }
+  }, [accessType])
+
   async function handleCopyPayload() {
     if (!selectedQrPayload) {
       return
@@ -610,42 +618,46 @@ export function AppVisitsPage() {
         description="Registro programado y codigos QR para acceso."
       />
       <AppCard className="space-y-3 border-zinc-800 bg-zinc-950">
-        <p className="text-sm font-semibold text-zinc-100">Reg. Visita Programada</p>
+        <p className="text-sm font-semibold text-zinc-100">
+          {accessType === 'delivery' ? 'Acceso de paqueteria' : 'Reg. Visita Programada'}
+        </p>
         {debtMode ? (
           <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
             debtMode activo: la creacion de QR esta bloqueada.
           </p>
         ) : null}
-        <label className="space-y-1">
-          <span className="block text-[11px] uppercase tracking-[0.08em] text-zinc-400">
-            Nombre del visitante
-          </span>
-          <input
-            className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100"
-            onChange={(event) => setVisitorName(event.target.value)}
-            placeholder="Ej. Juan Perez"
-            value={visitorName}
-          />
-        </label>
+        {accessType !== 'delivery' ? (
+          <label className="space-y-1">
+            <span className="block text-[11px] uppercase tracking-[0.08em] text-zinc-400">
+              Nombre del visitante
+            </span>
+            <input
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-zinc-100"
+              onChange={(event) => setVisitorName(event.target.value)}
+              placeholder="Ej. Juan Perez"
+              value={visitorName}
+            />
+          </label>
+        ) : null}
         <label className="space-y-1">
           <span className="block text-[11px] uppercase tracking-[0.08em] text-zinc-400">
             Unidad / Depto
           </span>
           <input
-            className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100"
+            className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-zinc-100"
             disabled
             placeholder="Sin departamento"
             readOnly
             value={accountUnitNumber}
           />
         </label>
-        <div className="grid grid-cols-2 gap-2">
+        <div className={`grid gap-2 ${accessType === 'delivery' ? 'grid-cols-1' : 'grid-cols-2'}`}>
           <label className="space-y-1">
             <span className="block text-[11px] uppercase tracking-[0.08em] text-zinc-400">
               Temporalidad
             </span>
             <select
-              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100"
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-zinc-100"
               onChange={(event) =>
                 setAccessType(event.target.value as 'temporal' | 'time_limit' | 'delivery')
               }
@@ -656,36 +668,43 @@ export function AppVisitsPage() {
               <option value="delivery">Entrega / Paqueteria</option>
             </select>
           </label>
-          <label className="space-y-1">
-            <span className="block text-[11px] uppercase tracking-[0.08em] text-zinc-400">
-              Fecha
-            </span>
-            <input
-              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100"
-              onChange={(event) => setVisitDate(event.target.value)}
-              type="date"
-              value={visitDate}
-            />
-          </label>
+          {accessType !== 'delivery' ? (
+            <label className="space-y-1">
+              <span className="block text-[11px] uppercase tracking-[0.08em] text-zinc-400">
+                Fecha
+              </span>
+              <input
+                className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-zinc-100"
+                onChange={(event) => setVisitDate(event.target.value)}
+                type="date"
+                value={visitDate}
+              />
+            </label>
+          ) : null}
         </div>
         {accessType === 'delivery' ? (
-          <label className="space-y-1">
-            <span className="block text-[11px] uppercase tracking-[0.08em] text-zinc-400">
-              Proveedor
-            </span>
-            <select
-              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100"
-              onChange={(event) => setDeliveryProvider(event.target.value)}
-              value={deliveryProvider}
-            >
-              <option value="amazon">Amazon</option>
-              <option value="uber">Uber</option>
-              <option value="dhl">DHL</option>
-              <option value="fedex">FedEx</option>
-              <option value="mercado libre">Mercado Libre</option>
-              <option value="otro">Otro</option>
-            </select>
-          </label>
+          <div className="space-y-2 rounded-xl border border-zinc-800 bg-black/30 p-3">
+            <label className="space-y-1">
+              <span className="block text-[11px] uppercase tracking-[0.08em] text-zinc-400">
+                Proveedor
+              </span>
+              <select
+                className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-zinc-100"
+                onChange={(event) => setDeliveryProvider(event.target.value)}
+                value={deliveryProvider}
+              >
+                <option value="amazon">Amazon</option>
+                <option value="uber">Uber</option>
+                <option value="dhl">DHL</option>
+                <option value="fedex">FedEx</option>
+                <option value="mercado libre">Mercado Libre</option>
+                <option value="otro">Otro</option>
+              </select>
+            </label>
+            <p className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-zinc-300">
+              Modo rapido: se registra una entrega abierta en caseta para autorizar sin escaneo.
+            </p>
+          </div>
         ) : null}
         {accessType === 'time_limit' ? (
           <>
@@ -694,7 +713,7 @@ export function AppVisitsPage() {
                 Vigencia
               </span>
               <select
-                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100"
+                className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-zinc-100"
                 onChange={(event) =>
                   setTimeLimit(event.target.value as 'week' | 'month' | 'permanent')
                 }
@@ -706,7 +725,7 @@ export function AppVisitsPage() {
               </select>
             </label>
             <input
-              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100"
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-zinc-100"
               onChange={(event) => setVisitorPhotoUrl(event.target.value)}
               placeholder="visitorPhotoUrl (opcional)"
               value={visitorPhotoUrl}
@@ -718,7 +737,7 @@ export function AppVisitsPage() {
               <input
                 accept="image/*"
                 capture="environment"
-                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 file:mr-3 file:rounded-lg file:border-0 file:bg-zinc-800 file:px-3 file:py-1 file:text-xs file:font-semibold file:text-zinc-100"
+                className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 file:mr-3 file:rounded-lg file:border-0 file:bg-zinc-800 file:px-3 file:py-1 file:text-xs file:font-semibold file:text-zinc-100"
                 key={photoInputKey}
                 onChange={handlePhotoSelection}
                 type="file"
@@ -734,7 +753,7 @@ export function AppVisitsPage() {
                 Max. usos
               </span>
               <input
-                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100"
+                className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-zinc-100"
                 min={1}
                 onChange={(event) => setMaxUses(Math.max(1, Number(event.target.value) || 1))}
                 type="number"
@@ -746,7 +765,7 @@ export function AppVisitsPage() {
                 Max. personas
               </span>
               <input
-                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100"
+                className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-zinc-100"
                 min={1}
                 onChange={(event) => setMaxPersons(Math.max(1, Number(event.target.value) || 1))}
                 type="number"
@@ -754,22 +773,22 @@ export function AppVisitsPage() {
               />
             </label>
           </div>
-        ) : (
-          <p className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-zinc-300">
-            Entrega abierta: se mostrara en caseta para autorizacion sin escaneo.
-          </p>
-        )}
+        ) : null}
         <textarea
-          className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100"
+          className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-zinc-100"
           onChange={(event) => setAccessMessage(event.target.value)}
-          placeholder="Mensaje opcional para compartir"
+          placeholder={
+            accessType === 'delivery'
+              ? 'Nota opcional para caseta (ej. deja paquete en recepcion)'
+              : 'Mensaje opcional para compartir'
+          }
           rows={2}
           value={accessMessage}
         />
         <AppButton block onClick={handleCreateQr}>
           Registrar
         </AppButton>
-        {message ? <p className="text-xs text-slate-300">{message}</p> : null}
+        {message ? <p className="text-xs text-zinc-300">{message}</p> : null}
       </AppCard>
       <div className="space-y-2">
         {myQrPasses.map((pass) => (
