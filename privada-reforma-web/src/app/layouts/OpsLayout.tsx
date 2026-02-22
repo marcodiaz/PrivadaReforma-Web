@@ -94,7 +94,7 @@ export function OpsLayout() {
         </div>
       ) : null}
 
-      <main className="mx-auto w-full max-w-md px-4 pb-[calc(7.5rem+env(safe-area-inset-bottom))] pt-4">
+      <main className="mx-auto w-full max-w-md px-4 pb-[calc(11rem+env(safe-area-inset-bottom))] pt-4">
         <Outlet />
       </main>
 
@@ -117,6 +117,11 @@ export function OpsLayout() {
                   {item.to === '/guard/packages' && heldPackages > 0 ? (
                     <span className="rounded-full border border-amber-300/70 bg-gradient-to-b from-amber-300 to-orange-400 px-1.5 py-0.5 text-[10px] font-extrabold leading-none text-zinc-950 shadow-[0_0_10px_rgba(251,191,36,0.65)]">
                       {heldPackages}
+                    </span>
+                  ) : null}
+                  {item.to === '/guard/parking' && pendingParkingReports > 0 ? (
+                    <span className="rounded-full border border-red-300/70 bg-gradient-to-b from-red-300 to-red-500 px-1.5 py-0.5 text-[10px] font-extrabold leading-none text-zinc-950 shadow-[0_0_10px_rgba(239,68,68,0.65)]">
+                      {pendingParkingReports}
                     </span>
                   ) : null}
                 </span>

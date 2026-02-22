@@ -6,6 +6,7 @@ import type {
   MaintenanceReport,
   MarketplacePost,
   ModerationReport,
+  ParkingReport,
   PetPost,
   PetProfile,
   PetPostComment,
@@ -143,6 +144,22 @@ type MaintenanceReportRow = {
   created_at: string
   created_by_user_id: string
   created_by_name: string
+}
+
+type ParkingReportRow = {
+  id: string
+  unit_number: string
+  parking_spot: string
+  report_type: ParkingReport['reportType']
+  visitor_parking_spot: string | null
+  description: string
+  photo_url: string
+  status: ParkingReport['status']
+  created_at: string
+  created_by_user_id: string
+  guard_note: string | null
+  updated_at: string | null
+  handled_by_guard_user_id: string | null
 }
 
 type DirectoryEntryRow = {
@@ -329,6 +346,24 @@ function mapMaintenanceReportRow(row: MaintenanceReportRow): MaintenanceReport {
   }
 }
 
+function mapParkingReportRow(row: ParkingReportRow): ParkingReport {
+  return {
+    id: row.id,
+    unitNumber: row.unit_number,
+    parkingSpot: row.parking_spot,
+    reportType: row.report_type,
+    visitorParkingSpot: row.visitor_parking_spot ?? undefined,
+    description: row.description,
+    photoUrl: row.photo_url,
+    status: row.status,
+    createdAt: row.created_at,
+    createdByUserId: row.created_by_user_id,
+    guardNote: row.guard_note ?? undefined,
+    updatedAt: row.updated_at ?? undefined,
+    handledByGuardUserId: row.handled_by_guard_user_id ?? undefined,
+  }
+}
+
 function mapDirectoryEntryRow(row: DirectoryEntryRow): DirectoryEntry {
   return {
     id: row.id,
@@ -479,6 +514,24 @@ function mapMaintenanceReportToRow(input: MaintenanceReport): MaintenanceReportR
     created_at: input.createdAt,
     created_by_user_id: input.createdByUserId,
     created_by_name: input.createdByName,
+  }
+}
+
+function mapParkingReportToRow(input: ParkingReport): ParkingReportRow {
+  return {
+    id: input.id,
+    unit_number: input.unitNumber,
+    parking_spot: input.parkingSpot,
+    report_type: input.reportType,
+    visitor_parking_spot: input.visitorParkingSpot ?? null,
+    description: input.description,
+    photo_url: input.photoUrl,
+    status: input.status,
+    created_at: input.createdAt,
+    created_by_user_id: input.createdByUserId,
+    guard_note: input.guardNote ?? null,
+    updated_at: input.updatedAt ?? null,
+    handled_by_guard_user_id: input.handledByGuardUserId ?? null,
   }
 }
 
@@ -683,11 +736,54 @@ export async function fetchMaintenanceReportsFromSupabase() {
   return data.map((row) => mapMaintenanceReportRow(row as MaintenanceReportRow))
 }
 
+export async function fetchParkingReportsFromSupabase(input: { role: UserRole; unitNumber?: string }) {
+  if (!supabase) {
+    return null
+  }
+  let query = supabase
+    .from('parking_reports')
+    .select(
+      'id, unit_number, parking_spot, report_type, visitor_parking_spot, description, photo_url, status, created_at, created_by_user_id, guard_note, updated_at, handled_by_guard_user_id'
+    )
+    .order('created_at', { ascending: false })
+
+  query = applyUnitScope(query, input.role, input.unitNumber)
+  const { data, error } = await query
+  if (error || !data) {
+    return null
+  }
+  return data.map((row) => mapParkingReportRow(row as ParkingReportRow))
+}
+
 export async function createMaintenanceReportInSupabase(report: MaintenanceReport) {
   if (!supabase) {
     return false
   }
   const { error } = await supabase.from('maintenance_reports').insert(mapMaintenanceReportToRow(report))
+  return !error
+}
+
+export async function createParkingReportInSupabase(report: ParkingReport) {
+  if (!supabase) {
+    return false
+  }
+  const { error } = await supabase.from('parking_reports').insert(mapParkingReportToRow(report))
+  return !error
+}
+
+export async function updateParkingReportInSupabase(report: ParkingReport) {
+  if (!supabase) {
+    return false
+  }
+  const { error } = await supabase
+    .from('parking_reports')
+    .update({
+      status: report.status,
+      guard_note: report.guardNote ?? null,
+      updated_at: report.updatedAt ?? new Date().toISOString(),
+      handled_by_guard_user_id: report.handledByGuardUserId ?? null,
+    })
+    .eq('id', report.id)
   return !error
 }
 

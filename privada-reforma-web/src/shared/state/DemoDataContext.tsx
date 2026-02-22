@@ -72,6 +72,7 @@ import {
   createPetPostInSupabase,
   createMarketplacePostInSupabase,
   createMaintenanceReportInSupabase,
+  createParkingReportInSupabase,
   createModerationReportInSupabase,
   createPollInSupabase,
   deleteMarketplacePostInSupabase,
@@ -89,6 +90,7 @@ import {
   fetchPetPostCommentsFromSupabase,
   fetchMarketplacePostsFromSupabase,
   fetchMaintenanceReportsFromSupabase,
+  fetchParkingReportsFromSupabase,
   fetchModerationReportsFromSupabase,
   fetchPollsFromSupabase,
   markPackageReadyInSupabase,
@@ -96,6 +98,7 @@ import {
   updateIncidentInSupabase,
   updatePetPostInSupabase,
   updateMarketplacePostInSupabase,
+  updateParkingReportInSupabase,
   updateModerationReportInSupabase,
   votePollInSupabase,
   voteIncidentInSupabase,
@@ -591,6 +594,19 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
         })
         .catch(() => undefined)
 
+      const loadParkingReports = withTimeout(
+        fetchParkingReportsFromSupabase({ role: session.role, unitNumber: session.unitNumber }),
+        REMOTE_BOOTSTRAP_TIMEOUT_MS,
+        'parking_reports'
+      )
+        .then((remoteParkingReports) => {
+          if (!isMounted || !remoteParkingReports) {
+            return
+          }
+          setParkingReports(remoteParkingReports)
+        })
+        .catch(() => undefined)
+
       const loadDirectoryEntries = withTimeout(
         fetchDirectoryEntriesFromSupabase(),
         REMOTE_BOOTSTRAP_TIMEOUT_MS,
@@ -626,6 +642,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
         loadMarketplace,
         loadModerationReports,
         loadMaintenanceReports,
+        loadParkingReports,
         loadDirectoryEntries,
         loadAppComments,
       ])
@@ -1906,6 +1923,9 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       createdByUserId: session.userId,
     }
     setParkingReports((previous) => [report, ...previous])
+    if (isSupabaseConfigured && isOnline) {
+      void createParkingReportInSupabase(report)
+    }
     return { ok: true }
   }
 
@@ -1918,24 +1938,27 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       return { ok: false, error: 'Solo guardia puede atender reportes.' }
     }
     const note = input.guardNote?.trim()
-    let found = false
+    let updatedReport: ParkingReport | null = null
     setParkingReports((previous) =>
       previous.map((report) => {
         if (report.id !== input.reportId) {
           return report
         }
-        found = true
-        return {
+        updatedReport = {
           ...report,
           status: input.status,
           guardNote: note || report.guardNote,
           handledByGuardUserId: session.userId,
           updatedAt: new Date().toISOString(),
         }
+        return updatedReport
       })
     )
-    if (!found) {
+    if (!updatedReport) {
       return { ok: false, error: 'Reporte no encontrado.' }
+    }
+    if (isSupabaseConfigured && isOnline) {
+      void updateParkingReportInSupabase(updatedReport)
     }
     return { ok: true }
   }
