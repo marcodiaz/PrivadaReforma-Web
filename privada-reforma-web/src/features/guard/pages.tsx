@@ -18,7 +18,7 @@ function guardIncidentEmphasis(score: number) {
   if (score >= 5) {
     return 'ring-2 ring-amber-500 border-amber-500/40 bg-amber-900/20'
   }
-  return 'border-slate-700 bg-slate-900'
+  return 'border-zinc-700 bg-zinc-900'
 }
 
 export function GuardScanPage() {
@@ -98,7 +98,7 @@ export function GuardScanPage() {
         title="Escaneo de acceso"
         description='Usa "Scanear" o entrada manual por departamento y numero.'
       />
-      <AppCard className="space-y-2 border-slate-700 bg-slate-900">
+      <AppCard className="space-y-2 border-zinc-700 bg-zinc-900">
         <AppButton
           block
           className="py-3 text-base"
@@ -109,13 +109,13 @@ export function GuardScanPage() {
         >
           Scanear
         </AppButton>
-        {scanHint ? <p className="text-xs text-slate-300">{scanHint}</p> : null}
+        {scanHint ? <p className="text-xs text-zinc-300">{scanHint}</p> : null}
 
         <label className="block space-y-1">
-          <span className="text-xs uppercase tracking-[0.08em] text-slate-400">Manual entry</span>
+          <span className="text-xs uppercase tracking-[0.08em] text-zinc-400">Manual entry</span>
           <div className="grid grid-cols-2 gap-2">
             <input
-              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+              className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
               inputMode="numeric"
               maxLength={4}
               onChange={(event) => setDepartmentCode(event.target.value.replace(/[^0-9]/g, ''))}
@@ -125,7 +125,7 @@ export function GuardScanPage() {
               value={departmentCode}
             />
             <input
-              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+              className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
               inputMode="numeric"
               maxLength={4}
               onChange={(event) => setSequenceCode(event.target.value.replace(/[^0-9]/g, ''))}
@@ -137,7 +137,7 @@ export function GuardScanPage() {
           </div>
         </label>
         <input
-          className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+          className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
           onChange={(event) => setNote(event.target.value)}
           placeholder="Nota opcional"
           value={note}
@@ -159,7 +159,7 @@ export function GuardScanPage() {
             Rechazar
           </AppButton>
         </div>
-        {resultMessage ? <p className="text-xs text-slate-300">{resultMessage}</p> : null}
+        {resultMessage ? <p className="text-xs text-zinc-300">{resultMessage}</p> : null}
       </AppCard>
       {matches.length > 1 ? (
         <AppCard className="border-amber-500/50 bg-amber-900/20 text-amber-100">
@@ -172,38 +172,38 @@ export function GuardScanPage() {
         </AppCard>
       ) : null}
       {currentPass ? (
-        <AppCard className="space-y-1 border-slate-700 bg-slate-900 text-slate-100">
+        <AppCard className="space-y-1 border-zinc-700 bg-zinc-900 text-zinc-100">
           <p className="text-sm font-semibold">{currentPass.label}</p>
-          <p className="text-xs text-slate-300">Unidad: {currentPass.unitId}</p>
-          <p className="text-xs text-slate-300">Estado: {currentPass.status}</p>
-          <p className="text-xs text-slate-300">
+          <p className="text-xs text-zinc-300">Unidad: {currentPass.unitId}</p>
+          <p className="text-xs text-zinc-300">Estado: {currentPass.status}</p>
+          <p className="text-xs text-zinc-300">
             Codigo: {currentPass.displayCode} (ultimos 4: {getLast4Code(currentPass.displayCode)})
           </p>
-          <p className="text-xs text-slate-300">
+          <p className="text-xs text-zinc-300">
             Vigencia: {currentPass.startAt ?? '-'} / {currentPass.endAt ?? 'permanente'}
           </p>
           {currentPass.visitorPhotoUrl ? (
-            <p className="text-xs text-slate-300">Foto: {currentPass.visitorPhotoUrl}</p>
+            <p className="text-xs text-zinc-300">Foto: {currentPass.visitorPhotoUrl}</p>
           ) : null}
         </AppCard>
       ) : null}
-      <AppCard className="space-y-2 border-slate-700 bg-slate-900 text-slate-100">
+      <AppCard className="space-y-2 border-zinc-700 bg-zinc-900 text-zinc-100">
         <p className="text-sm font-semibold">Entregas activas (sin escaneo)</p>
         {activeDeliveryPasses.length === 0 ? (
-          <p className="text-xs text-slate-300">No hay entregas activas por el momento.</p>
+          <p className="text-xs text-zinc-300">No hay entregas activas por el momento.</p>
         ) : (
           <div className="space-y-2">
             {activeDeliveryPasses.map((pass) => (
-              <div className="rounded-lg border border-slate-700 bg-slate-950 p-2" key={pass.id}>
-                <p className="text-sm font-semibold text-slate-100">
+              <div className="rounded-lg border border-zinc-700 bg-zinc-950 p-2" key={pass.id}>
+                <p className="text-sm font-semibold text-zinc-100">
                   {pass.deliveryProvider ? `Entrega ${pass.deliveryProvider}` : 'Entrega de paqueteria'}
                 </p>
-                <p className="text-xs text-slate-300">Depto: {pass.unitId}</p>
-                <p className="text-xs text-slate-300">
+                <p className="text-xs text-zinc-300">Depto: {pass.unitId}</p>
+                <p className="text-xs text-zinc-300">
                   Activa hasta: {pass.endAt ? new Date(pass.endAt).toLocaleString() : 'Sin limite'}
                 </p>
                 {pass.accessMessage ? (
-                  <p className="text-xs text-slate-400">Nota residente: {pass.accessMessage}</p>
+                  <p className="text-xs text-zinc-400">Nota residente: {pass.accessMessage}</p>
                 ) : null}
                 <div className="mt-2 grid grid-cols-2 gap-2">
                   <AppButton className="px-3 py-2 text-xs" onClick={() => actDelivery(pass.id, 'allow')}>
@@ -218,7 +218,7 @@ export function GuardScanPage() {
                   </AppButton>
                 </div>
                 {deliveryFeedback[pass.id] ? (
-                  <p className="mt-1 text-xs text-slate-300">{deliveryFeedback[pass.id]}</p>
+                  <p className="mt-1 text-xs text-zinc-300">{deliveryFeedback[pass.id]}</p>
                 ) : null}
               </div>
             ))}

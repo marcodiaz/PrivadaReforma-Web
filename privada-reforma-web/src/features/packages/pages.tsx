@@ -197,16 +197,39 @@ export function AppPackagesPage() {
 }
 
 export function GuardPackagesPage() {
-  const { deliverPackage, getHeldPackageCountGlobal, getPackagesForUser, registerPackage } =
-    useDemoData()
+  const {
+    deliverPackage,
+    getHeldPackageCountGlobal,
+    getPackagesForUser,
+    registerPackage,
+    qrPasses,
+    handleGuardDeliveryDecision,
+  } = useDemoData()
   const [activeTab, setActiveTab] = useState<'register' | 'held'>('register')
   const [unitNumber, setUnitNumber] = useState('')
   const [photoUrl, setPhotoUrl] = useState('')
   const [carrier, setCarrier] = useState('')
   const [notes, setNotes] = useState('')
   const [feedback, setFeedback] = useState('')
+  const [deliveryFeedback, setDeliveryFeedback] = useState<Record<string, string>>({})
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const [statusFilter, setStatusFilter] = useState<'stored' | 'ready_for_pickup'>('stored')
+  const activeDeliveryPasses = qrPasses
+    .filter((entry) => {
+      if (entry.type !== 'delivery_open' || entry.status !== 'active') {
+        return false
+      }
+      if (!entry.endAt) {
+        return true
+      }
+      const endAt = Date.parse(entry.endAt)
+      return Number.isNaN(endAt) ? true : endAt >= Date.now()
+    })
+    .sort((a, b) => {
+      const left = Date.parse(a.startAt ?? a.endAt ?? '')
+      const right = Date.parse(b.startAt ?? b.endAt ?? '')
+      return (Number.isNaN(right) ? 0 : right) - (Number.isNaN(left) ? 0 : left)
+    })
 
   const heldCount = getHeldPackageCountGlobal()
   const packages = getPackagesForUser()
@@ -263,6 +286,14 @@ export function GuardPackagesPage() {
     setFeedback(result.ok ? 'Paquete entregado.' : (result.error ?? 'Error.'))
   }
 
+  function handleDeliveryAccess(passId: string, result: 'allow' | 'reject') {
+    const response = handleGuardDeliveryDecision({ passId, result, note: notes })
+    setDeliveryFeedback((previous) => ({
+      ...previous,
+      [passId]: response.message,
+    }))
+  }
+
   return (
     <div className="space-y-3">
       <ModulePlaceholder
@@ -270,11 +301,46 @@ export function GuardPackagesPage() {
         title="Paqueteria"
         description="Registro y entrega segura con confirmacion previa del residente."
       />
-      <AppCard className="border-slate-700 bg-slate-900 text-slate-100">
-        <p className="text-xs uppercase tracking-[0.08em] text-slate-400">
+      <AppCard className="border-zinc-700 bg-zinc-900 text-zinc-100">
+        <p className="text-xs uppercase tracking-[0.08em] text-zinc-400">
           Paquetes en resguardo
         </p>
         <p className="text-2xl font-semibold">{heldCount}</p>
+      </AppCard>
+      <AppCard className="space-y-2 border-zinc-700 bg-zinc-900 text-zinc-100">
+        <p className="text-sm font-semibold">Entregas QR activas (sin escaneo)</p>
+        {activeDeliveryPasses.length === 0 ? (
+          <p className="text-xs text-zinc-400">No hay entregas activas por ahora.</p>
+        ) : (
+          <div className="space-y-2">
+            {activeDeliveryPasses.map((entry) => (
+              <div className="rounded-lg border border-zinc-700 bg-zinc-950 p-2" key={entry.id}>
+                <p className="text-sm font-semibold text-zinc-100">
+                  {entry.deliveryProvider ? `Entrega ${entry.deliveryProvider}` : 'Entrega de paqueteria'}
+                </p>
+                <p className="text-xs text-zinc-300">Depto: {entry.unitId}</p>
+                <p className="text-xs text-zinc-400">
+                  Vigencia: {entry.endAt ? new Date(entry.endAt).toLocaleString() : 'Sin limite'}
+                </p>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <AppButton className="px-3 py-2 text-xs" onClick={() => handleDeliveryAccess(entry.id, 'allow')}>
+                    Permitir entrega
+                  </AppButton>
+                  <AppButton
+                    className="px-3 py-2 text-xs"
+                    onClick={() => handleDeliveryAccess(entry.id, 'reject')}
+                    variant="danger"
+                  >
+                    Rechazar
+                  </AppButton>
+                </div>
+                {deliveryFeedback[entry.id] ? (
+                  <p className="mt-1 text-xs text-zinc-300">{deliveryFeedback[entry.id]}</p>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        )}
       </AppCard>
       <div className="grid grid-cols-2 gap-2">
         <AppButton
@@ -299,9 +365,9 @@ export function GuardPackagesPage() {
       ) : null}
 
       {activeTab === 'register' ? (
-        <AppCard className="space-y-2 border-slate-700 bg-slate-900 text-slate-100">
+        <AppCard className="space-y-2 border-zinc-700 bg-zinc-900 text-zinc-100">
           <input
-            className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+            className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
             inputMode="numeric"
             maxLength={4}
             onChange={(event) => setUnitNumber(event.target.value.replace(/[^0-9]/g, ''))}
@@ -309,8 +375,8 @@ export function GuardPackagesPage() {
             type="tel"
             value={unitNumber}
           />
-          <label className="block text-xs text-slate-300">
-            Subir foto (requerida)
+          <label className="block text-xs text-zinc-300">
+            Subir foto (opcional, para pruebas)
             <input
               accept="image/*"
               className="mt-1 block w-full text-xs"
@@ -319,26 +385,26 @@ export function GuardPackagesPage() {
             />
           </label>
           <input
-            className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+            className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
             onChange={(event) => setPhotoUrl(event.target.value)}
-            placeholder="o pega object path/dataURL manualmente"
+            placeholder="object path/dataURL (opcional)"
             value={photoUrl}
           />
           <input
-            className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+            className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
             onChange={(event) => setCarrier(event.target.value)}
             placeholder="Paqueteria (opcional)"
             value={carrier}
           />
           <textarea
-            className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+            className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
             onChange={(event) => setNotes(event.target.value)}
             placeholder="Notas (opcional)"
             rows={2}
             value={notes}
           />
           <AppButton block disabled={uploadingPhoto} onClick={handleRegister}>
-            {uploadingPhoto ? 'Subiendo foto...' : 'Registrar paquete'}
+            {uploadingPhoto ? 'Subiendo foto...' : 'Registrar paquete (foto opcional)'}
           </AppButton>
         </AppCard>
       ) : (
@@ -360,19 +426,19 @@ export function GuardPackagesPage() {
             </AppButton>
           </div>
           {packages.length === 0 ? (
-            <AppCard className="border-slate-700 bg-slate-900 text-sm text-slate-300">
+            <AppCard className="border-zinc-700 bg-zinc-900 text-sm text-zinc-300">
               Sin paquetes en este filtro.
             </AppCard>
           ) : (
             packages.map((entry) => (
               <AppCard
                 key={entry.id}
-                className="space-y-2 border-slate-700 bg-slate-900 text-slate-100"
+                className="space-y-2 border-zinc-700 bg-zinc-900 text-zinc-100"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <p className="text-sm font-semibold">Unidad {entry.unitNumber}</p>
-                    <p className="text-xs text-slate-300">
+                    <p className="text-xs text-zinc-300">
                       {new Date(entry.createdAt).toLocaleString()}
                     </p>
                   </div>
@@ -384,7 +450,7 @@ export function GuardPackagesPage() {
                 </div>
                 <PackagePhoto
                   alt={`Paquete ${entry.unitNumber}`}
-                  className="h-24 w-full rounded-xl border border-slate-700 object-cover"
+                  className="h-24 w-full rounded-xl border border-zinc-700 object-cover"
                   pathOrUrl={entry.photoUrl}
                 />
                 {entry.status === 'stored' ? (

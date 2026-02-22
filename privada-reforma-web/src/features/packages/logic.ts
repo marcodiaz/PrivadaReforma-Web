@@ -26,9 +26,6 @@ export function registerPackageTransition(
   if (!unitNumber) {
     return { ok: false as const, error: 'Unidad obligatoria.' }
   }
-  if (!photoUrl) {
-    return { ok: false as const, error: 'Foto obligatoria.' }
-  }
 
   const nextPackage: Package = {
     id: randomId(),

@@ -798,11 +798,11 @@ export function AppVisitsPage() {
             onClick={() => setSelectedQrId(pass.id)}
             type="button"
           >
-            <AppCard className="border-slate-700 bg-slate-900 hover:border-[var(--color-brand)]/50">
+            <AppCard className="border-zinc-700 bg-zinc-900 hover:border-zinc-500">
               <div className="space-y-1">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-sm font-semibold text-white">{pass.visitorName ?? pass.label}</p>
-                  <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase text-slate-700">
+                  <span className="rounded-full bg-zinc-100 px-2 py-1 text-[10px] font-semibold uppercase text-zinc-700">
                     {pass.type === 'single_use'
                       ? 'Temporal'
                       : pass.type === 'time_window'
@@ -810,10 +810,10 @@ export function AppVisitsPage() {
                         : 'Entrega'}
                   </span>
                 </div>
-                <p className="text-xs text-slate-300">
+                <p className="text-xs text-zinc-300">
                   Unidad: {pass.unitId} - Estado: {pass.status}
                 </p>
-                <p className="text-xs font-semibold text-slate-300">
+                <p className="text-xs font-semibold text-zinc-300">
                   Codigo: {pass.displayCode} (ultimos 4: {getLast4Code(pass.displayCode)})
                 </p>
               </div>
@@ -822,12 +822,12 @@ export function AppVisitsPage() {
         ))}
       </div>
       {selectedQr ? (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/55 p-4 sm:items-center">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-zinc-950/65 p-4 sm:items-center">
           <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-950 p-3 shadow-2xl">
             <header className="mb-2 rounded-xl bg-zinc-900 px-3 py-2 text-center">
               <p className="text-xl font-semibold text-white">Residencia QR</p>
             </header>
-            <AppCard className="space-y-2 border-slate-300 bg-slate-100">
+            <AppCard className="space-y-2 border-zinc-300 bg-zinc-100">
               <img
                 alt="Codigo QR de acceso"
                 className="mx-auto w-full max-w-[320px] rounded-lg bg-white p-3"
@@ -836,17 +836,17 @@ export function AppVisitsPage() {
               <p className="text-center text-xl font-bold text-zinc-900">
                 {selectedQr.visitorName ?? 'VISITA'}
               </p>
-              <p className="text-center text-sm font-semibold text-slate-600">
+              <p className="text-center text-sm font-semibold text-zinc-600">
                 {new Date().toLocaleDateString()} - Max. Personas: {selectedQr.maxPersons ?? 1}
               </p>
-              <p className="rounded-lg bg-zinc-200 px-3 py-2 text-center text-sm text-slate-700">
+              <p className="rounded-lg bg-zinc-200 px-3 py-2 text-center text-sm text-zinc-700">
                 {selectedQr.accessMessage ??
                   `Hola. Este es tu codigo de acceso: ${selectedQr.displayCode} [Depto. ${selectedQr.unitId}].`}
               </p>
-              <p className="rounded-lg bg-white px-2 py-1 text-center text-xs font-mono text-slate-700">
+              <p className="rounded-lg bg-white px-2 py-1 text-center text-xs font-mono text-zinc-700">
                 Token: {selectedQr.qrValue}
               </p>
-              {copyMessage ? <p className="text-center text-xs text-slate-500">{copyMessage}</p> : null}
+              {copyMessage ? <p className="text-center text-xs text-zinc-500">{copyMessage}</p> : null}
               <AppButton block onClick={handleCopyPayload} variant="secondary">
                 Copiar Link De Acceso
               </AppButton>
