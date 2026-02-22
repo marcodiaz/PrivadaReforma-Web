@@ -488,8 +488,9 @@ export function AppHomePage() {
 export function AppVisitsPage() {
   const { qrPasses, createQrPass, deleteQrPass, debtMode, session } = useDemoData()
   const [visitorName, setVisitorName] = useState('')
-  const [accessType, setAccessType] = useState<'temporal' | 'time_limit'>('temporal')
+  const [accessType, setAccessType] = useState<'temporal' | 'time_limit' | 'delivery'>('temporal')
   const [timeLimit, setTimeLimit] = useState<'week' | 'month' | 'permanent'>('week')
+  const [deliveryProvider, setDeliveryProvider] = useState('amazon')
   const [maxUses, setMaxUses] = useState(1)
   const [maxPersons, setMaxPersons] = useState(1)
   const [visitDate, setVisitDate] = useState(() => new Date().toISOString().slice(0, 10))
@@ -545,22 +546,32 @@ export function AppVisitsPage() {
       return
     }
     const result = createQrPass({
-      label: `Visita: ${normalizedVisitorName || 'VISITANTE'}`,
+      label:
+        accessType === 'delivery'
+          ? `Entrega: ${deliveryProvider.trim().toUpperCase() || 'PAQUETERIA'}`
+          : `Visita: ${normalizedVisitorName || 'VISITANTE'}`,
       unitId: accountUnitNumber,
       departmentCode: accountDepartmentCode,
-      visitorName: normalizedVisitorName,
-      maxUses,
-      maxPersons,
+      visitorName: accessType === 'delivery' ? 'REPARTIDOR' : normalizedVisitorName,
+      maxUses: accessType === 'delivery' ? 1 : maxUses,
+      maxPersons: accessType === 'delivery' ? 1 : maxPersons,
       accessMessage:
         accessMessage.trim() ||
-        `Hola. Este es tu codigo de acceso: [${accountDepartmentCode}] para la fecha ${visitDate}.`,
+        (accessType === 'delivery'
+          ? `Hay entrega autorizada para Depto ${accountUnitNumber} (${deliveryProvider.trim().toUpperCase() || 'PAQUETERIA'}).`
+          : `Hola. Este es tu codigo de acceso: [${accountDepartmentCode}] para la fecha ${visitDate}.`),
       accessType,
       timeLimit: accessType === 'time_limit' ? timeLimit : undefined,
+      deliveryProvider: accessType === 'delivery' ? deliveryProvider : undefined,
       visitorPhotoUrl: visitorPhotoUrl || undefined,
     })
     setMessage(result.ok ? 'QR creado correctamente.' : result.error ?? 'Error.')
     if (result.ok) {
+      setVisitorName('')
       setAccessMessage('')
+      setVisitDate(new Date().toISOString().slice(0, 10))
+      setMaxUses(1)
+      setMaxPersons(1)
       if (visitorPhotoUrl.startsWith('blob:')) {
         URL.revokeObjectURL(visitorPhotoUrl)
       }
@@ -635,11 +646,14 @@ export function AppVisitsPage() {
             </span>
             <select
               className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100"
-              onChange={(event) => setAccessType(event.target.value as 'temporal' | 'time_limit')}
+              onChange={(event) =>
+                setAccessType(event.target.value as 'temporal' | 'time_limit' | 'delivery')
+              }
               value={accessType}
             >
               <option value="temporal">Fecha unica</option>
               <option value="time_limit">Con vigencia</option>
+              <option value="delivery">Entrega / Paqueteria</option>
             </select>
           </label>
           <label className="space-y-1">
@@ -654,6 +668,25 @@ export function AppVisitsPage() {
             />
           </label>
         </div>
+        {accessType === 'delivery' ? (
+          <label className="space-y-1">
+            <span className="block text-[11px] uppercase tracking-[0.08em] text-zinc-400">
+              Proveedor
+            </span>
+            <select
+              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100"
+              onChange={(event) => setDeliveryProvider(event.target.value)}
+              value={deliveryProvider}
+            >
+              <option value="amazon">Amazon</option>
+              <option value="uber">Uber</option>
+              <option value="dhl">DHL</option>
+              <option value="fedex">FedEx</option>
+              <option value="mercado libre">Mercado Libre</option>
+              <option value="otro">Otro</option>
+            </select>
+          </label>
+        ) : null}
         {accessType === 'time_limit' ? (
           <>
             <label className="space-y-1">
@@ -694,32 +727,38 @@ export function AppVisitsPage() {
             </label>
           </>
         ) : null}
-        <div className="grid grid-cols-2 gap-2">
-          <label className="space-y-1">
-            <span className="block text-[11px] uppercase tracking-[0.08em] text-zinc-400">
-              Max. usos
-            </span>
-            <input
-              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100"
-              min={1}
-              onChange={(event) => setMaxUses(Math.max(1, Number(event.target.value) || 1))}
-              type="number"
-              value={maxUses}
-            />
-          </label>
-          <label className="space-y-1">
-            <span className="block text-[11px] uppercase tracking-[0.08em] text-zinc-400">
-              Max. personas
-            </span>
-            <input
-              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100"
-              min={1}
-              onChange={(event) => setMaxPersons(Math.max(1, Number(event.target.value) || 1))}
-              type="number"
-              value={maxPersons}
-            />
-          </label>
-        </div>
+        {accessType !== 'delivery' ? (
+          <div className="grid grid-cols-2 gap-2">
+            <label className="space-y-1">
+              <span className="block text-[11px] uppercase tracking-[0.08em] text-zinc-400">
+                Max. usos
+              </span>
+              <input
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100"
+                min={1}
+                onChange={(event) => setMaxUses(Math.max(1, Number(event.target.value) || 1))}
+                type="number"
+                value={maxUses}
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="block text-[11px] uppercase tracking-[0.08em] text-zinc-400">
+                Max. personas
+              </span>
+              <input
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100"
+                min={1}
+                onChange={(event) => setMaxPersons(Math.max(1, Number(event.target.value) || 1))}
+                type="number"
+                value={maxPersons}
+              />
+            </label>
+          </div>
+        ) : (
+          <p className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-zinc-300">
+            Entrega abierta: se mostrara en caseta para autorizacion sin escaneo.
+          </p>
+        )}
         <textarea
           className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100"
           onChange={(event) => setAccessMessage(event.target.value)}
@@ -745,7 +784,11 @@ export function AppVisitsPage() {
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-sm font-semibold text-white">{pass.visitorName ?? pass.label}</p>
                   <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase text-slate-700">
-                    {pass.type === 'single_use' ? 'Temporal' : 'Time limit'}
+                    {pass.type === 'single_use'
+                      ? 'Temporal'
+                      : pass.type === 'time_window'
+                        ? 'Time limit'
+                        : 'Entrega'}
                   </span>
                 </div>
                 <p className="text-xs text-slate-300">

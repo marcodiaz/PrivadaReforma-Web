@@ -51,7 +51,7 @@ export const incidentSchema = z.object({
 
 export type Incident = z.infer<typeof incidentSchema>
 
-export const qrPassTypeSchema = z.enum(['single_use', 'time_window'])
+export const qrPassTypeSchema = z.enum(['single_use', 'time_window', 'delivery_open'])
 export const qrPassStatusSchema = z.enum(['active', 'used', 'expired', 'revoked'])
 
 export const qrPassSchema = z.object({
@@ -63,6 +63,7 @@ export const qrPassSchema = z.object({
   maxUses: z.number().int().positive().optional(),
   maxPersons: z.number().int().positive().optional(),
   accessMessage: z.string().optional(),
+  deliveryProvider: z.string().optional(),
   type: qrPassTypeSchema,
   startAt: z.string().optional(),
   endAt: z.string().optional(),

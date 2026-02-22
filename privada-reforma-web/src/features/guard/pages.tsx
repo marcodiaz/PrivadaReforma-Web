@@ -22,11 +22,12 @@ function guardIncidentEmphasis(score: number) {
 }
 
 export function GuardScanPage() {
-  const { qrPasses, handleGuardScanDecision } = useDemoData()
+  const { qrPasses, handleGuardScanDecision, handleGuardDeliveryDecision } = useDemoData()
   const [departmentCode, setDepartmentCode] = useState('')
   const [sequenceCode, setSequenceCode] = useState('')
   const [note, setNote] = useState('')
   const [resultMessage, setResultMessage] = useState('')
+  const [deliveryFeedback, setDeliveryFeedback] = useState<Record<string, string>>({})
   const [scanHint, setScanHint] = useState('')
   const [approvedFlash, setApprovedFlash] = useState(false)
 
@@ -35,6 +36,25 @@ export function GuardScanPage() {
     [qrPasses, departmentCode, sequenceCode]
   )
   const currentPass = matches.length === 1 ? matches[0] : null
+  const activeDeliveryPasses = useMemo(() => {
+    const now = Date.now()
+    return qrPasses
+      .filter((pass) => {
+        if (pass.type !== 'delivery_open' || pass.status !== 'active') {
+          return false
+        }
+        if (!pass.endAt) {
+          return true
+        }
+        const endAt = Date.parse(pass.endAt)
+        return Number.isNaN(endAt) ? true : endAt >= now
+      })
+      .sort((a, b) => {
+        const left = Date.parse(a.startAt ?? a.endAt ?? '')
+        const right = Date.parse(b.startAt ?? b.endAt ?? '')
+        return (Number.isNaN(right) ? 0 : right) - (Number.isNaN(left) ? 0 : left)
+      })
+  }, [qrPasses])
 
   function act(result: 'allow' | 'reject') {
     const response = handleGuardScanDecision({
@@ -52,6 +72,22 @@ export function GuardScanPage() {
       setDepartmentCode('')
       setSequenceCode('')
       setNote('')
+    }
+  }
+
+  function actDelivery(passId: string, result: 'allow' | 'reject') {
+    const response = handleGuardDeliveryDecision({
+      passId,
+      result,
+      note,
+    })
+    setDeliveryFeedback((previous) => ({
+      ...previous,
+      [passId]: response.message,
+    }))
+    if (response.ok && result === 'allow') {
+      setApprovedFlash(true)
+      window.setTimeout(() => setApprovedFlash(false), 1200)
     }
   }
 
@@ -151,6 +187,44 @@ export function GuardScanPage() {
           ) : null}
         </AppCard>
       ) : null}
+      <AppCard className="space-y-2 border-slate-700 bg-slate-900 text-slate-100">
+        <p className="text-sm font-semibold">Entregas activas (sin escaneo)</p>
+        {activeDeliveryPasses.length === 0 ? (
+          <p className="text-xs text-slate-300">No hay entregas activas por el momento.</p>
+        ) : (
+          <div className="space-y-2">
+            {activeDeliveryPasses.map((pass) => (
+              <div className="rounded-lg border border-slate-700 bg-slate-950 p-2" key={pass.id}>
+                <p className="text-sm font-semibold text-slate-100">
+                  {pass.deliveryProvider ? `Entrega ${pass.deliveryProvider}` : 'Entrega de paqueteria'}
+                </p>
+                <p className="text-xs text-slate-300">Depto: {pass.unitId}</p>
+                <p className="text-xs text-slate-300">
+                  Activa hasta: {pass.endAt ? new Date(pass.endAt).toLocaleString() : 'Sin limite'}
+                </p>
+                {pass.accessMessage ? (
+                  <p className="text-xs text-slate-400">Nota residente: {pass.accessMessage}</p>
+                ) : null}
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <AppButton className="px-3 py-2 text-xs" onClick={() => actDelivery(pass.id, 'allow')}>
+                    Permitir entrega
+                  </AppButton>
+                  <AppButton
+                    className="px-3 py-2 text-xs"
+                    onClick={() => actDelivery(pass.id, 'reject')}
+                    variant="danger"
+                  >
+                    Rechazar
+                  </AppButton>
+                </div>
+                {deliveryFeedback[pass.id] ? (
+                  <p className="mt-1 text-xs text-slate-300">{deliveryFeedback[pass.id]}</p>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        )}
+      </AppCard>
     </div>
   )
 }

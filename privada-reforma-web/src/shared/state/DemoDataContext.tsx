@@ -133,8 +133,9 @@ type CreateQrInput = {
   maxUses?: number
   maxPersons?: number
   accessMessage?: string
-  accessType: 'temporal' | 'time_limit'
+  accessType: 'temporal' | 'time_limit' | 'delivery'
   timeLimit?: 'week' | 'month' | 'permanent'
+  deliveryProvider?: string
   visitorPhotoUrl?: string
 }
 
@@ -277,6 +278,11 @@ type DemoDataContextValue = {
   handleGuardScanDecision: (input: {
     departmentCode: string
     sequenceCode: string
+    result: 'allow' | 'reject'
+    note?: string
+  }) => { ok: boolean; message: string }
+  handleGuardDeliveryDecision: (input: {
+    passId: string
     result: 'allow' | 'reject'
     note?: string
   }) => { ok: boolean; message: string }
@@ -1035,7 +1041,12 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       return { ok: false, error: 'No se puede crear QR: modo adeudo activo.' }
     }
 
-    const type = input.accessType === 'temporal' ? 'single_use' : 'time_window'
+    const type =
+      input.accessType === 'temporal'
+        ? 'single_use'
+        : input.accessType === 'time_limit'
+          ? 'time_window'
+          : 'delivery_open'
     const normalizedDepartment = normalizeDepartmentCode(session.unitNumber ?? '')
     if (!/^\d{4}$/.test(normalizedDepartment)) {
       return { ok: false, error: 'Tu cuenta no tiene un departamento valido de 4 digitos.' }
@@ -1064,19 +1075,33 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       } else {
         return { ok: false, error: 'Selecciona una vigencia para time limit.' }
       }
-    } else {
+    } else if (type === 'single_use') {
       endAt = new Date(now + 3 * 60 * 60 * 1000).toISOString()
+    } else {
+      startAt = new Date(now).toISOString()
+      endAt = new Date(now + 6 * 60 * 60 * 1000).toISOString()
     }
+
+    const isDelivery = type === 'delivery_open'
+    const normalizedDeliveryProvider = input.deliveryProvider?.trim()
+    const normalizedVisitorName = input.visitorName?.trim()
+    const normalizedLabel = input.label.trim()
 
     const pass: QrPass = {
       id: randomId('qr'),
-      label: input.label.trim(),
+      label:
+        normalizedLabel ||
+        (isDelivery
+          ? `Entrega${normalizedDeliveryProvider ? ` ${normalizedDeliveryProvider}` : ''}`
+          : 'Visita'),
       unitId: input.unitId.trim(),
       createdByUserId: session.userId,
-      visitorName: input.visitorName?.trim() || 'VISITA',
-      maxUses: input.maxUses && input.maxUses > 0 ? Math.floor(input.maxUses) : 1,
-      maxPersons: input.maxPersons && input.maxPersons > 0 ? Math.floor(input.maxPersons) : 1,
+      visitorName: isDelivery ? 'REPARTIDOR' : normalizedVisitorName || 'VISITA',
+      maxUses: isDelivery ? 1 : input.maxUses && input.maxUses > 0 ? Math.floor(input.maxUses) : 1,
+      maxPersons:
+        isDelivery ? 1 : input.maxPersons && input.maxPersons > 0 ? Math.floor(input.maxPersons) : 1,
       accessMessage: input.accessMessage?.trim(),
+      deliveryProvider: isDelivery ? normalizedDeliveryProvider || undefined : undefined,
       type,
       startAt,
       endAt,
@@ -2037,6 +2062,50 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     return { ok: true, message: 'Acceso rechazado y auditado.' }
   }
 
+  function handleGuardDeliveryDecision(input: {
+    passId: string
+    result: 'allow' | 'reject'
+    note?: string
+  }) {
+    const actor = session?.userId ?? 'guard-unknown'
+    const pass = qrPasses.find((entry) => entry.id === input.passId)
+    if (!pass) {
+      return { ok: false, message: 'Entrega no encontrada.' }
+    }
+    if (pass.type !== 'delivery_open') {
+      return { ok: false, message: 'El acceso no corresponde a una entrega abierta.' }
+    }
+    const effectiveStatus = getEffectiveQrStatus(pass, new Date())
+    if (effectiveStatus !== 'active') {
+      return { ok: false, message: `Entrega no valida (${effectiveStatus}).` }
+    }
+    if (input.result === 'allow') {
+      setQrPasses((previous) =>
+        previous.map((entry) => (entry.id === pass.id ? { ...entry, status: 'used' } : entry))
+      )
+      logAudit({
+        actorUserId: actor,
+        action: 'delivery_gate_manual',
+        targetId: pass.id,
+        result: 'allow',
+        note: input.note ?? `Entrega autorizada (${pass.deliveryProvider ?? 'proveedor no especificado'})`,
+      })
+      return { ok: true, message: 'Entrega autorizada y auditada.' }
+    }
+
+    setQrPasses((previous) =>
+      previous.map((entry) => (entry.id === pass.id ? { ...entry, status: 'revoked' } : entry))
+    )
+    logAudit({
+      actorUserId: actor,
+      action: 'delivery_gate_manual',
+      targetId: pass.id,
+      result: 'reject',
+      note: input.note ?? `Entrega rechazada (${pass.deliveryProvider ?? 'proveedor no especificado'})`,
+    })
+    return { ok: true, message: 'Entrega rechazada y auditada.' }
+  }
+
   function registerPackage(input: {
     unitNumber: string
     photoUrl: string
@@ -2240,6 +2309,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     updateParkingReportStatus,
     getAssignedParkingForUnit,
     handleGuardScanDecision,
+    handleGuardDeliveryDecision,
     enqueueManualOfflineValidation,
     registerPackage,
     markPackageReady,
