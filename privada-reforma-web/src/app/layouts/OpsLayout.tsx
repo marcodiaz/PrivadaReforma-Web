@@ -14,9 +14,9 @@ const opsNav = [
 
 function AuthLoadingShell() {
   return (
-    <div className="min-h-dvh bg-slate-950 px-4 pb-8 pt-6">
-      <div className="mx-auto flex w-full max-w-md items-center justify-center rounded-2xl border border-slate-800 bg-slate-900 p-6">
-        <p className="text-sm text-slate-300">Validando sesion...</p>
+    <div className="min-h-dvh bg-zinc-950 px-4 pb-8 pt-6">
+      <div className="mx-auto flex w-full max-w-md items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900 p-6">
+        <p className="text-sm text-zinc-300">Validando sesion...</p>
       </div>
     </div>
   )
@@ -44,16 +44,16 @@ export function OpsLayout() {
   const pendingParkingReports = parkingReports.filter((report) => report.status === 'open').length
 
   return (
-    <div className="min-h-dvh bg-slate-950 text-white">
-      <header className="sticky top-0 z-10 border-b border-slate-800 bg-slate-950/95 px-4 pb-3 pt-3 backdrop-blur">
+    <div className="min-h-dvh bg-zinc-950 text-white flex flex-col">
+      <header className="sticky top-0 z-20 border-b border-zinc-800 bg-zinc-950/95 px-4 pb-3 pt-3 backdrop-blur">
         <div className="mx-auto flex w-full max-w-md items-center justify-between gap-3">
           <div>
-            <p className="text-xs uppercase tracking-[0.08em] text-slate-400">
+            <p className="text-xs uppercase tracking-[0.08em] text-zinc-400">
               Operacion de guardia
             </p>
             <h1 className="text-base font-semibold">Control de acceso</h1>
-            <p className="text-xs text-slate-400">Paquetes en resguardo: {heldPackages}</p>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-zinc-400">Paquetes en resguardo: {heldPackages}</p>
+            <p className="text-xs text-zinc-400">
               Reportes de parking pendientes: {pendingParkingReports}
             </p>
           </div>
@@ -66,7 +66,7 @@ export function OpsLayout() {
               {isOnline ? 'En linea' : 'Offline'}
             </span>
             <button
-              className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-100"
+              className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-zinc-100"
               onClick={async () => {
                 if (signingOut) {
                   return
@@ -94,11 +94,11 @@ export function OpsLayout() {
         </div>
       ) : null}
 
-      <main className="mx-auto w-full max-w-md px-4 pb-[calc(11rem+env(safe-area-inset-bottom))] pt-4">
+      <main className="mx-auto w-full max-w-md flex-1 min-h-0 overflow-y-auto px-4 pb-4 pt-4">
         <Outlet />
       </main>
 
-      <nav className="fixed bottom-0 left-0 right-0 border-t border-slate-800 bg-slate-950 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3">
+      <nav className="sticky bottom-0 z-20 border-t border-zinc-800 bg-zinc-950 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3">
         <ul className="mx-auto grid w-full max-w-md grid-cols-2 gap-2">
           {opsNav.map((item) => (
             <li key={item.to}>
@@ -107,8 +107,8 @@ export function OpsLayout() {
                 className={({ isActive }) =>
                   `block rounded-2xl border px-3 py-3 text-center text-sm font-semibold ${
                     isActive
-                      ? 'border-emerald-400 bg-emerald-500/20 text-emerald-200'
-                      : 'border-slate-700 text-slate-200'
+                      ? 'border-zinc-200 bg-zinc-100/10 text-zinc-100'
+                      : 'border-zinc-700 text-zinc-300'
                   }`
                 }
               >

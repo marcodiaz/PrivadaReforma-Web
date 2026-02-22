@@ -151,8 +151,8 @@ export function AppLayout() {
   }
 
   return (
-    <div className="min-h-dvh bg-[var(--color-bg)]">
-      <header className="sticky top-0 z-10 border-b border-[var(--color-border)] bg-[var(--color-surface)]/95 px-4 pb-3 pt-3 shadow-lg backdrop-blur">
+    <div className="min-h-dvh bg-[var(--color-bg)] flex flex-col">
+      <header className="sticky top-0 z-20 border-b border-[var(--color-border)] bg-[var(--color-surface)]/95 px-4 pb-3 pt-3 shadow-lg backdrop-blur">
         <div className="mx-auto flex w-full max-w-md items-start justify-between gap-2">
           <div>
             <p className="text-xs uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
@@ -189,11 +189,11 @@ export function AppLayout() {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-md px-4 pb-[calc(6.5rem+env(safe-area-inset-bottom))] pt-4">
+      <main className="mx-auto w-full max-w-md flex-1 min-h-0 overflow-y-auto px-4 pb-4 pt-4">
         <Outlet />
       </main>
 
-      <nav className="fixed bottom-0 left-0 right-0 border-t border-[var(--color-border)] bg-[var(--color-surface)]/95 px-2 pb-[calc(0.65rem+env(safe-area-inset-bottom))] pt-2 backdrop-blur">
+      <nav className="sticky bottom-0 z-20 border-t border-[var(--color-border)] bg-[var(--color-surface)]/95 px-2 pb-[calc(0.65rem+env(safe-area-inset-bottom))] pt-2 backdrop-blur">
         {isAdmin ? (
           <ul className="mx-auto mb-2 grid w-full max-w-md grid-cols-3 gap-2">
             {adminSectionOrder.map((section) => (
