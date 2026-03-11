@@ -10,6 +10,9 @@ import {
 import {
   LOCAL_AUDIT_LOG,
   LOCAL_APP_COMMENTS,
+  LOCAL_FINANCIAL_CATEGORIES,
+  LOCAL_FINANCIAL_MOVEMENTS,
+  LOCAL_FINANCIAL_PERIOD_CLOSES,
   LOCAL_DIRECTORY_ENTRIES,
   LOCAL_INCIDENTS,
   LOCAL_OFFLINE_QUEUE,
@@ -22,6 +25,7 @@ import {
   LOCAL_POLLS,
   LOCAL_QR_PASSES,
   LOCAL_RESERVATIONS,
+  LOCAL_UNIT_ACCOUNT_ENTRIES,
   auditLogSchema,
   appCommentSchema,
   appCommentTargetTypeSchema,
@@ -31,6 +35,13 @@ import {
   type AppComment,
   type AuditLogEntry,
   type DirectoryEntry,
+  financialCategorySchema,
+  financialMovementSchema,
+  financialPeriodCloseSchema,
+  financialVisibilityScopeSchema,
+  type FinancialCategory,
+  type FinancialMovement,
+  type FinancialPeriodClose,
   type Incident,
   petPostSchema,
   petPostCommentSchema,
@@ -62,9 +73,16 @@ import {
   qrPassTypeSchema,
   reservationSchema,
   type Reservation,
+  type UnitAccountEntry,
+  unitAccountEntrySchema,
+  unitAccountEntryStatusSchema,
+  unitAccountEntryTypeSchema,
 } from '../domain/demoData'
 import { getItem, migrateIfNeeded, removeItem, setItem, storageKeys } from '../storage/storage'
 import {
+  createReservationCheckoutSession,
+  createFinancialMovementInSupabase,
+  createUnitAccountEntryInSupabase,
   createIncidentInSupabase,
   createDirectoryEntryInSupabase,
   createAppCommentInSupabase,
@@ -85,7 +103,11 @@ import {
   fetchIncidentsFromSupabase,
   fetchDirectoryEntriesFromSupabase,
   fetchAppCommentsFromSupabase,
+  fetchCommunityFinancialMovements,
+  fetchFinancialCategoriesFromSupabase,
+  fetchFinancialPeriodClosesFromSupabase,
   fetchPackagesFromSupabase,
+  fetchReservationsFromSupabase,
   fetchPetPostsFromSupabase,
   fetchPetPostCommentsFromSupabase,
   fetchMarketplacePostsFromSupabase,
@@ -93,7 +115,9 @@ import {
   fetchParkingReportsFromSupabase,
   fetchModerationReportsFromSupabase,
   fetchPollsFromSupabase,
+  fetchUnitAccountEntriesFromSupabase,
   markPackageReadyInSupabase,
+  publishFinancialPeriodCloseInSupabase,
   registerPackageInSupabase,
   updateIncidentInSupabase,
   updatePetPostInSupabase,
@@ -102,8 +126,9 @@ import {
   updateModerationReportInSupabase,
   votePollInSupabase,
   voteIncidentInSupabase,
+  getReservationPaymentStatus,
 } from '../supabase/data'
-import { isSupabaseConfigured } from '../supabase/client'
+import { isPaymentsEnabled, isSupabaseConfigured } from '../supabase/client'
 import { useSupabaseAuth } from '../auth/SupabaseAuthProvider'
 import {
   canResolveIncident,
@@ -159,6 +184,10 @@ type DemoDataContextValue = {
   marketplacePosts: MarketplacePost[]
   directoryEntries: DirectoryEntry[]
   moderationReports: ModerationReport[]
+  financialCategories: FinancialCategory[]
+  financialPeriodCloses: FinancialPeriodClose[]
+  financialMovements: FinancialMovement[]
+  unitAccountEntries: UnitAccountEntry[]
   offlineQueue: OfflineQueueEvent[]
   remoteDataLoading: boolean
   isOnline: boolean
@@ -184,10 +213,16 @@ type DemoDataContextValue = {
   ) => { ok: boolean; message: string }
   createQrPass: (input: CreateQrInput) => { ok: boolean; error?: string }
   deleteQrPass: (qrId: string) => void
-  createReservation: (input: { amenity: string; reservationDate: string }) => {
+  createReservation: (input: { amenity: string; reservationDate: string }) => Promise<{
     ok: boolean
     error?: string
-  }
+    checkoutUrl?: string
+    reservationId?: string
+  }>
+  refreshReservationPaymentStatus: (reservationId: string) => Promise<{
+    ok: boolean
+    error?: string
+  }>
   getActiveReservations: () => Reservation[]
   createPoll: (input: { title: string; options: string[]; durationDays: number }) => {
     ok: boolean
@@ -271,6 +306,68 @@ type DemoDataContextValue = {
     serviceTypes: DirectoryEntry['serviceTypes']
     otherServiceType?: string
     photoUrl?: string
+  }) => { ok: boolean; error?: string }
+  getAvailableFinancialPeriods: () => Array<{ year: number; month: number }>
+  getCommunityFinancialSummary: (input?: {
+    year?: number
+    month?: number
+  }) => {
+    period: { year: number; month: number } | null
+    openingBalanceMxn: number
+    closingBalanceMxn: number
+    incomeTotalMxn: number
+    expenseTotalMxn: number
+    netMxn: number
+    publishedAt?: string
+  }
+  getVisibleFinancialMovements: (input?: {
+    year?: number
+    month?: number
+  }) => FinancialMovement[]
+  getUnitAccountStatement: (input?: {
+    unitNumber?: string
+    year?: number
+    month?: number
+  }) => {
+    unitNumber?: string
+    entries: UnitAccountEntry[]
+    balanceMxn: number
+    overdueMxn: number
+    nextDueAt?: string
+    upcomingMxn: number
+  }
+  createFinancialMovement: (input: {
+    type: FinancialMovement['type']
+    category: string
+    amountMxn: number
+    occurredAt: string
+    periodYear: number
+    periodMonth: number
+    description: string
+    subCategory?: string
+    vendorOrSource?: string
+    unitNumber?: string
+    visibilityScope: FinancialMovement['visibilityScope']
+    evidenceUrl?: string
+  }) => { ok: boolean; error?: string }
+  createUnitAccountEntry: (input: {
+    unitNumber: string
+    entryType: UnitAccountEntry['entryType']
+    category: string
+    amountMxn: number
+    direction: UnitAccountEntry['direction']
+    occurredAt: string
+    dueAt?: string
+    status: UnitAccountEntry['status']
+    referenceMovementId?: string
+    notes?: string
+  }) => { ok: boolean; error?: string }
+  publishFinancialPeriodClose: (input: {
+    year: number
+    month: number
+    openingBalanceMxn: number
+    closingBalanceMxn: number
+    notes?: string
   }) => { ok: boolean; error?: string }
   updateParkingReportStatus: (input: {
     reportId: string
@@ -395,6 +492,37 @@ function isPollClosed(poll: Poll, now = new Date()) {
   return false
 }
 
+function resolveFinancialPeriodKey(year: number, month: number) {
+  return `${year}-${String(month).padStart(2, '0')}`
+}
+
+function sortFinancialPeriodsDesc(periods: Array<{ year: number; month: number }>) {
+  return [...periods].sort((a, b) => {
+    if (a.year !== b.year) {
+      return b.year - a.year
+    }
+    return b.month - a.month
+  })
+}
+
+function getLatestFinancialPeriod(
+  movements: FinancialMovement[],
+  closes: FinancialPeriodClose[]
+): { year: number; month: number } | null {
+  const allPeriods = [
+    ...movements.map((entry) => ({ year: entry.periodYear, month: entry.periodMonth })),
+    ...closes.map((entry) => ({ year: entry.year, month: entry.month })),
+  ]
+  const uniquePeriods = Array.from(
+    new Map(allPeriods.map((entry) => [resolveFinancialPeriodKey(entry.year, entry.month), entry])).values()
+  )
+  return sortFinancialPeriodsDesc(uniquePeriods)[0] ?? null
+}
+
+function isFinanceManager(role?: AppSession['role']) {
+  return role === 'admin' || role === 'board'
+}
+
 export function DemoDataProvider({ children }: PropsWithChildren) {
   migrateIfNeeded()
   const {
@@ -446,13 +574,46 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
   const [moderationReports, setModerationReports] = useState<ModerationReport[]>(() =>
     safeReadArray(storageKeys.moderationReports, moderationReportSchema.array(), LOCAL_MODERATION_REPORTS)
   )
+  const [financialCategories, setFinancialCategories] = useState<FinancialCategory[]>(() =>
+    safeReadArray(
+      storageKeys.financialCategories,
+      financialCategorySchema.array(),
+      LOCAL_FINANCIAL_CATEGORIES
+    )
+  )
+  const [financialPeriodCloses, setFinancialPeriodCloses] = useState<FinancialPeriodClose[]>(() =>
+    safeReadArray(
+      storageKeys.financialPeriodCloses,
+      financialPeriodCloseSchema.array(),
+      LOCAL_FINANCIAL_PERIOD_CLOSES
+    )
+  )
+  const [financialMovements, setFinancialMovements] = useState<FinancialMovement[]>(() =>
+    safeReadArray(
+      storageKeys.financialMovements,
+      financialMovementSchema.array(),
+      LOCAL_FINANCIAL_MOVEMENTS
+    )
+  )
+  const [unitAccountEntries, setUnitAccountEntries] = useState<UnitAccountEntry[]>(() =>
+    safeReadArray(
+      storageKeys.unitAccountEntries,
+      unitAccountEntrySchema.array(),
+      LOCAL_UNIT_ACCOUNT_ENTRIES
+    )
+  )
   const [offlineQueue, setOfflineQueue] = useState<OfflineQueueEvent[]>(() =>
     safeReadArray(storageKeys.offlineQueue, offlineQueueSchema.array(), LOCAL_OFFLINE_QUEUE)
   )
   const [remoteDataLoading, setRemoteDataLoading] = useState(false)
   const [isOnline, setIsOnline] = useState(() => navigator.onLine)
   const [syncToast, setSyncToast] = useState<string | null>(null)
-  const [debtMode] = useState(false)
+  const debtMode = reservations.some(
+    (reservation) =>
+      reservation.paymentRequired &&
+      reservation.status !== 'cancelled' &&
+      reservation.paymentStatus !== 'paid'
+  )
   const persistTimerRef = useRef<number | null>(null)
   const remoteLoadDoneRef = useRef(false)
   const flushingOfflineQueueRef = useRef(false)
@@ -504,6 +665,19 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
             return
           }
           setPackages(remotePackages)
+        })
+        .catch(() => undefined)
+
+      const loadReservations = withTimeout(
+        fetchReservationsFromSupabase({ role: session.role, unitNumber: session.unitNumber }),
+        REMOTE_BOOTSTRAP_TIMEOUT_MS,
+        'reservations'
+      )
+        .then((remoteReservations) => {
+          if (!isMounted || !remoteReservations) {
+            return
+          }
+          setReservations(remoteReservations)
         })
         .catch(() => undefined)
 
@@ -633,8 +807,61 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
         })
         .catch(() => undefined)
 
+      const loadFinancialCategories = withTimeout(
+        fetchFinancialCategoriesFromSupabase(),
+        REMOTE_BOOTSTRAP_TIMEOUT_MS,
+        'financial_categories'
+      )
+        .then((remoteCategories) => {
+          if (!isMounted || !remoteCategories) {
+            return
+          }
+          setFinancialCategories(remoteCategories)
+        })
+        .catch(() => undefined)
+
+      const loadFinancialPeriodCloses = withTimeout(
+        fetchFinancialPeriodClosesFromSupabase(),
+        REMOTE_BOOTSTRAP_TIMEOUT_MS,
+        'financial_period_closes'
+      )
+        .then((remoteCloses) => {
+          if (!isMounted || !remoteCloses) {
+            return
+          }
+          setFinancialPeriodCloses(remoteCloses)
+        })
+        .catch(() => undefined)
+
+      const loadFinancialMovements = withTimeout(
+        fetchCommunityFinancialMovements({ role: session.role, unitNumber: session.unitNumber }),
+        REMOTE_BOOTSTRAP_TIMEOUT_MS,
+        'financial_movements'
+      )
+        .then((remoteMovements) => {
+          if (!isMounted || !remoteMovements) {
+            return
+          }
+          setFinancialMovements(remoteMovements)
+        })
+        .catch(() => undefined)
+
+      const loadUnitAccountEntries = withTimeout(
+        fetchUnitAccountEntriesFromSupabase({ role: session.role, unitNumber: session.unitNumber }),
+        REMOTE_BOOTSTRAP_TIMEOUT_MS,
+        'unit_account_entries'
+      )
+        .then((remoteEntries) => {
+          if (!isMounted || !remoteEntries) {
+            return
+          }
+          setUnitAccountEntries(remoteEntries)
+        })
+        .catch(() => undefined)
+
       await Promise.allSettled([
         loadPackages,
+        loadReservations,
         loadIncidents,
         loadPolls,
         loadPets,
@@ -645,6 +872,10 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
         loadParkingReports,
         loadDirectoryEntries,
         loadAppComments,
+        loadFinancialCategories,
+        loadFinancialPeriodCloses,
+        loadFinancialMovements,
+        loadUnitAccountEntries,
       ])
       if (isMounted) {
         setRemoteDataLoading(false)
@@ -677,6 +908,10 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       setItem(storageKeys.marketplacePosts, marketplacePosts)
       setItem(storageKeys.directoryEntries, directoryEntries)
       setItem(storageKeys.moderationReports, moderationReports)
+      setItem(storageKeys.financialCategories, financialCategories)
+      setItem(storageKeys.financialPeriodCloses, financialPeriodCloses)
+      setItem(storageKeys.financialMovements, financialMovements)
+      setItem(storageKeys.unitAccountEntries, unitAccountEntries)
     }, 300)
     return () => {
       if (persistTimerRef.current !== null) {
@@ -699,6 +934,10 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     marketplacePosts,
     directoryEntries,
     moderationReports,
+    financialCategories,
+    financialPeriodCloses,
+    financialMovements,
+    unitAccountEntries,
   ])
 
   useEffect(() => {
@@ -761,6 +1000,10 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     setMarketplacePosts(LOCAL_MARKETPLACE_POSTS)
     setDirectoryEntries(LOCAL_DIRECTORY_ENTRIES)
     setModerationReports(LOCAL_MODERATION_REPORTS)
+    setFinancialCategories(LOCAL_FINANCIAL_CATEGORIES)
+    setFinancialPeriodCloses(LOCAL_FINANCIAL_PERIOD_CLOSES)
+    setFinancialMovements(LOCAL_FINANCIAL_MOVEMENTS)
+    setUnitAccountEntries(LOCAL_UNIT_ACCOUNT_ENTRIES)
     removeItem(storageKeys.incidents)
     removeItem(storageKeys.qrPasses)
     removeItem(storageKeys.packages)
@@ -776,6 +1019,10 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     removeItem(storageKeys.marketplacePosts)
     removeItem(storageKeys.directoryEntries)
     removeItem(storageKeys.moderationReports)
+    removeItem(storageKeys.financialCategories)
+    removeItem(storageKeys.financialPeriodCloses)
+    removeItem(storageKeys.financialMovements)
+    removeItem(storageKeys.unitAccountEntries)
   }
 
   function dismissSyncToast() {
@@ -1139,7 +1386,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     setQrPasses((previous) => previous.filter((pass) => pass.id !== qrId))
   }
 
-  function createReservation(input: { amenity: string; reservationDate: string }) {
+  async function createReservation(input: { amenity: string; reservationDate: string }) {
     if (!session) {
       return { ok: false, error: 'Sesion requerida.' }
     }
@@ -1177,9 +1424,50 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       reservationDate: input.reservationDate,
       fee: 5000,
       status: 'active',
+      paymentRequired: false,
+      paymentStatus: 'paid',
       createdAt: new Date().toISOString(),
       createdByUserId: session.userId,
     }
+
+    if (isPaymentsEnabled && isSupabaseConfigured && isOnline) {
+      const idempotencyKey = `res-${session.userId}-${input.reservationDate}-${amenity}-${Date.now()}`
+      const checkout = await createReservationCheckoutSession({
+        amenity,
+        reservationDate: input.reservationDate,
+        idempotencyKey,
+      })
+      if (!checkout.ok || !checkout.checkoutUrl) {
+        return { ok: false, error: checkout.error ?? 'No se pudo crear checkout.' }
+      }
+      if (checkout.reservationId) {
+        const reservationId = checkout.reservationId
+        const pendingReservation: Reservation = {
+          ...nextReservation,
+          id: reservationId,
+          status: 'pending_payment',
+          paymentRequired: true,
+          paymentStatus: 'pending',
+          paymentChargeId: checkout.chargeId,
+        }
+        setReservations((previous) => {
+          const alreadyExists = previous.some((reservation) => reservation.id === reservationId)
+          if (alreadyExists) {
+            return previous
+          }
+          return [
+            ...previous,
+            pendingReservation,
+          ].sort((a, b) => a.reservationDate.localeCompare(b.reservationDate))
+        })
+      }
+      return {
+        ok: true,
+        checkoutUrl: checkout.checkoutUrl,
+        reservationId: checkout.reservationId,
+      }
+    }
+
     setReservations((previous) =>
       [...previous, nextReservation].sort((a, b) =>
         a.reservationDate.localeCompare(b.reservationDate)
@@ -1190,6 +1478,26 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
 
   function getActiveReservations() {
     return reservations.filter((reservation) => isReservationActive(reservation))
+  }
+
+  async function refreshReservationPaymentStatus(reservationId: string) {
+    if (!reservationId.trim() || !isSupabaseConfigured || !isOnline) {
+      return { ok: false, error: 'No se pudo actualizar estatus de pago.' }
+    }
+    const remoteReservation = await getReservationPaymentStatus(reservationId.trim())
+    if (!remoteReservation) {
+      return { ok: false, error: 'Reservacion no encontrada.' }
+    }
+    setReservations((previous) => {
+      const found = previous.some((entry) => entry.id === remoteReservation.id)
+      if (!found) {
+        return [...previous, remoteReservation].sort((a, b) =>
+          a.reservationDate.localeCompare(b.reservationDate)
+        )
+      }
+      return previous.map((entry) => (entry.id === remoteReservation.id ? remoteReservation : entry))
+    })
+    return { ok: true }
   }
 
   function createPoll(input: { title: string; options: string[]; durationDays: number }) {
@@ -1877,6 +2185,303 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     return { ok: true }
   }
 
+  function getAvailableFinancialPeriods() {
+    const allPeriods = [
+      ...financialMovements.map((entry) => ({ year: entry.periodYear, month: entry.periodMonth })),
+      ...financialPeriodCloses.map((entry) => ({ year: entry.year, month: entry.month })),
+    ]
+    const uniquePeriods = Array.from(
+      new Map(allPeriods.map((entry) => [resolveFinancialPeriodKey(entry.year, entry.month), entry])).values()
+    )
+    return sortFinancialPeriodsDesc(uniquePeriods)
+  }
+
+  function getVisibleFinancialMovements(input?: { year?: number; month?: number }) {
+    const fallbackPeriod = getLatestFinancialPeriod(financialMovements, financialPeriodCloses)
+    const targetYear = input?.year ?? fallbackPeriod?.year
+    const targetMonth = input?.month ?? fallbackPeriod?.month
+    const activeUnit = session?.unitNumber?.trim()
+
+    return financialMovements.filter((entry) => {
+      if (targetYear && entry.periodYear !== targetYear) {
+        return false
+      }
+      if (targetMonth && entry.periodMonth !== targetMonth) {
+        return false
+      }
+      if (isFinanceManager(session?.role)) {
+        return true
+      }
+      if (entry.visibilityScope === 'community') {
+        return true
+      }
+      if (entry.visibilityScope === 'unit_private' && activeUnit && entry.unitNumber === activeUnit) {
+        return true
+      }
+      return false
+    })
+  }
+
+  function getCommunityFinancialSummary(input?: { year?: number; month?: number }) {
+    const fallbackPeriod = getLatestFinancialPeriod(financialMovements, financialPeriodCloses)
+    const targetYear = input?.year ?? fallbackPeriod?.year
+    const targetMonth = input?.month ?? fallbackPeriod?.month
+    if (!targetYear || !targetMonth) {
+      return {
+        period: null,
+        openingBalanceMxn: 0,
+        closingBalanceMxn: 0,
+        incomeTotalMxn: 0,
+        expenseTotalMxn: 0,
+        netMxn: 0,
+      }
+    }
+
+    const visibleEntries = getVisibleFinancialMovements({ year: targetYear, month: targetMonth }).filter(
+      (entry) => entry.visibilityScope === 'community' || isFinanceManager(session?.role)
+    )
+    const incomeTotalMxn = visibleEntries
+      .filter((entry) => entry.type === 'income')
+      .reduce((total, entry) => total + entry.amountMxn, 0)
+    const expenseTotalMxn = visibleEntries
+      .filter((entry) => entry.type === 'expense')
+      .reduce((total, entry) => total + entry.amountMxn, 0)
+    const close = financialPeriodCloses.find(
+      (entry) => entry.year === targetYear && entry.month === targetMonth
+    )
+    const openingBalanceMxn = close?.openingBalanceMxn ?? 0
+    const closingBalanceMxn = close?.closingBalanceMxn ?? openingBalanceMxn + incomeTotalMxn - expenseTotalMxn
+
+    return {
+      period: { year: targetYear, month: targetMonth },
+      openingBalanceMxn,
+      closingBalanceMxn,
+      incomeTotalMxn,
+      expenseTotalMxn,
+      netMxn: incomeTotalMxn - expenseTotalMxn,
+      publishedAt: close?.publishedAt,
+    }
+  }
+
+  function getUnitAccountStatement(input?: { unitNumber?: string; year?: number; month?: number }) {
+    const activeUnit = input?.unitNumber?.trim() || session?.unitNumber?.trim()
+    if (!activeUnit) {
+      return {
+        unitNumber: undefined,
+        entries: [],
+        balanceMxn: 0,
+        overdueMxn: 0,
+        upcomingMxn: 0,
+      }
+    }
+
+    const fallbackPeriod = getLatestFinancialPeriod(financialMovements, financialPeriodCloses)
+    const targetYear = input?.year ?? fallbackPeriod?.year
+    const targetMonth = input?.month ?? undefined
+    const today = new Date().getTime()
+    const isPrivileged = isFinanceManager(session?.role)
+
+    const entries = unitAccountEntries
+      .filter((entry) => {
+        if (entry.unitNumber !== activeUnit) {
+          return false
+        }
+        if (!isPrivileged && session?.unitNumber?.trim() !== activeUnit) {
+          return false
+        }
+        if (targetYear) {
+          const occurredYear = new Date(entry.occurredAt).getFullYear()
+          if (occurredYear !== targetYear) {
+            return false
+          }
+        }
+        if (targetMonth) {
+          const occurredMonth = new Date(entry.occurredAt).getMonth() + 1
+          if (occurredMonth !== targetMonth) {
+            return false
+          }
+        }
+        return true
+      })
+      .sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime())
+
+    const balanceMxn = entries.reduce((total, entry) => {
+      return total + (entry.direction === 'debit' ? entry.amountMxn : -entry.amountMxn)
+    }, 0)
+    const overdueMxn = entries
+      .filter((entry) => entry.direction === 'debit' && entry.status === 'overdue')
+      .reduce((total, entry) => total + entry.amountMxn, 0)
+    const nextDueEntry = [...entries]
+      .filter(
+        (entry) =>
+          entry.direction === 'debit' &&
+          entry.dueAt &&
+          new Date(entry.dueAt).getTime() >= today &&
+          ['pending', 'partial', 'posted'].includes(entry.status)
+      )
+      .sort((a, b) => new Date(a.dueAt ?? '').getTime() - new Date(b.dueAt ?? '').getTime())[0]
+    const upcomingMxn = entries
+      .filter((entry) => entry.direction === 'debit' && ['pending', 'partial', 'posted'].includes(entry.status))
+      .reduce((total, entry) => total + entry.amountMxn, 0)
+
+    return {
+      unitNumber: activeUnit,
+      entries,
+      balanceMxn,
+      overdueMxn,
+      nextDueAt: nextDueEntry?.dueAt,
+      upcomingMxn,
+    }
+  }
+
+  function createFinancialMovement(input: {
+    type: FinancialMovement['type']
+    category: string
+    amountMxn: number
+    occurredAt: string
+    periodYear: number
+    periodMonth: number
+    description: string
+    subCategory?: string
+    vendorOrSource?: string
+    unitNumber?: string
+    visibilityScope: FinancialMovement['visibilityScope']
+    evidenceUrl?: string
+  }) {
+    if (!session || !isFinanceManager(session.role)) {
+      return { ok: false, error: 'Solo administracion/comite puede registrar movimientos.' }
+    }
+    if (!financialMovementSchema.shape.type.safeParse(input.type).success) {
+      return { ok: false, error: 'Tipo de movimiento invalido.' }
+    }
+    if (!financialVisibilityScopeSchema.safeParse(input.visibilityScope).success) {
+      return { ok: false, error: 'Visibilidad invalida.' }
+    }
+    if (!input.category.trim()) {
+      return { ok: false, error: 'Categoria obligatoria.' }
+    }
+    if (!input.description.trim()) {
+      return { ok: false, error: 'Descripcion obligatoria.' }
+    }
+    if (!Number.isFinite(input.amountMxn) || input.amountMxn <= 0) {
+      return { ok: false, error: 'Monto invalido.' }
+    }
+
+    const movement: FinancialMovement = {
+      id: randomId('fin-move'),
+      type: input.type,
+      category: input.category.trim(),
+      subCategory: input.subCategory?.trim() || undefined,
+      amountMxn: Number(input.amountMxn),
+      occurredAt: input.occurredAt,
+      periodYear: input.periodYear,
+      periodMonth: input.periodMonth,
+      description: input.description.trim(),
+      vendorOrSource: input.vendorOrSource?.trim() || undefined,
+      unitNumber: input.unitNumber?.trim() || undefined,
+      visibilityScope: input.visibilityScope,
+      evidenceUrl: input.evidenceUrl?.trim() || undefined,
+      createdByUserId: session.userId,
+    }
+    setFinancialMovements((previous) =>
+      [...previous, movement].sort(
+        (a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime()
+      )
+    )
+    if (isSupabaseConfigured && isOnline) {
+      void createFinancialMovementInSupabase(movement)
+    }
+    return { ok: true }
+  }
+
+  function createUnitAccountEntry(input: {
+    unitNumber: string
+    entryType: UnitAccountEntry['entryType']
+    category: string
+    amountMxn: number
+    direction: UnitAccountEntry['direction']
+    occurredAt: string
+    dueAt?: string
+    status: UnitAccountEntry['status']
+    referenceMovementId?: string
+    notes?: string
+  }) {
+    if (!session || !isFinanceManager(session.role)) {
+      return { ok: false, error: 'Solo administracion/comite puede registrar cargos por unidad.' }
+    }
+    if (!input.unitNumber.trim()) {
+      return { ok: false, error: 'Unidad obligatoria.' }
+    }
+    if (!unitAccountEntryTypeSchema.safeParse(input.entryType).success) {
+      return { ok: false, error: 'Tipo de asiento invalido.' }
+    }
+    if (!unitAccountEntryStatusSchema.safeParse(input.status).success) {
+      return { ok: false, error: 'Estatus invalido.' }
+    }
+    if (!Number.isFinite(input.amountMxn) || input.amountMxn <= 0) {
+      return { ok: false, error: 'Monto invalido.' }
+    }
+
+    const entry: UnitAccountEntry = {
+      id: randomId('unit-ledger'),
+      unitNumber: input.unitNumber.trim(),
+      entryType: input.entryType,
+      category: input.category.trim(),
+      amountMxn: Number(input.amountMxn),
+      direction: input.direction,
+      occurredAt: input.occurredAt,
+      dueAt: input.dueAt?.trim() || undefined,
+      status: input.status,
+      referenceMovementId: input.referenceMovementId?.trim() || undefined,
+      notes: input.notes?.trim() || undefined,
+      createdByUserId: session.userId,
+    }
+    setUnitAccountEntries((previous) =>
+      [...previous, entry].sort(
+        (a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime()
+      )
+    )
+    if (isSupabaseConfigured && isOnline) {
+      void createUnitAccountEntryInSupabase(entry)
+    }
+    return { ok: true }
+  }
+
+  function publishFinancialPeriodClose(input: {
+    year: number
+    month: number
+    openingBalanceMxn: number
+    closingBalanceMxn: number
+    notes?: string
+  }) {
+    if (!session || !isFinanceManager(session.role)) {
+      return { ok: false, error: 'Solo administracion/comite puede publicar cortes.' }
+    }
+    const close: FinancialPeriodClose = {
+      id: `period-close-${input.year}-${String(input.month).padStart(2, '0')}`,
+      year: input.year,
+      month: input.month,
+      openingBalanceMxn: Number(input.openingBalanceMxn),
+      closingBalanceMxn: Number(input.closingBalanceMxn),
+      notes: input.notes?.trim() || undefined,
+      publishedAt: new Date().toISOString(),
+      publishedByUserId: session.userId,
+    }
+    setFinancialPeriodCloses((previous) => {
+      const next = previous.filter((entry) => !(entry.year === close.year && entry.month === close.month))
+      return [close, ...next].sort((a, b) => {
+        if (a.year !== b.year) {
+          return b.year - a.year
+        }
+        return b.month - a.month
+      })
+    })
+    if (isSupabaseConfigured && isOnline) {
+      void publishFinancialPeriodCloseInSupabase(close)
+    }
+    return { ok: true }
+  }
+
   function createParkingReport(input: {
     description: string
     reportType: 'own_spot' | 'visitor_spot'
@@ -2293,6 +2898,10 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     marketplacePosts,
     directoryEntries,
     moderationReports,
+    financialCategories,
+    financialPeriodCloses,
+    financialMovements,
+    unitAccountEntries,
     remoteDataLoading,
     offlineQueue,
     isOnline,
@@ -2311,6 +2920,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     createQrPass,
     deleteQrPass,
     createReservation,
+    refreshReservationPaymentStatus,
     getActiveReservations,
     createPoll,
     votePoll,
@@ -2328,6 +2938,13 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     actionModerationReportDeleteTarget,
     createMaintenanceReport,
     createDirectoryEntry,
+    getAvailableFinancialPeriods,
+    getCommunityFinancialSummary,
+    getVisibleFinancialMovements,
+    getUnitAccountStatement,
+    createFinancialMovement,
+    createUnitAccountEntry,
+    publishFinancialPeriodClose,
     createParkingReport,
     updateParkingReportStatus,
     getAssignedParkingForUnit,

@@ -25,6 +25,10 @@ This machine has Node installed, but shell PATH can be inconsistent across sessi
 
 - Known working Node executable:
   - `C:\Progra~1\nodejs\node.exe`
+- Known working Git executable:
+  - `C:\Progra~1\Git\cmd\git.exe`
+
+Codex Desktop sessions may start with a minimal PATH (missing even `C:\Windows\System32`), so built-ins like `where`/`findstr` and tools like `git`/`rg` can fail even when installed.
 
 When `node`/`npm` are not recognized, use absolute commands:
 
@@ -37,9 +41,21 @@ When `node`/`npm` are not recognized, use absolute commands:
 - Dev server:
   - `C:\Progra~1\nodejs\node.exe node_modules\vite\bin\vite.js`
 
+When `git` is not recognized, use:
+
+- `C:\Progra~1\Git\cmd\git.exe status`
+- `C:\Progra~1\Git\cmd\git.exe rev-parse --is-inside-work-tree`
+
+When `rg` is unavailable, use command alternatives:
+
+- file listing: `dir /s /b`
+- text search: `C:\Windows\System32\findstr.exe /s /n /i "pattern" *`
+
 Recommended PATH for future shells:
 
+- Add `C:\Windows\System32` and `C:\Windows` to user/system PATH.
 - Add `C:\Program Files\nodejs` to user/system PATH.
+- Add `C:\Program Files\Git\cmd` to user/system PATH.
 - Restart terminal/app after PATH updates.
 
 ## App Architecture

@@ -2,6 +2,9 @@ import type { UserRole } from '../domain/auth'
 import type {
   AppComment,
   DirectoryEntry,
+  FinancialCategory,
+  FinancialMovement,
+  FinancialPeriodClose,
   Incident,
   MaintenanceReport,
   MarketplacePost,
@@ -11,8 +14,11 @@ import type {
   PetProfile,
   PetPostComment,
   Poll,
+  Reservation,
+  UnitAccountEntry,
 } from '../domain/demoData'
 import type { Package } from '../domain/packages'
+import type { PaymentCharge, PaymentStatus } from '../../features/finance'
 import { supabase } from './client'
 
 const PACKAGE_BUCKET = 'package-photos'
@@ -185,6 +191,88 @@ type AppCommentRow = {
   created_at: string
   created_by_user_id: string
   created_by_name: string
+}
+
+type ReservationRow = {
+  id: string
+  unit_number: string
+  amenity: string
+  reservation_date: string
+  fee: number
+  status: Reservation['status']
+  payment_required: boolean
+  payment_status: Reservation['paymentStatus']
+  payment_charge_id: string | null
+  created_at: string
+  created_by_user_id: string
+}
+
+type PaymentChargeRow = {
+  id: string
+  reservation_id: string | null
+  unit_number: string
+  charge_type: 'reservation_fee'
+  amount_mxn: number
+  currency: 'MXN'
+  status: PaymentStatus
+  provider: 'stripe'
+  provider_checkout_session_id: string | null
+  provider_payment_intent_id: string | null
+  metadata: Record<string, unknown> | null
+  created_by_user_id: string
+  created_at: string
+  updated_at: string
+}
+
+type FinancialCategoryRow = {
+  id: string
+  name: string
+  type: FinancialCategory['type']
+  sort_order: number
+  is_active: boolean
+}
+
+type FinancialPeriodCloseRow = {
+  id: string
+  year: number
+  month: number
+  opening_balance_mxn: number
+  closing_balance_mxn: number
+  notes: string | null
+  published_at: string
+  published_by_user_id: string
+}
+
+type FinancialMovementRow = {
+  id: string
+  type: FinancialMovement['type']
+  category: string
+  sub_category: string | null
+  amount_mxn: number
+  occurred_at: string
+  period_year: number
+  period_month: number
+  description: string
+  vendor_or_source: string | null
+  unit_number: string | null
+  visibility_scope: FinancialMovement['visibilityScope']
+  evidence_url: string | null
+  created_by_user_id: string
+}
+
+type UnitAccountEntryRow = {
+  id: string
+  unit_number: string
+  entry_type: UnitAccountEntry['entryType']
+  category: string
+  amount_mxn: number
+  direction: UnitAccountEntry['direction']
+  occurred_at: string
+  due_at: string | null
+  status: UnitAccountEntry['status']
+  reference_movement_id: string | null
+  notes: string | null
+  created_by_user_id: string
 }
 
 type RpcPackageTransitionRow = {
@@ -393,6 +481,100 @@ function mapAppCommentRow(row: AppCommentRow): AppComment {
   }
 }
 
+function mapReservationRow(row: ReservationRow): Reservation {
+  return {
+    id: row.id,
+    unitNumber: row.unit_number,
+    amenity: row.amenity,
+    reservationDate: row.reservation_date,
+    fee: Number(row.fee),
+    status: row.status,
+    paymentRequired: Boolean(row.payment_required),
+    paymentStatus: row.payment_status,
+    paymentChargeId: row.payment_charge_id ?? undefined,
+    createdAt: row.created_at,
+    createdByUserId: row.created_by_user_id,
+  }
+}
+
+function mapPaymentChargeRow(row: PaymentChargeRow): PaymentCharge {
+  return {
+    id: row.id,
+    reservationId: row.reservation_id ?? undefined,
+    unitNumber: row.unit_number,
+    chargeType: row.charge_type,
+    amountMxn: Number(row.amount_mxn),
+    currency: row.currency,
+    status: row.status,
+    provider: row.provider,
+    providerCheckoutSessionId: row.provider_checkout_session_id ?? undefined,
+    providerPaymentIntentId: row.provider_payment_intent_id ?? undefined,
+    metadata: row.metadata ?? undefined,
+    createdByUserId: row.created_by_user_id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
+}
+
+function mapFinancialCategoryRow(row: FinancialCategoryRow): FinancialCategory {
+  return {
+    id: row.id,
+    name: row.name,
+    type: row.type,
+    sortOrder: Number(row.sort_order),
+    isActive: Boolean(row.is_active),
+  }
+}
+
+function mapFinancialPeriodCloseRow(row: FinancialPeriodCloseRow): FinancialPeriodClose {
+  return {
+    id: row.id,
+    year: Number(row.year),
+    month: Number(row.month),
+    openingBalanceMxn: Number(row.opening_balance_mxn),
+    closingBalanceMxn: Number(row.closing_balance_mxn),
+    notes: row.notes ?? undefined,
+    publishedAt: row.published_at,
+    publishedByUserId: row.published_by_user_id,
+  }
+}
+
+function mapFinancialMovementRow(row: FinancialMovementRow): FinancialMovement {
+  return {
+    id: row.id,
+    type: row.type,
+    category: row.category,
+    subCategory: row.sub_category ?? undefined,
+    amountMxn: Number(row.amount_mxn),
+    occurredAt: row.occurred_at,
+    periodYear: Number(row.period_year),
+    periodMonth: Number(row.period_month),
+    description: row.description,
+    vendorOrSource: row.vendor_or_source ?? undefined,
+    unitNumber: row.unit_number ?? undefined,
+    visibilityScope: row.visibility_scope,
+    evidenceUrl: row.evidence_url ?? undefined,
+    createdByUserId: row.created_by_user_id,
+  }
+}
+
+function mapUnitAccountEntryRow(row: UnitAccountEntryRow): UnitAccountEntry {
+  return {
+    id: row.id,
+    unitNumber: row.unit_number,
+    entryType: row.entry_type,
+    category: row.category,
+    amountMxn: Number(row.amount_mxn),
+    direction: row.direction,
+    occurredAt: row.occurred_at,
+    dueAt: row.due_at ?? undefined,
+    status: row.status,
+    referenceMovementId: row.reference_movement_id ?? undefined,
+    notes: row.notes ?? undefined,
+    createdByUserId: row.created_by_user_id,
+  }
+}
+
 function mapPackageToRow(input: Package): PackageRow {
   return {
     id: input.id,
@@ -453,6 +635,55 @@ function mapPetPostToRow(input: PetPost): PetPostRow {
     created_at: input.createdAt,
     created_by_user_id: input.createdByUserId,
     created_by_name: input.createdByName,
+  }
+}
+
+function mapFinancialMovementToRow(input: FinancialMovement): FinancialMovementRow {
+  return {
+    id: input.id,
+    type: input.type,
+    category: input.category,
+    sub_category: input.subCategory ?? null,
+    amount_mxn: input.amountMxn,
+    occurred_at: input.occurredAt,
+    period_year: input.periodYear,
+    period_month: input.periodMonth,
+    description: input.description,
+    vendor_or_source: input.vendorOrSource ?? null,
+    unit_number: input.unitNumber ?? null,
+    visibility_scope: input.visibilityScope,
+    evidence_url: input.evidenceUrl ?? null,
+    created_by_user_id: input.createdByUserId,
+  }
+}
+
+function mapUnitAccountEntryToRow(input: UnitAccountEntry): UnitAccountEntryRow {
+  return {
+    id: input.id,
+    unit_number: input.unitNumber,
+    entry_type: input.entryType,
+    category: input.category,
+    amount_mxn: input.amountMxn,
+    direction: input.direction,
+    occurred_at: input.occurredAt,
+    due_at: input.dueAt ?? null,
+    status: input.status,
+    reference_movement_id: input.referenceMovementId ?? null,
+    notes: input.notes ?? null,
+    created_by_user_id: input.createdByUserId,
+  }
+}
+
+function mapFinancialPeriodCloseToRow(input: FinancialPeriodClose): FinancialPeriodCloseRow {
+  return {
+    id: input.id,
+    year: input.year,
+    month: input.month,
+    opening_balance_mxn: input.openingBalanceMxn,
+    closing_balance_mxn: input.closingBalanceMxn,
+    notes: input.notes ?? null,
+    published_at: input.publishedAt,
+    published_by_user_id: input.publishedByUserId,
   }
 }
 
@@ -595,6 +826,166 @@ export async function fetchPackagesFromSupabase(input: { role: UserRole; unitNum
   }
 
   return data.map((row) => mapPackageRow(row as PackageRow))
+}
+
+export async function fetchReservationsFromSupabase(input: { role: UserRole; unitNumber?: string }) {
+  if (!supabase) {
+    return null
+  }
+  let query = supabase
+    .from('reservations')
+    .select(
+      'id, unit_number, amenity, reservation_date, fee, status, payment_required, payment_status, payment_charge_id, created_at, created_by_user_id',
+    )
+    .order('reservation_date', { ascending: true })
+
+  query = applyUnitScope(query, input.role, input.unitNumber)
+  const { data, error } = await query
+  if (error || !data) {
+    return null
+  }
+  return data.map((row) => mapReservationRow(row as ReservationRow))
+}
+
+export async function fetchFinancialCategoriesFromSupabase() {
+  if (!supabase) {
+    return null
+  }
+  const { data, error } = await supabase
+    .from('financial_categories')
+    .select('id, name, type, sort_order, is_active')
+    .order('type', { ascending: true })
+    .order('sort_order', { ascending: true })
+  if (error || !data) {
+    return null
+  }
+  return data.map((row) => mapFinancialCategoryRow(row as FinancialCategoryRow))
+}
+
+export async function fetchFinancialPeriodClosesFromSupabase() {
+  if (!supabase) {
+    return null
+  }
+  const { data, error } = await supabase
+    .from('financial_period_closes')
+    .select('id, year, month, opening_balance_mxn, closing_balance_mxn, notes, published_at, published_by_user_id')
+    .order('year', { ascending: false })
+    .order('month', { ascending: false })
+  if (error || !data) {
+    return null
+  }
+  return data.map((row) => mapFinancialPeriodCloseRow(row as FinancialPeriodCloseRow))
+}
+
+export async function fetchCommunityFinancialMovements(input: { role: UserRole; unitNumber?: string }) {
+  if (!supabase) {
+    return null
+  }
+  let query = supabase
+    .from('financial_movements')
+    .select(
+      'id, type, category, sub_category, amount_mxn, occurred_at, period_year, period_month, description, vendor_or_source, unit_number, visibility_scope, evidence_url, created_by_user_id'
+    )
+    .order('occurred_at', { ascending: false })
+
+  if (['resident', 'tenant'].includes(input.role)) {
+    const scopedUnit = input.unitNumber?.trim()
+    query = scopedUnit
+      ? query.or(`visibility_scope.eq.community,and(visibility_scope.eq.unit_private,unit_number.eq.${scopedUnit})`)
+      : query.eq('visibility_scope', 'community')
+  }
+  const { data, error } = await query
+  if (error || !data) {
+    return null
+  }
+  return data.map((row) => mapFinancialMovementRow(row as FinancialMovementRow))
+}
+
+export async function fetchUnitAccountEntriesFromSupabase(input: { role: UserRole; unitNumber?: string }) {
+  if (!supabase) {
+    return null
+  }
+  let query = supabase
+    .from('unit_account_entries')
+    .select(
+      'id, unit_number, entry_type, category, amount_mxn, direction, occurred_at, due_at, status, reference_movement_id, notes, created_by_user_id'
+    )
+    .order('occurred_at', { ascending: false })
+  query = applyUnitScope(query, input.role, input.unitNumber)
+  const { data, error } = await query
+  if (error || !data) {
+    return null
+  }
+  return data.map((row) => mapUnitAccountEntryRow(row as UnitAccountEntryRow))
+}
+
+export async function fetchCommunityFinancialSummary(input: {
+  role: UserRole
+  unitNumber?: string
+  year: number
+  month: number
+}) {
+  const [movements, closes] = await Promise.all([
+    fetchCommunityFinancialMovements({
+      role: input.role,
+      unitNumber: input.unitNumber,
+    }),
+    fetchFinancialPeriodClosesFromSupabase(),
+  ])
+  if (!movements || !closes) {
+    return null
+  }
+  const periodMovements = movements.filter(
+    (entry) => entry.periodYear === input.year && entry.periodMonth === input.month
+  )
+  const incomeTotalMxn = periodMovements
+    .filter((entry) => entry.type === 'income')
+    .reduce((total, entry) => total + entry.amountMxn, 0)
+  const expenseTotalMxn = periodMovements
+    .filter((entry) => entry.type === 'expense')
+    .reduce((total, entry) => total + entry.amountMxn, 0)
+  const close = closes.find((entry) => entry.year === input.year && entry.month === input.month)
+
+  return {
+    openingBalanceMxn: close?.openingBalanceMxn ?? 0,
+    closingBalanceMxn:
+      close?.closingBalanceMxn ?? ((close?.openingBalanceMxn ?? 0) + incomeTotalMxn - expenseTotalMxn),
+    incomeTotalMxn,
+    expenseTotalMxn,
+    netMxn: incomeTotalMxn - expenseTotalMxn,
+    publishedAt: close?.publishedAt,
+  }
+}
+
+export async function fetchUnitAccountStatement(input: {
+  role: UserRole
+  unitNumber?: string
+  year?: number
+  month?: number
+}) {
+  const rows = await fetchUnitAccountEntriesFromSupabase({
+    role: input.role,
+    unitNumber: input.unitNumber,
+  })
+  if (!rows) {
+    return null
+  }
+  const filteredRows = rows.filter((entry) => {
+    if (input.year && new Date(entry.occurredAt).getFullYear() !== input.year) {
+      return false
+    }
+    if (input.month && new Date(entry.occurredAt).getMonth() + 1 !== input.month) {
+      return false
+    }
+    return true
+  })
+  const balanceMxn = filteredRows.reduce((total, entry) => {
+    return total + (entry.direction === 'debit' ? entry.amountMxn : -entry.amountMxn)
+  }, 0)
+  return {
+    entries: filteredRows,
+    balanceMxn,
+  }
 }
 
 export async function fetchIncidentsFromSupabase(_input: { role: UserRole; unitNumber?: string }) {
@@ -811,6 +1202,32 @@ export async function createDirectoryEntryInSupabase(entry: DirectoryEntry) {
     return false
   }
   const { error } = await supabase.from('directory_entries').insert(mapDirectoryEntryToRow(entry))
+  return !error
+}
+
+export async function createFinancialMovementInSupabase(movement: FinancialMovement) {
+  if (!supabase) {
+    return false
+  }
+  const { error } = await supabase.from('financial_movements').insert(mapFinancialMovementToRow(movement))
+  return !error
+}
+
+export async function createUnitAccountEntryInSupabase(entry: UnitAccountEntry) {
+  if (!supabase) {
+    return false
+  }
+  const { error } = await supabase.from('unit_account_entries').insert(mapUnitAccountEntryToRow(entry))
+  return !error
+}
+
+export async function publishFinancialPeriodCloseInSupabase(close: FinancialPeriodClose) {
+  if (!supabase) {
+    return false
+  }
+  const { error } = await supabase
+    .from('financial_period_closes')
+    .upsert(mapFinancialPeriodCloseToRow(close), { onConflict: 'year,month' })
   return !error
 }
 
@@ -1103,6 +1520,135 @@ export async function upsertPushSubscription(input: PushSubscriptionUpsertInput)
     { onConflict: 'endpoint' }
   )
   return !error
+}
+
+export async function createReservationCheckoutSession(input: {
+  amenity: string
+  reservationDate: string
+  idempotencyKey?: string
+  reservationId?: string
+}) {
+  if (!supabase) {
+    return { ok: false, error: 'Supabase no esta configurado.' }
+  }
+  const { data, error } = await supabase.functions.invoke('create-reservation-checkout', {
+    body: input,
+  })
+  if (error) {
+    return { ok: false, error: error.message }
+  }
+  const payload = data as {
+    ok?: boolean
+    error?: string
+    reservationId?: string
+    chargeId?: string
+    checkoutSessionId?: string
+    checkoutUrl?: string
+  } | null
+  if (!payload?.ok || !payload.checkoutUrl) {
+    return { ok: false, error: payload?.error ?? 'No fue posible crear checkout.' }
+  }
+  return {
+    ok: true,
+    reservationId: payload.reservationId,
+    chargeId: payload.chargeId,
+    checkoutSessionId: payload.checkoutSessionId,
+    checkoutUrl: payload.checkoutUrl,
+  }
+}
+
+export async function getReservationPaymentStatus(reservationId: string) {
+  if (!supabase) {
+    return null
+  }
+  const { data, error } = await supabase
+    .from('reservations')
+    .select(
+      'id, status, payment_status, payment_charge_id, amenity, reservation_date, unit_number, fee, payment_required, created_at, created_by_user_id',
+    )
+    .eq('id', reservationId)
+    .maybeSingle<{
+      id: string
+      status: Reservation['status']
+      payment_status: Reservation['paymentStatus']
+      payment_charge_id: string | null
+      amenity: string
+      reservation_date: string
+      unit_number: string
+      fee: number
+      payment_required: boolean
+      created_at: string
+      created_by_user_id: string
+    }>()
+
+  if (error || !data) {
+    return null
+  }
+  return {
+    id: data.id,
+    status: data.status,
+    paymentStatus: data.payment_status,
+    paymentChargeId: data.payment_charge_id ?? undefined,
+    amenity: data.amenity,
+    reservationDate: data.reservation_date,
+    unitNumber: data.unit_number,
+    fee: Number(data.fee),
+    paymentRequired: data.payment_required,
+    createdAt: data.created_at,
+    createdByUserId: data.created_by_user_id,
+  }
+}
+
+export async function listMyCharges(input: { role: UserRole; unitNumber?: string }) {
+  if (!supabase) {
+    return null
+  }
+  let query = supabase
+    .from('payment_charges')
+    .select(
+      'id, reservation_id, unit_number, charge_type, amount_mxn, currency, status, provider, provider_checkout_session_id, provider_payment_intent_id, metadata, created_by_user_id, created_at, updated_at',
+    )
+    .order('created_at', { ascending: false })
+  query = applyUnitScope(query, input.role, input.unitNumber)
+  const { data, error } = await query
+  if (error || !data) {
+    return null
+  }
+  return data.map((row) => mapPaymentChargeRow(row as PaymentChargeRow))
+}
+
+export async function listAdminCharges(filters?: {
+  unitNumber?: string
+  status?: PaymentStatus
+  dateFrom?: string
+  dateTo?: string
+}) {
+  if (!supabase) {
+    return null
+  }
+  let query = supabase
+    .from('payment_charges')
+    .select(
+      'id, reservation_id, unit_number, charge_type, amount_mxn, currency, status, provider, provider_checkout_session_id, provider_payment_intent_id, metadata, created_by_user_id, created_at, updated_at',
+    )
+    .order('created_at', { ascending: false })
+  if (filters?.unitNumber?.trim()) {
+    query = query.eq('unit_number', filters.unitNumber.trim())
+  }
+  if (filters?.status) {
+    query = query.eq('status', filters.status)
+  }
+  if (filters?.dateFrom) {
+    query = query.gte('created_at', filters.dateFrom)
+  }
+  if (filters?.dateTo) {
+    query = query.lte('created_at', filters.dateTo)
+  }
+  const { data, error } = await query
+  if (error || !data) {
+    return null
+  }
+  return data.map((row) => mapPaymentChargeRow(row as PaymentChargeRow))
 }
 
 export async function removePushSubscriptionByEndpoint(input: { endpoint: string; userId: string }) {

@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Privada Reforma - Guia de Pantallas (Espanol)</title>
+    <style>
+      :root { --text:#111827; --muted:#4b5563; --line:#d1d5db; --bg:#f3f4f6; --card:#fff; }
+      * { box-sizing: border-box; }
+      body { margin:0; padding:20px; font-family:"Segoe UI", Arial, sans-serif; color:var(--text); background:var(--bg); }
+      .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:12px; }
+      .section { margin:16px 0 10px; padding:10px 12px; border-radius:10px; background:#111827; color:#fff; font-size:16px; }
+      .row { display:grid; grid-template-columns:44% 56%; gap:14px; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:12px; break-inside:avoid; page-break-inside:avoid; }
+      .shot { width:100%; max-width:360px; border-radius:10px; border:1px solid var(--line); }
+      .route { margin:0 0 8px; color:var(--muted); font-size:13px; }
+      h1 { margin:0 0 8px; font-size:28px; }
+      h2 { margin:0 0 8px; font-size:20px; }
+      h3 { margin:0 0 6px; font-size:18px; }
+      p { margin:6px 0; line-height:1.36; }
+      ul { margin:8px 0 0; padding-left:18px; }
+      .meta { margin:4px 0; color:var(--muted); font-size:13px; }
+    </style>
+  </head>
+  <body>
+    <section class="card">
+      <h1>Privada Reforma - Guia Visual de Pantallas</h1>
+      <p class="meta">Documento para vecinos (explicacion simple y practica).</p>
+    </section>
+
+    <section class="card">
+      <h2>Indice</h2>
+      <p class="meta">1) Pantallas principales | 2) Pantallas administrativas/base | 3) Beneficios de la app movil</p>
+    </section>
+
+    <div class="section">1) Pantallas principales (uso diario)</div>
+
+    <article class="row">
+      <img class="shot" src="admin-crear-usuarios.jpg" alt="Crear usuarios" />
+      <div>
+        <h3>Crear usuarios</h3>
+        <p class="route">Ruta: <code>/admin/users</code></p>
+        <p>Sirve para dar de alta nuevas cuentas de manera ordenada. Aqui se define si la persona sera residente, guardia o administrador, y se asigna su unidad cuando aplica. Esta pantalla es clave porque controla quien entra a cada parte de la app.</p>
+      </div>
+    </article>
+
+    <article class="row">
+      <img class="shot" src="residente-registrar-qr.jpg" alt="Registrar QR" />
+      <div>
+        <h3>Registrar codigo QR de visita</h3>
+        <p class="route">Ruta: <code>/app/visits</code></p>
+        <p>Aqui registras a un visitante y creas su acceso. Puedes elegir tiempo de validez, cantidad de usos y numero de personas. La app genera el codigo de forma automatica para que guardia valide la entrada mas rapido.</p>
+      </div>
+    </article>
+
+    <article class="row">
+      <img class="shot" src="residente-qr-compartir.jpg" alt="Compartir QR" />
+      <div>
+        <h3>Compartir QR</h3>
+        <p class="route">Desde: <code>/app/visits</code></p>
+        <p>Muestra el QR listo para enviar al visitante. Incluye boton para copiar el link de acceso y opcion para borrar el codigo si ya no se va a usar. Esto evita confusiones y mantiene el control del acceso.</p>
+      </div>
+    </article>
+
+    <article class="row">
+      <img class="shot" src="residente-mascotas.jpg" alt="Mascotas" />
+      <div>
+        <h3>Mascotas</h3>
+        <p class="route">Ruta: <code>/app/pets</code></p>
+        <p>Permite publicar informacion de mascotas de la comunidad con foto y descripcion. Ayuda a que vecinos se conozcan mejor y sepan como convivir, por ejemplo si una mascota es nerviosa o muy activa. Si algo no es apropiado, se puede reportar.</p>
+      </div>
+    </article>
+
+    <article class="row">
+      <img class="shot" src="residente-marketplace.jpg" alt="Marketplace" />
+      <div>
+        <h3>Marketplace</h3>
+        <p class="route">Ruta: <code>/app/marketplace</code></p>
+        <p>Es el espacio para vender o comprar entre vecinos. Puedes subir foto, precio, descripcion y forma de contacto. Tambien incluye opcion de reporte para cuidar el contenido dentro de la comunidad.</p>
+      </div>
+    </article>
+
+    <article class="row">
+      <img class="shot" src="residente-paquetes.jpg" alt="Paquetes" />
+      <div>
+        <h3>Paquetes</h3>
+        <p class="route">Ruta: <code>/app/packages</code></p>
+        <p>Te deja ver el estado de tus paquetes y confirmar cuando pasaras por ellos. El flujo esta pensado para seguridad: guardia resguarda, residente confirma, guardia entrega.</p>
+      </div>
+    </article>
+
+    <article class="row">
+      <img class="shot" src="residente-incidencias.jpg" alt="Incidencias" />
+      <div>
+        <h3>Incidencias</h3>
+        <p class="route">Ruta: <code>/app/incidents</code></p>
+        <p>Aqui la comunidad reporta problemas y les da prioridad con votos. Sirve para que lo mas urgente suba primero y se atienda antes.</p>
+      </div>
+    </article>
+
+    <article class="row">
+      <img class="shot" src="residente-crear-incidencia.jpg" alt="Crear incidencia" />
+      <div>
+        <h3>Crear incidencia</h3>
+        <p class="route">Sobre: <code>/app/incidents</code></p>
+        <p>Formulario simple para registrar el problema: titulo, descripcion, categoria y prioridad. Con eso el reporte entra al flujo de seguimiento.</p>
+      </div>
+    </article>
+
+    <article class="row">
+      <img class="shot" src="residente-estacionamiento-reporte.jpg" alt="Estacionamiento" />
+      <div>
+        <h3>Reporte de estacionamiento</h3>
+        <p class="route">Ruta: <code>/app/parking</code></p>
+        <p>Si alguien ocupa un cajon que no le corresponde, aqui se reporta directo a guardia. Tambien muestra historial para saber si ya fue atendido.</p>
+      </div>
+    </article>
+
+    <article class="row">
+      <img class="shot" src="residente-perfil-cambio de nombe y contrasena.jpg" alt="Perfil" />
+      <div>
+        <h3>Perfil (nombre y contrasena)</h3>
+        <p class="route">Ruta: <code>/app/profile</code></p>
+        <p>Pantalla para actualizar tu nombre visible y tu contrasena. Es importante para mantener tus datos correctos y tu cuenta segura.</p>
+      </div>
+    </article>
+
+    <article class="row">
+      <img class="shot" src="admin-notificaciones.jpg" alt="Notificaciones admin" />
+      <div>
+        <h3>Notificaciones (admin)</h3>
+        <p class="route">Ruta: <code>/admin/push</code></p>
+        <p>Permite enviar avisos a usuarios especificos, por unidad o por rol. Es util para mandar mensajes urgentes de operacion en segundos.</p>
+      </div>
+    </article>
+
+    <div class="section">2) Pantallas administrativas/base</div>
+
+    <article class="row">
+      <img class="shot" src="reporte-moderacion.jpg" alt="Moderacion" />
+      <div>
+        <h3>Moderacion de reportes</h3>
+        <p class="route">Ruta: <code>/admin/reports</code></p>
+        <p>Cuando hay contenido reportado, aqui se revisa y se decide si se elimina o se cierra el reporte. En la imagen se muestra un estado sin reportes abiertos.</p>
+      </div>
+    </article>
+
+    <article class="row">
+      <img class="shot" src="admin-paqueteria.jpg" alt="Admin paqueteria" />
+      <div>
+        <h3>Paqueteria global (admin)</h3>
+        <p class="route">Ruta: <code>/admin/packages</code></p>
+        <p>Vista global para supervisar paquetes de toda la privada por estatus. Ayuda a detectar carga operativa y retrasos.</p>
+      </div>
+    </article>
+
+    <article class="row">
+      <img class="shot" src="residente-estado-de-cuenta.jpg" alt="Estado de cuenta" />
+      <div>
+        <h3>Estado de cuenta</h3>
+        <p class="route">Ruta: <code>/app/finance</code></p>
+        <p>Base de informacion financiera para residente/comite. Esta pantalla puede crecer a detalle de movimientos y transparencia.</p>
+      </div>
+    </article>
+
+    <article class="row">
+      <img class="shot" src="admin-adeudos.jpg" alt="Adeudos" />
+      <div>
+        <h3>Adeudos (admin)</h3>
+        <p class="route">Ruta: <code>/admin/debts</code></p>
+        <p>Pantalla para enfoque de cobranza y morosidad. Funciona como base para ampliar controles financieros.</p>
+      </div>
+    </article>
+
+    <article class="row">
+      <img class="shot" src="admin-finanzas.jpg" alt="Finanzas admin" />
+      <div>
+        <h3>Finanzas (admin)</h3>
+        <p class="route">Ruta: <code>/admin/finance</code></p>
+        <p>Vista ejecutiva para ingresos, egresos y presupuesto. Actualmente sirve de estructura para evolucion futura.</p>
+      </div>
+    </article>
+
+    <article class="row">
+      <img class="shot" src="admin-exportaciones.jpg" alt="Exportaciones admin" />
+      <div>
+        <h3>Exportaciones (admin)</h3>
+        <p class="route">Ruta: <code>/admin/exports</code></p>
+        <p>Modulo pensado para generar reportes CSV/PDF para administracion y comite.</p>
+      </div>
+    </article>
+
+    <div class="section">3) Beneficios de instalar la app movil (RN)</div>
+
+    <section class="card">
+      <p>La app instalada mejora tiempos de respuesta y seguridad operativa:</p>
+      <ul>
+        <li>Notificaciones mas confiables que en navegador movil.</li>
+        <li>Vibracion y sonido por tipo de alerta (SOS, estacionamiento, incidencia).</li>
+        <li>Temporizadores SLA para que guardia vea cuanto tiempo lleva cada caso.</li>
+        <li>Posible uso de ubicacion (con permiso) para contexto operativo y mejor coordinacion.</li>
+      </ul>
+    </section>
+  </body>
+</html>

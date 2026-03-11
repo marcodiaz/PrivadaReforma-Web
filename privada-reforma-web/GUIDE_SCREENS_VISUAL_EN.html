@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Privada Reforma - Screen Guide (English, Technical)</title>
+    <style>
+      :root { --text:#111827; --muted:#4b5563; --line:#d1d5db; --bg:#f3f4f6; --card:#fff; }
+      * { box-sizing: border-box; }
+      body { margin:0; padding:20px; font-family:"Segoe UI", Arial, sans-serif; color:var(--text); background:var(--bg); }
+      .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:12px; }
+      .section { margin:16px 0 10px; padding:10px 12px; border-radius:10px; background:#111827; color:#fff; font-size:16px; }
+      .row { display:grid; grid-template-columns:44% 56%; gap:14px; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:12px; break-inside:avoid; page-break-inside:avoid; }
+      .shot { width:100%; max-width:360px; border-radius:10px; border:1px solid var(--line); }
+      .route { margin:0 0 8px; color:var(--muted); font-size:13px; }
+      h1 { margin:0 0 8px; font-size:28px; }
+      h2 { margin:0 0 8px; font-size:20px; }
+      h3 { margin:0 0 6px; font-size:18px; }
+      p { margin:6px 0; line-height:1.36; }
+      ul { margin:8px 0 0; padding-left:18px; }
+      .meta { margin:4px 0; color:var(--muted); font-size:13px; }
+    </style>
+  </head>
+  <body>
+    <section class="card">
+      <h1>Privada Reforma - Visual Screen Guide</h1>
+      <p class="meta">Technical edition for product, engineering, and operations alignment.</p>
+    </section>
+
+    <section class="card">
+      <h2>Contents</h2>
+      <p class="meta">1) Stable core workflows | 2) Admin/foundation modules | 3) Native-app operational advantages</p>
+    </section>
+
+    <div class="section">1) Stable core workflows (ordered by delivery priority)</div>
+
+    <article class="row"><img class="shot" src="admin-crear-usuarios.jpg" alt="Admin users" /><div><h3>1. User Provisioning</h3><p class="route">Route: <code>/admin/users</code></p><p>Administrative onboarding surface for role-based account creation/invitation. Enforces role/unit constraints and determines downstream authorization boundaries for all app areas.</p></div></article>
+    <article class="row"><img class="shot" src="residente-registrar-qr.jpg" alt="QR create" /><div><h3>2. Visitor QR Issuance</h3><p class="route">Route: <code>/app/visits</code></p><p>Primary access-control workflow. Creates visitor passes with validity model, usage limits, and person limits. Produces a deterministic display code for guard-side validation and auditability.</p></div></article>
+    <article class="row"><img class="shot" src="residente-qr-compartir.jpg" alt="QR modal" /><div><h3>3. QR Distribution Modal</h3><p class="route">From: <code>/app/visits</code></p><p>Operational handoff UI containing scannable payload, token, and copy/delete controls. Supports controlled revocation by allowing pass deletion from the same context.</p></div></article>
+    <article class="row"><img class="shot" src="residente-mascotas.jpg" alt="Pets" /><div><h3>4. Pets Community Module</h3><p class="route">Route: <code>/app/pets</code></p><p>Neighborhood content module for pet identity and coexistence data. Includes publication metadata and moderation entry points, reducing low-context community conflicts.</p></div></article>
+    <article class="row"><img class="shot" src="residente-marketplace.jpg" alt="Marketplace" /><div><h3>5. Marketplace</h3><p class="route">Route: <code>/app/marketplace</code></p><p>P2P listing flow with structured listing attributes (price/condition/media/contact). Integrates reporting controls to feed moderation pipelines and maintain trust/safety.</p></div></article>
+    <article class="row"><img class="shot" src="residente-paquetes.jpg" alt="Packages" /><div><h3>6. Resident Package Flow</h3><p class="route">Route: <code>/app/packages</code></p><p>Secure package lifecycle visibility: stored -> ready_for_pickup -> delivered. Aligns resident confirmation with guard delivery transition to prevent misdelivery.</p></div></article>
+    <article class="row"><img class="shot" src="residente-incidencias.jpg" alt="Incidents" /><div><h3>7. Incident Prioritization Feed</h3><p class="route">Route: <code>/app/incidents</code></p><p>Community incident board with score-based prioritization using plus/minus voting. Drives triage focus by social urgency and declared priority.</p></div></article>
+    <article class="row"><img class="shot" src="residente-crear-incidencia.jpg" alt="Create incident" /><div><h3>8. Incident Creation Modal</h3><p class="route">Overlay on: <code>/app/incidents</code></p><p>Structured input point for title, description, category, and severity. Ensures incidents enter operational queues with normalized fields.</p></div></article>
+    <article class="row"><img class="shot" src="residente-estacionamiento-reporte.jpg" alt="Parking report" /><div><h3>9. Parking Enforcement Reports</h3><p class="route">Route: <code>/app/parking</code></p><p>Resident-to-guard escalation for assigned parking violations. Maintains status history for accountability and closure traceability.</p></div></article>
+    <article class="row"><img class="shot" src="residente-perfil-cambio de nombe y contrasena.jpg" alt="Profile" /><div><h3>10. Profile and Credential Hygiene</h3><p class="route">Route: <code>/app/profile</code></p><p>User identity maintenance for display name and password update. Supports account-level security hygiene and profile consistency.</p></div></article>
+    <article class="row"><img class="shot" src="admin-notificaciones.jpg" alt="Admin push" /><div><h3>11. Targeted Push Operations</h3><p class="route">Route: <code>/admin/push</code></p><p>Manual push dispatch by user/unit/role/global scope. Enables rapid operational broadcast with explicit targeting semantics.</p></div></article>
+
+    <div class="section">2) Admin/foundation modules (less mature or supervisory)</div>
+
+    <article class="row"><img class="shot" src="reporte-moderacion.jpg" alt="Moderation reports" /><div><h3>12. Moderation Reports</h3><p class="route">Route: <code>/admin/reports</code></p><p>Review/resolve console for reported incident, pet, and marketplace content. Current screenshot displays empty state; action paths activate when open reports exist.</p></div></article>
+    <article class="row"><img class="shot" src="admin-paqueteria.jpg" alt="Admin packages" /><div><h3>13. Global Package Supervision</h3><p class="route">Route: <code>/admin/packages</code></p><p>Read-oriented cross-unit package monitoring and filterable state aggregation for operations oversight.</p></div></article>
+    <article class="row"><img class="shot" src="residente-estado-de-cuenta.jpg" alt="Resident finance" /><div><h3>14. Resident Finance Surface</h3><p class="route">Route: <code>/app/finance</code></p><p>Foundational finance shell intended for statement, fee, and transparency expansion.</p></div></article>
+    <article class="row"><img class="shot" src="admin-adeudos.jpg" alt="Admin debts" /><div><h3>15. Debt Management Surface</h3><p class="route">Route: <code>/admin/debts</code></p><p>Collections-oriented financial placeholder for delinquency control workflows.</p></div></article>
+    <article class="row"><img class="shot" src="admin-finanzas.jpg" alt="Admin finance" /><div><h3>16. Admin Finance Surface</h3><p class="route">Route: <code>/admin/finance</code></p><p>Executive finance shell for budget, inflow/outflow visibility, and governance reporting evolution.</p></div></article>
+    <article class="row"><img class="shot" src="admin-exportaciones.jpg" alt="Admin exports" /><div><h3>17. Export Surface</h3><p class="route">Route: <code>/admin/exports</code></p><p>Placeholder for CSV/PDF report generation pipelines for operational and board reporting.</p></div></article>
+
+    <div class="section">3) Native app advantages (guard-first operations)</div>
+
+    <section class="card">
+      <p>Why install the native app instead of relying only on mobile web:</p>
+      <ul>
+        <li>Higher reliability for background/locked-screen critical push delivery.</li>
+        <li>Severity-specific vibration/audio channels (SOS vs parking vs incident).</li>
+        <li>Live SLA timers per ticket with breach warnings and escalation hooks.</li>
+        <li>Permission-based location context for dispatch and evidence workflows.</li>
+      </ul>
+    </section>
+  </body>
+</html>

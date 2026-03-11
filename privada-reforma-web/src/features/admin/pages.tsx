@@ -8,7 +8,9 @@ import {
   type ManagedProfile,
   type ManagedUserRole,
 } from '../../shared/supabase/admin'
+import { listAdminCharges } from '../../shared/supabase/data'
 import { AppButton, AppCard, ModulePlaceholder } from '../../shared/ui'
+import type { PaymentCharge } from '../finance'
 export { AdminPackagesPage } from '../packages/pages'
 
 export function AdminDashboardPage() {
@@ -609,12 +611,55 @@ function localizePushError(raw?: string): string {
 }
 
 export function AdminDebtsPage() {
+  const [charges, setCharges] = useState<PaymentCharge[]>([])
+  const [loading, setLoading] = useState(false)
+  const [onlyOpen, setOnlyOpen] = useState(true)
+
+  useEffect(() => {
+    setLoading(true)
+    void listAdminCharges(onlyOpen ? { status: 'pending' } : undefined)
+      .then((rows) => setCharges(rows ?? []))
+      .finally(() => setLoading(false))
+  }, [onlyOpen])
+
+  const debtCharges = charges.filter((charge) =>
+    ['pending', 'requires_action', 'failed'].includes(charge.status)
+  )
+
   return (
-    <ModulePlaceholder
-      role="Administrador / Comite"
-      title="Adeudos"
-      description="Control de morosidad y seguimiento de cobranza."
-    />
+    <div className="space-y-3">
+      <ModulePlaceholder
+        role="Administrador / Comite"
+        title="Adeudos"
+        description="Control de morosidad y seguimiento de cobranza."
+      />
+      <AppCard className="space-y-2 border-zinc-800 bg-zinc-950">
+        <label className="flex items-center gap-2 text-xs text-zinc-300">
+          <input checked={onlyOpen} onChange={(event) => setOnlyOpen(event.target.checked)} type="checkbox" />
+          Mostrar solo pendientes
+        </label>
+        <p className="text-xs text-zinc-400">Total adeudos: {debtCharges.length}</p>
+      </AppCard>
+      <AppCard className="space-y-2 border-zinc-800 bg-zinc-950">
+        {loading ? (
+          <p className="text-sm text-zinc-400">Cargando adeudos...</p>
+        ) : debtCharges.length === 0 ? (
+          <p className="text-sm text-zinc-400">Sin adeudos abiertos.</p>
+        ) : (
+          <div className="space-y-2">
+            {debtCharges.map((charge) => (
+              <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3" key={charge.id}>
+                <p className="text-sm font-semibold text-zinc-100">
+                  Unidad {charge.unitNumber} | ${charge.amountMxn.toLocaleString('es-MX')} MXN
+                </p>
+                <p className="text-xs text-zinc-400">Estatus: {charge.status}</p>
+                <p className="text-xs text-zinc-500">{new Date(charge.createdAt).toLocaleString()}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </AppCard>
+    </div>
   )
 }
 
@@ -659,12 +704,456 @@ export function AdminAnnouncementsPage() {
 }
 
 export function AdminFinancePage() {
+  const {
+    financialCategories,
+    getAvailableFinancialPeriods,
+    getCommunityFinancialSummary,
+    getVisibleFinancialMovements,
+    getUnitAccountStatement,
+    createFinancialMovement,
+    createUnitAccountEntry,
+    publishFinancialPeriodClose,
+  } = useDemoData()
+  const [charges, setCharges] = useState<PaymentCharge[]>([])
+  const [loading, setLoading] = useState(false)
+  const [unitFilter, setUnitFilter] = useState('')
+  const [financeMessage, setFinanceMessage] = useState('')
+  const [movementType, setMovementType] = useState<'income' | 'expense'>('expense')
+  const [movementCategory, setMovementCategory] = useState('Agua')
+  const [movementAmount, setMovementAmount] = useState('0')
+  const [movementDescription, setMovementDescription] = useState('')
+  const [movementVendor, setMovementVendor] = useState('')
+  const [movementVisibility, setMovementVisibility] = useState<'community' | 'board_only' | 'unit_private'>('community')
+  const [movementUnitNumber, setMovementUnitNumber] = useState('')
+  const [movementEvidenceUrl, setMovementEvidenceUrl] = useState('')
+  const [ledgerUnitNumber, setLedgerUnitNumber] = useState('11-22')
+  const [ledgerEntryType, setLedgerEntryType] = useState<'charge' | 'payment' | 'adjustment'>('charge')
+  const [ledgerCategory, setLedgerCategory] = useState('Mantenimiento')
+  const [ledgerAmount, setLedgerAmount] = useState('0')
+  const [ledgerDirection, setLedgerDirection] = useState<'debit' | 'credit'>('debit')
+  const [ledgerOccurredAt, setLedgerOccurredAt] = useState('2026-01-01')
+  const [ledgerDueAt, setLedgerDueAt] = useState('2026-01-10')
+  const [ledgerStatus, setLedgerStatus] = useState<'posted' | 'pending' | 'overdue' | 'paid' | 'partial'>('posted')
+  const [ledgerNotes, setLedgerNotes] = useState('')
+  const [closeOpeningBalance, setCloseOpeningBalance] = useState('0')
+  const [closeNotes, setCloseNotes] = useState('')
+
+  useEffect(() => {
+    setLoading(true)
+    void listAdminCharges({ unitNumber: unitFilter.trim() || undefined })
+      .then((rows) => setCharges(rows ?? []))
+      .finally(() => setLoading(false))
+  }, [unitFilter])
+
+  const totals = charges.reduce(
+    (acc, charge) => {
+      if (charge.status === 'paid') {
+        acc.paid += charge.amountMxn
+      } else if (['pending', 'requires_action', 'failed'].includes(charge.status)) {
+        acc.open += charge.amountMxn
+      }
+      return acc
+    },
+    { paid: 0, open: 0 }
+  )
+  const money = (amount: number) => `$${amount.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN`
+  const periods = getAvailableFinancialPeriods()
+  const selectedPeriod = periods[0]
+  const summary = getCommunityFinancialSummary(selectedPeriod ?? undefined)
+  const movementCategoryOptions = financialCategories
+    .filter((category) => category.type === movementType && category.isActive)
+    .map((category) => category.name)
+  const unitStatement = getUnitAccountStatement({
+    unitNumber: unitFilter.trim() || ledgerUnitNumber.trim() || undefined,
+    ...(selectedPeriod ?? {}),
+  })
+  const visibleMovements = getVisibleFinancialMovements(selectedPeriod ?? undefined)
+
+  useEffect(() => {
+    if (movementCategoryOptions.length > 0 && !movementCategoryOptions.includes(movementCategory)) {
+      setMovementCategory(movementCategoryOptions[0] ?? '')
+    }
+  }, [movementCategory, movementCategoryOptions])
+
+  function handleCreateMovement() {
+    if (!selectedPeriod) {
+      setFinanceMessage('No hay periodo disponible para registrar movimientos.')
+      return
+    }
+    const result = createFinancialMovement({
+      type: movementType,
+      category: movementCategory,
+      amountMxn: Number(movementAmount),
+      occurredAt: new Date(`${selectedPeriod.year}-${String(selectedPeriod.month).padStart(2, '0')}-01T12:00:00-08:00`).toISOString(),
+      periodYear: selectedPeriod.year,
+      periodMonth: selectedPeriod.month,
+      description: movementDescription,
+      vendorOrSource: movementVendor || undefined,
+      unitNumber: movementVisibility === 'unit_private' ? movementUnitNumber : undefined,
+      visibilityScope: movementVisibility,
+      evidenceUrl: movementEvidenceUrl || undefined,
+    })
+    setFinanceMessage(result.ok ? 'Movimiento financiero guardado.' : (result.error ?? 'No fue posible guardar movimiento.'))
+  }
+
+  function handleCreateLedgerEntry() {
+    const occurredAt = ledgerOccurredAt ? new Date(`${ledgerOccurredAt}T12:00:00-08:00`).toISOString() : new Date().toISOString()
+    const result = createUnitAccountEntry({
+      unitNumber: ledgerUnitNumber,
+      entryType: ledgerEntryType,
+      category: ledgerCategory,
+      amountMxn: Number(ledgerAmount),
+      direction: ledgerDirection,
+      occurredAt,
+      dueAt: ledgerDueAt || undefined,
+      status: ledgerStatus,
+      notes: ledgerNotes || undefined,
+    })
+    setFinanceMessage(result.ok ? 'Asiento por unidad guardado.' : (result.error ?? 'No fue posible guardar asiento.'))
+  }
+
+  function handlePublishClose() {
+    if (!selectedPeriod) {
+      setFinanceMessage('No hay periodo para publicar.')
+      return
+    }
+    const result = publishFinancialPeriodClose({
+      year: selectedPeriod.year,
+      month: selectedPeriod.month,
+      openingBalanceMxn: Number(closeOpeningBalance),
+      closingBalanceMxn: Number(closeOpeningBalance) + summary.netMxn,
+      notes: closeNotes || undefined,
+    })
+    setFinanceMessage(result.ok ? 'Corte mensual publicado.' : (result.error ?? 'No fue posible publicar el corte.'))
+  }
+
   return (
-    <ModulePlaceholder
-      role="Administrador / Comite"
-      title="Finanzas"
-      description="Ingresos, egresos, presupuesto y transparencia."
-    />
+    <div className="space-y-3">
+      <ModulePlaceholder
+        role="Administrador / Comite"
+        title="Finanzas"
+        description="Ingresos, egresos, presupuesto y transparencia."
+      />
+      {financeMessage ? <AppCard className="text-xs text-zinc-200">{financeMessage}</AppCard> : null}
+      <div className="grid grid-cols-2 gap-2">
+        <AppCard className="border-zinc-800 bg-zinc-950">
+          <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">Saldo inicial</p>
+          <p className="mt-1 text-lg font-bold text-white">{money(summary.openingBalanceMxn)}</p>
+        </AppCard>
+        <AppCard className="border-zinc-800 bg-zinc-950">
+          <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">Saldo final</p>
+          <p className="mt-1 text-lg font-bold text-white">{money(summary.closingBalanceMxn)}</p>
+        </AppCard>
+        <AppCard className="border-zinc-800 bg-zinc-950">
+          <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">Ingresos</p>
+          <p className="mt-1 text-lg font-bold text-emerald-300">{money(summary.incomeTotalMxn)}</p>
+        </AppCard>
+        <AppCard className="border-zinc-800 bg-zinc-950">
+          <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">Gastos</p>
+          <p className="mt-1 text-lg font-bold text-amber-300">{money(summary.expenseTotalMxn)}</p>
+        </AppCard>
+      </div>
+      <AppCard className="space-y-3 border-zinc-800 bg-zinc-950">
+        <p className="text-sm font-semibold text-zinc-100">Registrar movimiento financiero</p>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="block text-xs text-zinc-400">
+            Tipo
+            <select
+              className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+              onChange={(event) => setMovementType(event.target.value as 'income' | 'expense')}
+              value={movementType}
+            >
+              <option value="income">Ingreso</option>
+              <option value="expense">Egreso</option>
+            </select>
+          </label>
+          <label className="block text-xs text-zinc-400">
+            Categoria
+            <select
+              className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+              onChange={(event) => setMovementCategory(event.target.value)}
+              value={movementCategory}
+            >
+              {movementCategoryOptions.map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <label className="block text-xs text-zinc-400">
+          Monto
+          <input
+            className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+            onChange={(event) => setMovementAmount(event.target.value)}
+            type="number"
+            value={movementAmount}
+          />
+        </label>
+        <label className="block text-xs text-zinc-400">
+          Descripcion
+          <textarea
+            className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+            onChange={(event) => setMovementDescription(event.target.value)}
+            rows={2}
+            value={movementDescription}
+          />
+        </label>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <label className="block text-xs text-zinc-400">
+            Fuente / proveedor
+            <input
+              className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+              onChange={(event) => setMovementVendor(event.target.value)}
+              value={movementVendor}
+            />
+          </label>
+          <label className="block text-xs text-zinc-400">
+            Visibilidad
+            <select
+              className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+              onChange={(event) =>
+                setMovementVisibility(event.target.value as 'community' | 'board_only' | 'unit_private')
+              }
+              value={movementVisibility}
+            >
+              <option value="community">Comunidad</option>
+              <option value="board_only">Solo comite</option>
+              <option value="unit_private">Privado por unidad</option>
+            </select>
+          </label>
+        </div>
+        {movementVisibility === 'unit_private' ? (
+          <label className="block text-xs text-zinc-400">
+            Unidad asociada
+            <input
+              className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+              onChange={(event) => setMovementUnitNumber(event.target.value)}
+              value={movementUnitNumber}
+            />
+          </label>
+        ) : null}
+        <label className="block text-xs text-zinc-400">
+          URL de comprobante (opcional)
+          <input
+            className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+            onChange={(event) => setMovementEvidenceUrl(event.target.value)}
+            value={movementEvidenceUrl}
+          />
+        </label>
+        <AppButton block onClick={handleCreateMovement}>Guardar movimiento</AppButton>
+      </AppCard>
+
+      <AppCard className="space-y-3 border-zinc-800 bg-zinc-950">
+        <p className="text-sm font-semibold text-zinc-100">Registrar estado de cuenta por unidad</p>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="block text-xs text-zinc-400">
+            Unidad
+            <input
+              className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+              onChange={(event) => setLedgerUnitNumber(event.target.value)}
+              value={ledgerUnitNumber}
+            />
+          </label>
+          <label className="block text-xs text-zinc-400">
+            Tipo
+            <select
+              className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+              onChange={(event) => setLedgerEntryType(event.target.value as 'charge' | 'payment' | 'adjustment')}
+              value={ledgerEntryType}
+            >
+              <option value="charge">Cargo</option>
+              <option value="payment">Pago</option>
+              <option value="adjustment">Ajuste</option>
+            </select>
+          </label>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="block text-xs text-zinc-400">
+            Categoria
+            <input
+              className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+              onChange={(event) => setLedgerCategory(event.target.value)}
+              value={ledgerCategory}
+            />
+          </label>
+          <label className="block text-xs text-zinc-400">
+            Direccion
+            <select
+              className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+              onChange={(event) => setLedgerDirection(event.target.value as 'debit' | 'credit')}
+              value={ledgerDirection}
+            >
+              <option value="debit">Debe</option>
+              <option value="credit">Haber</option>
+            </select>
+          </label>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="block text-xs text-zinc-400">
+            Monto
+            <input
+              className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+              onChange={(event) => setLedgerAmount(event.target.value)}
+              type="number"
+              value={ledgerAmount}
+            />
+          </label>
+          <label className="block text-xs text-zinc-400">
+            Estatus
+            <select
+              className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+              onChange={(event) =>
+                setLedgerStatus(event.target.value as 'posted' | 'pending' | 'overdue' | 'paid' | 'partial')
+              }
+              value={ledgerStatus}
+            >
+              <option value="posted">Publicado</option>
+              <option value="pending">Pendiente</option>
+              <option value="overdue">Vencido</option>
+              <option value="paid">Pagado</option>
+              <option value="partial">Parcial</option>
+            </select>
+          </label>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="block text-xs text-zinc-400">
+            Fecha
+            <input
+              className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+              onChange={(event) => setLedgerOccurredAt(event.target.value)}
+              type="date"
+              value={ledgerOccurredAt}
+            />
+          </label>
+          <label className="block text-xs text-zinc-400">
+            Vencimiento
+            <input
+              className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+              onChange={(event) => setLedgerDueAt(event.target.value)}
+              type="date"
+              value={ledgerDueAt}
+            />
+          </label>
+        </div>
+        <label className="block text-xs text-zinc-400">
+          Notas
+          <textarea
+            className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+            onChange={(event) => setLedgerNotes(event.target.value)}
+            rows={2}
+            value={ledgerNotes}
+          />
+        </label>
+        <AppButton block onClick={handleCreateLedgerEntry}>Guardar asiento</AppButton>
+      </AppCard>
+
+      <AppCard className="space-y-3 border-zinc-800 bg-zinc-950">
+        <p className="text-sm font-semibold text-zinc-100">Publicar corte mensual</p>
+        <label className="block text-xs text-zinc-400">
+          Saldo inicial
+          <input
+            className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+            onChange={(event) => setCloseOpeningBalance(event.target.value)}
+            type="number"
+            value={closeOpeningBalance}
+          />
+        </label>
+        <label className="block text-xs text-zinc-400">
+          Notas del corte
+          <textarea
+            className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+            onChange={(event) => setCloseNotes(event.target.value)}
+            rows={2}
+            value={closeNotes}
+          />
+        </label>
+        <p className="text-xs text-zinc-300">
+          Cierre proyectado del periodo: {money(Number(closeOpeningBalance || 0) + summary.netMxn)}
+        </p>
+        <AppButton block onClick={handlePublishClose}>Publicar corte</AppButton>
+      </AppCard>
+
+      <AppCard className="space-y-2 border-zinc-800 bg-zinc-950">
+        <label className="block text-xs text-zinc-400">
+          Filtrar unidad
+          <input
+            className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+            onChange={(event) => setUnitFilter(event.target.value)}
+            placeholder="Ej. 11-22"
+            value={unitFilter}
+          />
+        </label>
+        <p className="text-xs text-zinc-300">
+          Pagado Stripe: {money(totals.paid)} | Abierto Stripe: {money(totals.open)}
+        </p>
+        <p className="text-xs text-zinc-300">
+          Saldo unidad: {money(unitStatement.balanceMxn)} | Vencido: {money(unitStatement.overdueMxn)}
+        </p>
+      </AppCard>
+      <AppCard className="space-y-2 border-zinc-800 bg-zinc-950">
+        <p className="text-sm font-semibold text-zinc-100">Movimientos publicados del periodo</p>
+        {visibleMovements.length === 0 ? (
+          <p className="text-sm text-zinc-400">Sin movimientos financieros.</p>
+        ) : (
+          <div className="space-y-2">
+            {visibleMovements.map((movement) => (
+              <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3" key={movement.id}>
+                <p className="text-sm font-semibold text-zinc-100">
+                  {movement.category} | {movement.type === 'income' ? '+' : '-'}{money(movement.amountMxn)}
+                </p>
+                <p className="text-xs text-zinc-400">
+                  {movement.visibilityScope} | {movement.unitNumber ?? 'global'} | {new Date(movement.occurredAt).toLocaleDateString()}
+                </p>
+                <p className="mt-1 text-xs text-zinc-300">{movement.description}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </AppCard>
+      <AppCard className="space-y-2 border-zinc-800 bg-zinc-950">
+        <p className="text-sm font-semibold text-zinc-100">Estado de cuenta filtrado</p>
+        {unitStatement.entries.length === 0 ? (
+          <p className="text-sm text-zinc-400">Sin asientos para la unidad filtrada.</p>
+        ) : (
+          <div className="space-y-2">
+            {unitStatement.entries.map((entry) => (
+              <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3" key={entry.id}>
+                <p className="text-sm font-semibold text-zinc-100">
+                  {entry.unitNumber} | {entry.category} | {entry.entryType}
+                </p>
+                <p className="text-xs text-zinc-400">
+                  {entry.direction} | {entry.status} | {new Date(entry.occurredAt).toLocaleDateString()}
+                </p>
+                <p className="mt-1 text-xs text-zinc-300">{money(entry.amountMxn)}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </AppCard>
+      <AppCard className="space-y-2 border-zinc-800 bg-zinc-950">
+        {loading ? (
+          <p className="text-sm text-zinc-400">Cargando cargos...</p>
+        ) : charges.length === 0 ? (
+          <p className="text-sm text-zinc-400">Sin movimientos.</p>
+        ) : (
+          <div className="space-y-2">
+            {charges.map((charge) => (
+              <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3" key={charge.id}>
+                <p className="text-sm font-semibold text-zinc-100">
+                  {charge.unitNumber} | ${charge.amountMxn.toLocaleString('es-MX')} MXN
+                </p>
+                <p className="text-xs text-zinc-400">
+                  {charge.chargeType} | {charge.status}
+                </p>
+                <p className="text-xs text-zinc-500">{new Date(charge.createdAt).toLocaleString()}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </AppCard>
+    </div>
   )
 }
 

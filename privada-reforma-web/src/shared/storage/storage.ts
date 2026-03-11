@@ -1,4 +1,4 @@
-export const schemaVersion = 12
+export const schemaVersion = 13
 
 const VERSION_KEY = 'schemaVersion'
 
@@ -19,6 +19,10 @@ export const storageKeys = {
   moderationReports: 'moderationReports',
   maintenanceReports: 'maintenanceReports',
   directoryEntries: 'directoryEntries',
+  financialCategories: 'financialCategories',
+  financialPeriodCloses: 'financialPeriodCloses',
+  financialMovements: 'financialMovements',
+  unitAccountEntries: 'unitAccountEntries',
 } as const
 
 function hasStorage() {

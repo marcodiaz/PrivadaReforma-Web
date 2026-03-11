@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Privada Reforma - Guia Visual ES/EN</title>
+    <style>
+      :root { --text:#111827; --muted:#4b5563; --line:#d1d5db; --bg:#f3f4f6; --card:#fff; }
+      * { box-sizing:border-box; }
+      body { margin:0; padding:20px; font-family:"Segoe UI", Arial, sans-serif; color:var(--text); background:var(--bg); }
+      .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:12px; }
+      h1 { margin:0 0 8px; font-size:28px; }
+      h2 { margin:0; font-size:20px; }
+      .meta { margin:4px 0; color:var(--muted); font-size:13px; }
+      .section { margin:16px 0 10px; padding:10px 12px; border-radius:10px; background:#111827; color:#fff; font-size:16px; }
+      .row { display:grid; grid-template-columns:44% 56%; gap:14px; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:12px; break-inside:avoid; page-break-inside:avoid; }
+      .shot-wrap { display:flex; justify-content:center; align-items:flex-start; }
+      .shot { width:100%; max-width:360px; border-radius:10px; border:1px solid var(--line); }
+      .placeholder { width:100%; max-width:360px; min-height:280px; border:1px dashed #9ca3af; border-radius:10px; background:#f9fafb; padding:14px; }
+      .desc h3 { margin:0 0 6px; font-size:18px; }
+      .route { margin:0 0 8px; color:var(--muted); font-size:13px; }
+      .desc p { margin:6px 0; line-height:1.35; }
+      .desc ul { margin:8px 0 0; padding-left:18px; }
+    </style>
+  </head>
+  <body>
+    <section class="card">
+      <h1>Privada Reforma - Guia Visual Funcional (ES/EN)</h1>
+      <p class="meta">Version: v5 (reordenada por funcionalidad)</p>
+      <p class="meta">Formato: screenshot izquierda + descripcion detallada derecha.</p>
+    </section>
+
+    <section class="card">
+      <h2>Indice / Table of Contents</h2>
+      <p class="meta">1) Flujos operativos principales | 2) Modulos base/fase siguiente | 3) RN guard-first</p>
+    </section>
+
+    <div class="section">1) Flujos que ya funcionan y deben ir primero</div>
+
+    <article class="row">
+      <div class="shot-wrap">
+        <div class="placeholder">
+          <p><b>Imagen faltante en carpeta</b></p>
+          <p>No se encontro screenshot de <b>crear usuarios</b>.</p>
+        </div>
+      </div>
+      <div class="desc">
+        <h3>1. Crear usuarios (Admin)</h3>
+        <p class="route">Ruta: <code>/admin/users</code></p>
+        <p><b>ES:</b> Alta/invitacion de cuentas con control de rol y reglas de unidad por perfil. Es la puerta de entrada del sistema: define quien puede operar como residente, guardia, comite o admin y con que restricciones.</p>
+        <p><b>EN:</b> User create/invite flow with role assignment and unit rules per profile. It is the platform entry point, defining who can operate as resident, guard, board, or admin and under which constraints.</p>
+      </div>
+    </article>
+
+    <article class="row">
+      <div class="shot-wrap"><img class="shot" src="residente-registrar-qr.jpg" alt="Registrar QR" /></div>
+      <div class="desc">
+        <h3>2. Registrar QR de visita</h3>
+        <p class="route">Ruta: <code>/app/visits</code></p>
+        <p><b>ES:</b> Registro de visitante con temporalidad, limites de uso/personas y controles de vigencia. Genera codigo utilizable por guardia y deja trazabilidad para auditoria de acceso.</p>
+        <p><b>EN:</b> Visitor registration with validity mode, usage/people limits, and expiration controls. Generates guard-usable access code with traceability for access audits.</p>
+      </div>
+    </article>
+
+    <article class="row">
+      <div class="shot-wrap"><img class="shot" src="residente-qr-compartir.jpg" alt="QR compartir" /></div>
+      <div class="desc">
+        <h3>3. Compartir QR / Modal de acceso</h3>
+        <p class="route">Desde: <code>/app/visits</code></p>
+        <p><b>ES:</b> Muestra QR escaneable, token y mensaje para visitante; permite copiar link, cerrar y eliminar QR para controlar el ciclo de vida del acceso.</p>
+        <p><b>EN:</b> Displays scannable QR, token, and visitor message; allows link copy, close, and QR deletion for access lifecycle control.</p>
+      </div>
+    </article>
+
+    <article class="row">
+      <div class="shot-wrap"><img class="shot" src="residente-mascotas.jpg" alt="Mascotas" /></div>
+      <div class="desc">
+        <h3>4. Mascotas (corregido)</h3>
+        <p class="route">Ruta: <code>/app/pets</code></p>
+        <p><b>ES:</b> Publicacion comunitaria de mascotas con foto y descripcion de comportamiento/convivencia. El feed permite ver detalle, contexto y reportar contenido si incumple normas. Sirve tanto para integracion vecinal como para prevenir conflictos.</p>
+        <p><b>EN:</b> Community pet posting with photo and behavior/coexistence notes. Feed supports details and content reporting when needed. Useful for neighborhood integration and conflict prevention.</p>
+      </div>
+    </article>
+
+    <article class="row">
+      <div class="shot-wrap"><img class="shot" src="residente-marketplace.jpg" alt="Marketplace" /></div>
+      <div class="desc">
+        <h3>5. Marketplace</h3>
+        <p class="route">Ruta: <code>/app/marketplace</code></p>
+        <p><b>ES:</b> Publicacion de articulos entre vecinos con precio, condicion, contacto y evidencia fotografica. Incluye accion de reporte para moderacion y salida a WhatsApp para cerrar trato.</p>
+        <p><b>EN:</b> Neighbor-to-neighbor listing flow with price, condition, contact details, and photo evidence. Includes moderation reporting and WhatsApp handoff for deal closure.</p>
+      </div>
+    </article>
+
+    <article class="row">
+      <div class="shot-wrap"><img class="shot" src="residente-paquetes.jpg" alt="Paquetes" /></div>
+      <div class="desc">
+        <h3>6. Paquetes (residente/comite)</h3>
+        <p class="route">Ruta: <code>/app/packages</code></p>
+        <p><b>ES:</b> Flujo seguro de paqueteria: resguardo por guardia, solicitud de recoleccion por residente y entrega final controlada. Muestra estado y evidencia para reducir errores de entrega.</p>
+        <p><b>EN:</b> Secure package flow: guard storage, resident pickup request, and controlled final delivery. Shows state and evidence to reduce delivery mistakes.</p>
+      </div>
+    </article>
+
+    <article class="row">
+      <div class="shot-wrap"><img class="shot" src="residente-incidencias.jpg" alt="Incidencias" /></div>
+      <div class="desc">
+        <h3>7. Incidencias (feed)</h3>
+        <p class="route">Ruta: <code>/app/incidents</code></p>
+        <p><b>ES:</b> Canal para reportes comunitarios con priorizacion por votos y score. Ayuda a ordenar atencion operativa hacia lo mas urgente.</p>
+        <p><b>EN:</b> Community reporting channel with vote/score prioritization, helping operations focus on highest urgency items.</p>
+      </div>
+    </article>
+
+    <article class="row">
+      <div class="shot-wrap"><img class="shot" src="residente-crear-incidencia.jpg" alt="Crear incidencia" /></div>
+      <div class="desc">
+        <h3>8. Crear incidencia (modal)</h3>
+        <p class="route">Sobre: <code>/app/incidents</code></p>
+        <p><b>ES:</b> Captura estructurada de titulo, descripcion, categoria y prioridad para que el reporte entre al flujo comunitario y de guardia sin datos ambiguos.</p>
+        <p><b>EN:</b> Structured capture of title, description, category, and priority so reports enter community and guard workflows with clear data.</p>
+      </div>
+    </article>
+
+    <article class="row">
+      <div class="shot-wrap"><img class="shot" src="residente-estacionamiento-reporte.jpg" alt="Estacionamiento" /></div>
+      <div class="desc">
+        <h3>9. Estacionamiento</h3>
+        <p class="route">Ruta: <code>/app/parking</code></p>
+        <p><b>ES:</b> Reporte directo a guardia sobre cajon asignado del residente, con historial de seguimiento para confirmar atencion y cierre.</p>
+        <p><b>EN:</b> Direct guard report for resident-assigned parking spot, with follow-up history for response and closure confirmation.</p>
+      </div>
+    </article>
+
+    <article class="row">
+      <div class="shot-wrap"><img class="shot" src="residente-perfil-cambio de nombe y contrasena.jpg" alt="Perfil" /></div>
+      <div class="desc">
+        <h3>10. Perfil (nombre y contrasena)</h3>
+        <p class="route">Ruta: <code>/app/profile</code></p>
+        <p><b>ES:</b> Gestion de identidad del usuario: datos visibles, nombre de despliegue y cambio seguro de contrasena para proteger acceso.</p>
+        <p><b>EN:</b> User identity management: visible data, display name, and secure password change to protect account access.</p>
+      </div>
+    </article>
+
+    <article class="row">
+      <div class="shot-wrap"><img class="shot" src="admin-notificaciones.jpg" alt="Admin push" /></div>
+      <div class="desc">
+        <h3>11. Notificaciones (admin)</h3>
+        <p class="route">Ruta: <code>/admin/push</code></p>
+        <p><b>ES:</b> Comunicacion operativa segmentada por usuario, unidad o rol para avisos urgentes y coordinacion en tiempo real.</p>
+        <p><b>EN:</b> Segmented operational communication by user, unit, or role for urgent notices and real-time coordination.</p>
+      </div>
+    </article>
+
+    <article class="row">
+      <div class="shot-wrap"><img class="shot" src="admin-paqueteria.jpg" alt="Admin paqueteria" /></div>
+      <div class="desc">
+        <h3>12. Paqueteria admin (vision global)</h3>
+        <p class="route">Ruta: <code>/admin/packages</code></p>
+        <p><b>ES:</b> Supervisa paqueteria de toda la privada, con filtros de estado para revisar carga operativa y cuellos de botella.</p>
+        <p><b>EN:</b> Supervises packages across the community, with status filters to inspect operational load and bottlenecks.</p>
+      </div>
+    </article>
+
+    <div class="section">2) Modulos base / placeholders (al final)</div>
+
+    <article class="row">
+      <div class="shot-wrap"><img class="shot" src="residente-estado-de-cuenta.jpg" alt="Estado de cuenta" /></div>
+      <div class="desc">
+        <h3>13. Estado de cuenta (residente/comite)</h3>
+        <p class="route">Ruta: <code>/app/finance</code></p>
+        <p><b>ES:</b> Base de finanzas personales/comite; hoy funciona como marco de navegacion para evolucionar a movimientos y transparencia detallada.</p>
+        <p><b>EN:</b> Base for resident/board finance; currently serves as navigation scaffold for future detailed movements and transparency.</p>
+      </div>
+    </article>
+
+    <article class="row">
+      <div class="shot-wrap"><img class="shot" src="reporte-moderacion.jpg" alt="Reporte moderacion" /></div>
+      <div class="desc">
+        <h3>14. Moderacion de reportes</h3>
+        <p class="route">Ruta: <code>/admin/reports</code></p>
+        <p><b>ES:</b> Pantalla de moderacion con estado vacio en la captura; cuando hay reportes, permite eliminar contenido o cerrar reporte.</p>
+        <p><b>EN:</b> Moderation screen showing empty state in this capture; when reports exist, it supports content removal or report closure.</p>
+      </div>
+    </article>
+
+    <article class="row">
+      <div class="shot-wrap"><img class="shot" src="admin-adeudos.jpg" alt="Adeudos admin" /></div>
+      <div class="desc">
+        <h3>15. Adeudos (admin)</h3>
+        <p class="route">Ruta: <code>/admin/debts</code></p>
+        <p><b>ES:</b> Placeholder financiero de morosidad/cobranza. Enfocado a expansion futura de cartera y seguimiento de pago.</p>
+        <p><b>EN:</b> Financial placeholder for delinquency/collections, intended for future receivables and payment-tracking expansion.</p>
+      </div>
+    </article>
+
+    <article class="row">
+      <div class="shot-wrap"><img class="shot" src="admin-finanzas.jpg" alt="Finanzas admin" /></div>
+      <div class="desc">
+        <h3>16. Finanzas (admin)</h3>
+        <p class="route">Ruta: <code>/admin/finance</code></p>
+        <p><b>ES:</b> Placeholder para vista ejecutiva de ingresos/egresos/presupuesto, pendiente de panel financiero completo.</p>
+        <p><b>EN:</b> Placeholder for executive income/expense/budget view, pending full finance panel implementation.</p>
+      </div>
+    </article>
+
+    <article class="row">
+      <div class="shot-wrap"><img class="shot" src="admin-exportaciones.jpg" alt="Exportaciones admin" /></div>
+      <div class="desc">
+        <h3>17. Exportaciones (admin)</h3>
+        <p class="route">Ruta: <code>/admin/exports</code></p>
+        <p><b>ES:</b> Placeholder de salida CSV/PDF para reporteria de operacion/comite; preparado para integracion de export jobs.</p>
+        <p><b>EN:</b> CSV/PDF export placeholder for operations/board reporting; ready for export-job integration.</p>
+      </div>
+    </article>
+
+    <div class="section">3) React Native: beneficios de app instalada (guard-first)</div>
+
+    <article class="row">
+      <div class="shot-wrap">
+        <div class="placeholder">
+          <p><b>RN Advantages</b></p>
+          <ul>
+            <li>Location-aware workflows (consent-based)</li>
+            <li>Vibration/audio by severity</li>
+            <li>SLA timers and escalations for guard</li>
+            <li>Stronger background alert reliability</li>
+          </ul>
+        </div>
+      </div>
+      <div class="desc">
+        <h3>Beneficios ampliados</h3>
+        <p><b>ES:</b> La app RN instalada mejora seguridad y operacion diaria frente a web movil: recibe alertas criticas con mayor confiabilidad, ejecuta patrones de vibracion para distinguir eventos, y permite tablero de guardia con temporizadores SLA en vivo para evitar atrasos.</p>
+        <p><b>EN:</b> Installed RN app improves safety and day-to-day operations versus mobile web: it receives critical alerts more reliably, uses vibration patterns to differentiate event types, and supports live guard SLA timers to reduce delays.</p>
+        <ul>
+          <li><b>Ubicacion / Location:</b> con permiso, habilita contexto operativo y mejor despacho por zona.</li>
+          <li><b>Vibracion:</b> diferentes patrones para SOS, estacionamiento e incidencias.</li>
+          <li><b>SLA/timers:</b> contador por ticket, alertas de vencimiento y escalamiento.</li>
+          <li><b>Guard console:</b> bandeja unificada de alertas con prioridad y accion rapida.</li>
+        </ul>
+      </div>
+    </article>
+  </body>
+</html>

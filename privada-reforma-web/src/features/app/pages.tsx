@@ -13,6 +13,7 @@ import { useDemoData } from '../../shared/state/DemoDataContext'
 import { sortIncidentsForGuard } from '../incidents/logic'
 import { filterMarketplacePosts } from '../marketplace/logic'
 import type { DirectoryEntry, Incident, PetProfile, Poll } from '../../shared/domain/demoData'
+import type { PaymentCharge } from '../finance'
 import {
   buildQrImageUrl,
   buildQrPayload,
@@ -21,6 +22,8 @@ import {
 } from '../access/qrLogic'
 import { isSupabaseConfigured, supabase } from '../../shared/supabase/client'
 import {
+  createReservationCheckoutSession,
+  listMyCharges,
   sendPushTestToUser,
   uploadDirectoryPhoto,
   uploadMaintenancePhoto,
@@ -873,14 +876,43 @@ export function AppVisitsPage() {
 }
 
 export function AppPoolPage() {
-  const { createReservation, getActiveReservations, session } = useDemoData()
+  const { createReservation, getActiveReservations, refreshReservationPaymentStatus, reservations, session } =
+    useDemoData()
+  const location = useLocation()
   const [amenity, setAmenity] = useState('Terraza')
   const [reservationDate, setReservationDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [message, setMessage] = useState('')
   const activeReservations = getActiveReservations()
+  const myPendingReservations = reservations.filter(
+    (reservation) => reservation.status === 'pending_payment' && reservation.createdByUserId === session?.userId
+  )
 
-  function handleReserve() {
-    const result = createReservation({ amenity, reservationDate })
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    const payment = params.get('payment')
+    const reservationId = params.get('reservationId')
+    if (payment !== 'success' && payment !== 'canceled') {
+      return
+    }
+    if (payment === 'canceled') {
+      setMessage('Pago cancelado. Puedes intentar nuevamente desde Finanzas.')
+      return
+    }
+    if (!reservationId) {
+      setMessage('Pago recibido, pero no se encontro reservacion para conciliar.')
+      return
+    }
+    void refreshReservationPaymentStatus(reservationId).then((result) => {
+      setMessage(result.ok ? 'Pago confirmado. Reservacion activada.' : result.error ?? 'No se pudo confirmar el pago.')
+    })
+  }, [location.search, refreshReservationPaymentStatus])
+
+  async function handleReserve() {
+    const result = await createReservation({ amenity, reservationDate })
+    if (result.ok && result.checkoutUrl) {
+      window.location.assign(result.checkoutUrl)
+      return
+    }
     setMessage(result.ok ? 'Reservacion registrada.' : result.error ?? 'No se pudo reservar.')
   }
 
@@ -923,6 +955,21 @@ export function AppPoolPage() {
         </AppButton>
         {message ? <p className="text-xs text-zinc-300">{message}</p> : null}
       </AppCard>
+      {myPendingReservations.length > 0 ? (
+        <AppCard className="space-y-2 border-zinc-800 bg-zinc-950">
+          <p className="text-sm font-semibold text-zinc-100">Pendientes de pago</p>
+          {myPendingReservations.map((reservation) => (
+            <div className="rounded-lg border border-amber-700/50 bg-amber-950/20 px-3 py-2" key={reservation.id}>
+              <p className="text-sm font-semibold text-zinc-100">
+                {reservation.amenity} - {reservation.reservationDate}
+              </p>
+              <p className="text-xs text-zinc-300">
+                Estatus: {reservation.paymentStatus} | Fee: ${reservation.fee.toLocaleString('es-MX')} MXN
+              </p>
+            </div>
+          ))}
+        </AppCard>
+      ) : null}
       <AppCard className="space-y-2 border-zinc-800 bg-zinc-950">
         <p className="text-sm font-semibold text-zinc-100">Reservaciones activas (toda la privada)</p>
         {activeReservations.length === 0 ? (
@@ -4109,12 +4156,277 @@ export function AppMarketplacePage() {
 }
 
 export function AppFinancePage() {
+  const {
+    reservations,
+    session,
+    getAvailableFinancialPeriods,
+    getCommunityFinancialSummary,
+    getUnitAccountStatement,
+    getVisibleFinancialMovements,
+  } = useDemoData()
+  const [charges, setCharges] = useState<PaymentCharge[]>([])
+  const [loading, setLoading] = useState(false)
+  const [message, setMessage] = useState('')
+  const [activeTab, setActiveTab] = useState<'account' | 'transparency'>('account')
+
+  useEffect(() => {
+    if (!session) {
+      return
+    }
+    setLoading(true)
+    void listMyCharges({ role: session.role, unitNumber: session.unitNumber })
+      .then((rows) => setCharges(rows ?? []))
+      .finally(() => setLoading(false))
+  }, [session])
+
+  async function handleRetry(charge: PaymentCharge) {
+    const targetReservation = reservations.find((reservation) => reservation.id === charge.reservationId)
+    if (!targetReservation) {
+      setMessage('No se encontro reservacion asociada para reintento.')
+      return
+    }
+    const idempotencyKey = `retry-${charge.id}-${Date.now()}`
+    const result = await createReservationCheckoutSession({
+      amenity: targetReservation.amenity,
+      reservationDate: targetReservation.reservationDate,
+      reservationId: targetReservation.id,
+      idempotencyKey,
+    })
+    if (!result.ok || !result.checkoutUrl) {
+      setMessage(result.error ?? 'No se pudo abrir checkout.')
+      return
+    }
+    window.location.assign(result.checkoutUrl)
+  }
+
+  const money = (amount: number) => `$${amount.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN`
+  const periods = getAvailableFinancialPeriods()
+  const selectedPeriod = periods[0]
+  const communitySummary = getCommunityFinancialSummary(selectedPeriod ?? undefined)
+  const statement = getUnitAccountStatement(selectedPeriod ? {
+    year: selectedPeriod.year,
+    month: selectedPeriod.month,
+  } : undefined)
+  const visibleMovements = getVisibleFinancialMovements(selectedPeriod ?? undefined)
+  const groupedIncome = visibleMovements
+    .filter((entry) => entry.type === 'income' && entry.visibilityScope === 'community')
+    .reduce<Record<string, number>>((acc, entry) => {
+      acc[entry.category] = (acc[entry.category] ?? 0) + entry.amountMxn
+      return acc
+    }, {})
+  const groupedExpenses = visibleMovements
+    .filter((entry) => entry.type === 'expense' && entry.visibilityScope === 'community')
+    .reduce<Record<string, number>>((acc, entry) => {
+      acc[entry.category] = (acc[entry.category] ?? 0) + entry.amountMxn
+      return acc
+    }, {})
+  const sortedGroupedIncome = Object.entries(groupedIncome).sort((a, b) => b[1] - a[1])
+  const sortedGroupedExpenses = Object.entries(groupedExpenses).sort((a, b) => b[1] - a[1])
+
   return (
-    <ModulePlaceholder
-      role="Residente / Comite"
-      title="Finanzas"
-      description="Estado de cuenta, cuotas y transparencia financiera."
-    />
+    <div className="space-y-3">
+      <ModulePlaceholder
+        role="Residente / Comite"
+        title="Finanzas"
+        description="Estado de cuenta, cuotas y transparencia financiera."
+      />
+      {loading ? (
+        <AppCard className="text-sm text-zinc-300">Cargando cargos...</AppCard>
+      ) : null}
+      {message ? <AppCard className="text-xs text-zinc-300">{message}</AppCard> : null}
+      <AppCard className="space-y-2 border-zinc-800 bg-zinc-950">
+        <div className="grid grid-cols-2 gap-2">
+          <AppButton
+            block
+            onClick={() => setActiveTab('account')}
+            variant={activeTab === 'account' ? 'primary' : 'secondary'}
+          >
+            Mi cuenta
+          </AppButton>
+          <AppButton
+            block
+            onClick={() => setActiveTab('transparency')}
+            variant={activeTab === 'transparency' ? 'primary' : 'secondary'}
+          >
+            Transparencia
+          </AppButton>
+        </div>
+        {selectedPeriod ? (
+          <p className="text-xs uppercase tracking-[0.08em] text-zinc-400">
+            Periodo visible: {String(selectedPeriod.month).padStart(2, '0')}/{selectedPeriod.year}
+          </p>
+        ) : null}
+      </AppCard>
+
+      {activeTab === 'account' ? (
+        <>
+          <div className="grid grid-cols-2 gap-2">
+            <AppCard className="border-zinc-800 bg-zinc-950">
+              <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">Saldo actual</p>
+              <p className="mt-1 text-xl font-bold text-white">{money(statement.balanceMxn)}</p>
+            </AppCard>
+            <AppCard className="border-zinc-800 bg-zinc-950">
+              <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">Vencido</p>
+              <p className="mt-1 text-xl font-bold text-amber-300">{money(statement.overdueMxn)}</p>
+            </AppCard>
+            <AppCard className="border-zinc-800 bg-zinc-950">
+              <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">Por cubrir</p>
+              <p className="mt-1 text-xl font-bold text-white">{money(statement.upcomingMxn)}</p>
+            </AppCard>
+            <AppCard className="border-zinc-800 bg-zinc-950">
+              <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">Proximo vencimiento</p>
+              <p className="mt-1 text-sm font-semibold text-white">{statement.nextDueAt ?? 'Sin fecha'}</p>
+            </AppCard>
+          </div>
+          <AppCard className="space-y-2 border-zinc-800 bg-zinc-950">
+            <p className="text-sm font-semibold text-zinc-100">
+              Estado de cuenta {statement.unitNumber ? `| Unidad ${statement.unitNumber}` : ''}
+            </p>
+            {statement.entries.length === 0 ? (
+              <p className="text-sm text-zinc-400">Sin movimientos para este periodo.</p>
+            ) : (
+              <div className="space-y-2">
+                {statement.entries.map((entry) => (
+                  <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3" key={entry.id}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-zinc-100">
+                          {entry.category} | {entry.entryType}
+                        </p>
+                        <p className="text-xs text-zinc-400">
+                          {new Date(entry.occurredAt).toLocaleDateString()} | Estatus: {entry.status}
+                          {entry.dueAt ? ` | Vence: ${entry.dueAt}` : ''}
+                        </p>
+                      </div>
+                      <p className={`text-sm font-semibold ${entry.direction === 'debit' ? 'text-amber-300' : 'text-emerald-300'}`}>
+                        {entry.direction === 'debit' ? '+' : '-'}{money(entry.amountMxn)}
+                      </p>
+                    </div>
+                    {entry.notes ? <p className="mt-2 text-xs text-zinc-300">{entry.notes}</p> : null}
+                  </div>
+                ))}
+              </div>
+            )}
+          </AppCard>
+        </>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-2">
+            <AppCard className="border-zinc-800 bg-zinc-950">
+              <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">Saldo inicial</p>
+              <p className="mt-1 text-lg font-bold text-white">{money(communitySummary.openingBalanceMxn)}</p>
+            </AppCard>
+            <AppCard className="border-zinc-800 bg-zinc-950">
+              <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">Saldo final</p>
+              <p className="mt-1 text-lg font-bold text-white">{money(communitySummary.closingBalanceMxn)}</p>
+            </AppCard>
+            <AppCard className="border-zinc-800 bg-zinc-950">
+              <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">Ingresos</p>
+              <p className="mt-1 text-lg font-bold text-emerald-300">{money(communitySummary.incomeTotalMxn)}</p>
+            </AppCard>
+            <AppCard className="border-zinc-800 bg-zinc-950">
+              <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">Gastos</p>
+              <p className="mt-1 text-lg font-bold text-amber-300">{money(communitySummary.expenseTotalMxn)}</p>
+            </AppCard>
+          </div>
+          <AppCard className="space-y-3 border-zinc-800 bg-zinc-950">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-semibold text-zinc-100">Reporte del periodo</p>
+              <span className="rounded-full border border-zinc-700 px-2 py-1 text-[10px] uppercase tracking-[0.08em] text-zinc-300">
+                Neto {money(communitySummary.netMxn)}
+              </span>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-3">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-zinc-400">Ingresos</p>
+                {sortedGroupedIncome.length === 0 ? (
+                  <p className="text-sm text-zinc-400">Sin ingresos publicados.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {sortedGroupedIncome.map(([category, amount]) => (
+                      <div className="flex items-center justify-between gap-3 text-sm" key={category}>
+                        <span className="text-zinc-200">{category}</span>
+                        <span className="font-semibold text-emerald-300">{money(amount)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-3">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-zinc-400">Egresos</p>
+                {sortedGroupedExpenses.length === 0 ? (
+                  <p className="text-sm text-zinc-400">Sin gastos publicados.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {sortedGroupedExpenses.map(([category, amount]) => (
+                      <div className="flex items-center justify-between gap-3 text-sm" key={category}>
+                        <span className="text-zinc-200">{category}</span>
+                        <span className="font-semibold text-amber-300">{money(amount)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-400">Detalle de movimientos</p>
+              {visibleMovements.filter((entry) => entry.visibilityScope === 'community').map((entry) => (
+                <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3" key={entry.id}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-zinc-100">{entry.category}</p>
+                      <p className="text-xs text-zinc-400">
+                        {new Date(entry.occurredAt).toLocaleDateString()} | {entry.vendorOrSource ?? 'Sin fuente'}
+                      </p>
+                    </div>
+                    <p className={`text-sm font-semibold ${entry.type === 'income' ? 'text-emerald-300' : 'text-amber-300'}`}>
+                      {entry.type === 'income' ? '+' : '-'}{money(entry.amountMxn)}
+                    </p>
+                  </div>
+                  <p className="mt-2 text-xs text-zinc-300">{entry.description}</p>
+                  {entry.evidenceUrl ? (
+                    <a className="mt-2 inline-flex text-xs font-semibold text-zinc-200 underline" href={entry.evidenceUrl} rel="noreferrer" target="_blank">
+                      Ver comprobante
+                    </a>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </AppCard>
+        </>
+      )}
+
+      <AppCard className="space-y-2 border-zinc-800 bg-zinc-950">
+        <p className="text-sm font-semibold text-zinc-100">Pagos de reservaciones</p>
+        {charges.length === 0 ? (
+          <p className="text-sm text-zinc-400">Sin cargos registrados.</p>
+        ) : (
+          <div className="space-y-2">
+            {charges.map((charge) => (
+              <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3" key={charge.id}>
+                <p className="text-sm font-semibold text-zinc-100">
+                  {charge.chargeType} | {money(charge.amountMxn)}
+                </p>
+                <p className="text-xs text-zinc-400">
+                  Estatus: {charge.status} | Unidad: {charge.unitNumber}
+                </p>
+                <p className="text-xs text-zinc-500">{new Date(charge.createdAt).toLocaleString()}</p>
+                {charge.status !== 'paid' && charge.status !== 'refunded' ? (
+                  <AppButton
+                    block
+                    className="mt-2"
+                    onClick={() => void handleRetry(charge)}
+                    variant="secondary"
+                  >
+                    Reintentar pago
+                  </AppButton>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        )}
+      </AppCard>
+    </div>
   )
 }
 
