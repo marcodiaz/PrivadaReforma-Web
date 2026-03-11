@@ -5,7 +5,8 @@ import { useLanguage } from '../i18n/LanguageContext'
 
 export function GlobalStatus() {
   const { tx } = useLanguage()
-  const { isOnline, syncToast, dismissSyncToast } = useDemoData()
+  const { isOnline, syncToast, dismissSyncToast, offlineQueue } = useDemoData()
+  const pendingOfflineEvents = offlineQueue.filter((event) => !event.synced).length
 
   useEffect(() => {
     if (!syncToast) {
@@ -22,6 +23,14 @@ export function GlobalStatus() {
           {tx(
             'Modo offline activo: operaciones de guardia se encolan localmente.',
             'Offline mode active: guard operations are queued locally.',
+          )}
+        </div>
+      ) : null}
+      {isOnline && pendingOfflineEvents > 0 ? (
+        <div className="fixed left-1/2 top-3 z-50 -translate-x-1/2 rounded-full bg-amber-500 px-4 py-2 text-xs font-semibold text-amber-950 shadow-lg">
+          {tx(
+            `${pendingOfflineEvents} eventos siguen pendientes de sincronizar.`,
+            `${pendingOfflineEvents} events are still pending sync.`,
           )}
         </div>
       ) : null}

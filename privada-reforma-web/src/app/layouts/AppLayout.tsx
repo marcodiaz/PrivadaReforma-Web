@@ -2,6 +2,15 @@ import { useEffect, useState } from 'react'
 import { NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useDemoData } from '../../shared/state/DemoDataContext'
 import { getRoleLandingPath } from '../../shared/domain/auth'
+import {
+  canAccessAdminArea,
+  canAccessResidentArea,
+} from '../../shared/domain/capabilities'
+import {
+  getLifecycleBadgeClass,
+  getLifecycleLabel,
+  getModuleStatusForPath,
+} from '../../shared/domain/moduleStatus'
 import { useLanguage } from '../../shared/i18n/LanguageContext'
 
 type NavItem = {
@@ -9,6 +18,7 @@ type NavItem = {
   labelEs: string
   labelEn: string
   kind?: 'packages' | 'reports'
+  moduleId?: string
 }
 
 type AdminSection = 'ops' | 'moderation' | 'finance'
@@ -16,9 +26,9 @@ const ADMIN_SECTION_STORAGE_KEY = 'admin_nav_section_v1'
 
 const residentNav: NavItem[] = [
   { to: '/app/home', labelEs: 'Inicio', labelEn: 'Home' },
-  { to: '/app/visits', labelEs: 'Visitas', labelEn: 'Visits' },
-  { to: '/app/packages', labelEs: 'Paquetes', labelEn: 'Packages', kind: 'packages' },
-  { to: '/app/incidents', labelEs: 'Incidencias', labelEn: 'Incidents' },
+  { to: '/app/visits', labelEs: 'Visitas', labelEn: 'Visits', moduleId: 'visits' },
+  { to: '/app/packages', labelEs: 'Paquetes', labelEn: 'Packages', kind: 'packages', moduleId: 'packages' },
+  { to: '/app/incidents', labelEs: 'Incidencias', labelEn: 'Incidents', moduleId: 'incidents' },
   { to: '/app/profile', labelEs: 'Perfil', labelEn: 'Profile' },
 ]
 
@@ -36,11 +46,11 @@ const adminNavBySection: Record<AdminSection, NavItem[]> = {
   ],
   moderation: [
     { to: '/admin/reports', labelEs: 'Reportes', labelEn: 'Reports', kind: 'reports' },
-    { to: '/admin/packages', labelEs: 'Paquetes', labelEn: 'Packages', kind: 'packages' },
+    { to: '/admin/packages', labelEs: 'Paquetes', labelEn: 'Packages', kind: 'packages', moduleId: 'packages' },
   ],
   finance: [
     { to: '/admin/debts', labelEs: 'Adeudos', labelEn: 'Debts' },
-    { to: '/admin/finance', labelEs: 'Finanzas', labelEn: 'Finance' },
+    { to: '/admin/finance', labelEs: 'Finanzas', labelEn: 'Finance', moduleId: 'finance' },
     { to: '/admin/exports', labelEs: 'Reportes', labelEn: 'Exports' },
   ],
 }
@@ -109,9 +119,10 @@ export function AppLayout() {
   const isAdmin = pathname.startsWith('/admin')
   const activeAdminSection = resolveAdminSection(pathname)
   const navItems = isAdmin ? adminNavBySection[activeAdminSection] : residentNav
+  const activeModule = getModuleStatusForPath(pathname)
   const heldPackages = getHeldPackageCountForUser()
   const openReports = moderationReports.filter((report) => report.status === 'open').length
-  const shouldShowTopPackages = ['resident', 'tenant', 'board'].includes(session?.role ?? '')
+  const shouldShowTopPackages = canAccessResidentArea(session?.role) && session?.role !== 'admin'
   const navItemWidth = isAdmin ? 'min-w-[112px]' : 'min-w-[92px]'
 
   useEffect(() => {
@@ -141,8 +152,8 @@ export function AppLayout() {
   }
 
   const expectedIsAdminArea = pathname.startsWith('/admin')
-  const canUseAdminArea = ['admin', 'board'].includes(session.role)
-  const canUseAppArea = ['resident', 'tenant', 'board', 'admin'].includes(session.role)
+  const canUseAdminArea = canAccessAdminArea(session.role)
+  const canUseAppArea = canAccessResidentArea(session.role)
   if (expectedIsAdminArea && !canUseAdminArea) {
     return <Navigate to={getRoleLandingPath(session.role)} replace />
   }
@@ -161,6 +172,15 @@ export function AppLayout() {
             <h1 className="text-base font-semibold text-[var(--color-text)]">
               {resolveTitle(pathname, { adminOperation: t('adminOperation'), residence: t('residence') })}
             </h1>
+            {activeModule ? (
+              <p className="mt-1">
+                <span
+                  className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] ${getLifecycleBadgeClass(activeModule.lifecycle)}`}
+                >
+                  {getLifecycleLabel(activeModule.lifecycle)}
+                </span>
+              </p>
+            ) : null}
             {shouldShowTopPackages ? (
               <p className="mt-1 text-xs font-semibold text-[var(--color-text-muted)]">
                 {t('packagesCount')}: {heldPackages}
@@ -231,6 +251,11 @@ export function AppLayout() {
               >
                 <span className="inline-flex items-center justify-center gap-1 whitespace-nowrap">
                   <span>{tx(item.labelEs, item.labelEn)}</span>
+                  {item.moduleId && getModuleStatusForPath(item.to)?.lifecycle === 'beta' ? (
+                    <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-amber-200">
+                      Beta
+                    </span>
+                  ) : null}
                 </span>
                 {item.kind === 'packages' && heldPackages > 0 ? (
                   <span className="absolute -right-1 -top-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-zinc-900 bg-white px-1 text-[10px] font-black leading-none text-zinc-900 shadow-[0_0_14px_rgba(255,255,255,0.85)]">

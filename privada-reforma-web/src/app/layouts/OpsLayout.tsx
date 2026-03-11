@@ -1,15 +1,21 @@
 import { useState } from 'react'
-import { NavLink, Navigate, Outlet, useNavigate } from 'react-router-dom'
+import { NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useDemoData } from '../../shared/state/DemoDataContext'
 import { getRoleLandingPath } from '../../shared/domain/auth'
+import { canAccessGuardArea } from '../../shared/domain/capabilities'
+import {
+  getLifecycleBadgeClass,
+  getLifecycleLabel,
+  getModuleStatusForPath,
+} from '../../shared/domain/moduleStatus'
 
 const opsNav = [
-  { to: '/guard/scan', label: 'Escanear' },
-  { to: '/guard/packages', label: 'Paquetes' },
-  { to: '/guard/parking', label: 'Parking' },
-  { to: '/guard/logbook', label: 'Bitacora' },
-  { to: '/guard/incidents', label: 'Incidencia' },
-  { to: '/guard/offline', label: 'Offline' },
+  { to: '/guard/scan', label: 'Escanear', moduleId: 'guard' },
+  { to: '/guard/packages', label: 'Paquetes', moduleId: 'packages' },
+  { to: '/guard/parking', label: 'Parking', moduleId: 'parking' },
+  { to: '/guard/logbook', label: 'Bitacora', moduleId: 'guard' },
+  { to: '/guard/incidents', label: 'Incidencia', moduleId: 'incidents' },
+  { to: '/guard/offline', label: 'Offline', moduleId: 'guard' },
 ]
 
 function AuthLoadingShell() {
@@ -25,6 +31,7 @@ function AuthLoadingShell() {
 export function OpsLayout() {
   const { authLoading, getHeldPackageCountGlobal, isOnline, logout, parkingReports, session } =
     useDemoData()
+  const { pathname } = useLocation()
   const navigate = useNavigate()
   const [signingOut, setSigningOut] = useState(false)
 
@@ -36,12 +43,13 @@ export function OpsLayout() {
     return <Navigate to="/login" replace />
   }
 
-  if (session.role !== 'guard') {
+  if (!canAccessGuardArea(session.role)) {
     return <Navigate to={getRoleLandingPath(session.role)} replace />
   }
 
   const heldPackages = getHeldPackageCountGlobal()
   const pendingParkingReports = parkingReports.filter((report) => report.status === 'open').length
+  const activeModule = getModuleStatusForPath(pathname)
 
   return (
     <div className="min-h-dvh bg-zinc-950 text-white flex flex-col">
@@ -52,6 +60,15 @@ export function OpsLayout() {
               Operacion de guardia
             </p>
             <h1 className="text-base font-semibold">Control de acceso</h1>
+            {activeModule ? (
+              <p className="mt-1">
+                <span
+                  className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] ${getLifecycleBadgeClass(activeModule.lifecycle)}`}
+                >
+                  {getLifecycleLabel(activeModule.lifecycle)}
+                </span>
+              </p>
+            ) : null}
             <p className="text-xs text-zinc-400">Paquetes en resguardo: {heldPackages}</p>
             <p className="text-xs text-zinc-400">
               Reportes de parking pendientes: {pendingParkingReports}

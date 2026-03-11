@@ -1,3 +1,4 @@
+import { trackOperationalMetric } from '../ops/operational'
 import { supabase } from './client'
 
 export type ManagedUserRole =
@@ -101,6 +102,13 @@ export async function adminCreateOrInviteUser(
       }
     }
 
+    trackOperationalMetric({
+      type: 'edge_function_error',
+      metadata: {
+        operation: 'admin-create-user',
+        reason: detailedError,
+      },
+    })
     return { ok: false, error: detailedError }
   }
 
@@ -147,6 +155,13 @@ export async function adminSendTargetedPush(input: AdminPushInput): Promise<Admi
   })
 
   if (error) {
+    trackOperationalMetric({
+      type: 'edge_function_error',
+      metadata: {
+        operation: 'admin-send-push',
+        reason: error.message,
+      },
+    })
     return { ok: false, error: error.message }
   }
 

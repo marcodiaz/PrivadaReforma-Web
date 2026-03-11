@@ -1,6 +1,19 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useDemoData } from '../../shared/state/DemoDataContext'
 import {
+  canManageAdminUsers,
+  canManagePush,
+  canModerateCommunity,
+  canViewOperationalDashboard,
+} from '../../shared/domain/capabilities'
+import {
+  getLifecycleBadgeClass,
+  getLifecycleLabel,
+  getModulesForRole,
+} from '../../shared/domain/moduleStatus'
+import { buildAdminDashboardSnapshot } from '../../shared/ops/dashboard'
+import { useOperationalMetrics } from '../../shared/ops/operational'
+import {
   adminCreateOrInviteUser,
   adminSendTargetedPush,
   fetchManagedProfiles,
@@ -14,12 +27,126 @@ import type { PaymentCharge } from '../finance'
 export { AdminPackagesPage } from '../packages/pages'
 
 export function AdminDashboardPage() {
+  const {
+    incidents,
+    parkingReports,
+    packages,
+    qrPasses,
+    session,
+    unitAccountEntries,
+  } = useDemoData()
+  const operationalMetrics = useOperationalMetrics(30)
+  const availableModules = getModulesForRole(session?.role)
+  const snapshot = buildAdminDashboardSnapshot({
+    qrPasses,
+    packages,
+    incidents,
+    parkingReports,
+    unitAccountEntries,
+    moduleStatuses: availableModules,
+    operationalEvents: operationalMetrics.events,
+  })
+
+  if (!canViewOperationalDashboard(session?.role)) {
+    return (
+      <AppCard className="text-sm text-[var(--color-text-muted)]">
+        Solo administracion/comite puede ver el dashboard operativo.
+      </AppCard>
+    )
+  }
+
+  const statCards = [
+    { label: 'Visitas activas hoy', value: snapshot.activeVisitsToday },
+    { label: 'Paquetes pendientes', value: snapshot.heldPackages },
+    { label: 'Incidencias abiertas', value: snapshot.openIncidents },
+    { label: 'SLA vencido', value: snapshot.overdueIncidents },
+    { label: 'Parking abierto', value: snapshot.openParkingReports },
+    { label: 'Adeudos vencidos', value: snapshot.overdueUnitAccounts },
+  ]
+
   return (
-    <ModulePlaceholder
-      role="Administrador / Comite"
-      title="Dashboard"
-      description="Vista ejecutiva con KPIs operativos y financieros."
-    />
+    <div className="space-y-3">
+      <ModulePlaceholder
+        role="Administrador / Comite"
+        title="Dashboard"
+        description="Panel operativo con KPIs reales, alertas y estado de modulos."
+      />
+      <div className="grid grid-cols-2 gap-2">
+        {statCards.map((card) => (
+          <AppCard className="space-y-1" key={card.label}>
+            <p className="text-[11px] uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
+              {card.label}
+            </p>
+            <p className="text-2xl font-semibold text-[var(--color-text)]">{card.value}</p>
+          </AppCard>
+        ))}
+      </div>
+      <AppCard className="space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm font-semibold text-[var(--color-text)]">Operational inbox</p>
+          <span className="text-xs text-[var(--color-text-muted)]">Ultimos 30 dias</span>
+        </div>
+        {snapshot.inbox.length === 0 ? (
+          <p className="text-sm text-[var(--color-text-muted)]">Sin alertas operativas activas.</p>
+        ) : (
+          snapshot.inbox.map((item) => (
+            <div
+              className={`rounded-xl border px-3 py-2 ${
+                item.severity === 'high'
+                  ? 'border-red-500/40 bg-red-500/10'
+                  : item.severity === 'medium'
+                    ? 'border-amber-500/40 bg-amber-500/10'
+                    : 'border-[var(--color-border)] bg-[var(--color-surface-muted)]'
+              }`}
+              key={item.id}
+            >
+              <p className="text-sm font-semibold text-[var(--color-text)]">{item.title}</p>
+              <p className="text-xs text-[var(--color-text-muted)]">{item.detail}</p>
+            </div>
+          ))
+        )}
+      </AppCard>
+      <AppCard className="space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm font-semibold text-[var(--color-text)]">Confiabilidad operativa</p>
+          <span className="text-xs text-[var(--color-text-muted)]">
+            QR rechazo {(operationalMetrics.rejectionRate * 100).toFixed(0)}%
+          </span>
+        </div>
+        <div className="grid grid-cols-2 gap-2 text-sm text-[var(--color-text)]">
+          <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2">
+            Sync failed: {operationalMetrics.counts.sync_failed}
+          </div>
+          <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2">
+            Edge fn errors: {operationalMetrics.counts.edge_function_error}
+          </div>
+          <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2">
+            Upload errors: {operationalMetrics.counts.upload_error}
+          </div>
+          <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2">
+            Offline queue: {operationalMetrics.counts.offline_queue_enqueued}
+          </div>
+        </div>
+      </AppCard>
+      <AppCard className="space-y-2">
+        <p className="text-sm font-semibold text-[var(--color-text)]">Estado de modulos</p>
+        <div className="space-y-2">
+          {availableModules.map((module) => (
+            <div className="rounded-xl border border-[var(--color-border)] px-3 py-2" key={module.id}>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-semibold text-[var(--color-text)]">{module.name}</p>
+                <span
+                  className={`rounded-full border px-2 py-1 text-[10px] font-semibold uppercase ${getLifecycleBadgeClass(module.lifecycle)}`}
+                >
+                  {getLifecycleLabel(module.lifecycle)}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-[var(--color-text-muted)]">{module.summary}</p>
+            </div>
+          ))}
+        </div>
+      </AppCard>
+    </div>
   )
 }
 
@@ -93,7 +220,7 @@ export function AdminUsersPage() {
     setPassword('')
   }
 
-  if (!session || session.role !== 'admin') {
+  if (!canManageAdminUsers(session?.role)) {
     return (
       <AppCard className="text-sm text-[var(--color-text-muted)]">
         Solo administradores pueden crear o invitar usuarios.
@@ -230,7 +357,7 @@ export function AdminPushPage() {
   )
 
   useEffect(() => {
-    if (!session || session.role !== 'admin') {
+    if (!canManagePush(session?.role)) {
       return
     }
     setLoadingProfiles(true)
@@ -289,7 +416,7 @@ export function AdminPushPage() {
     setBody('')
   }
 
-  if (!session || session.role !== 'admin') {
+  if (!canManagePush(session?.role)) {
     return (
       <AppCard className="text-sm text-[var(--color-text-muted)]">
         Solo administradores pueden enviar notificaciones push masivas.
@@ -472,7 +599,7 @@ export function AdminReportsPage() {
     return marketPost ? `Marketplace: ${marketPost.title}` : 'Publicacion marketplace eliminada/no encontrada'
   }
 
-  if (!session || !['admin', 'board'].includes(session.role)) {
+  if (!canModerateCommunity(session?.role)) {
     return (
       <AppCard className="text-sm text-[var(--color-text-muted)]">
         Solo administradores/comite pueden moderar reportes.

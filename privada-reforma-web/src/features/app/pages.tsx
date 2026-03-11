@@ -41,6 +41,9 @@ import {
 import { adminCreateOrInviteUser } from '../../shared/supabase/admin'
 import { useLanguage } from '../../shared/i18n/LanguageContext'
 import { useTheme } from '../../shared/theme/ThemeContext'
+import { buildUnitTaskCenter } from '../../shared/ops/dashboard'
+import { trackOperationalMetric } from '../../shared/ops/operational'
+import { getModuleStatusById } from '../../shared/domain/moduleStatus'
 export { AppPackagesPage } from '../packages/pages'
 
 function priorityBadge(priority: Incident['priority']) {
@@ -309,12 +312,16 @@ export function AppHomePage() {
     incidents,
     qrPasses,
     auditLog,
+    packages,
     parkingReports,
     polls,
     petPosts,
     maintenanceReports,
     marketplacePosts,
     directoryEntries,
+    reservations,
+    unitAccountEntries,
+    financialMovements,
     remoteDataLoading,
     session,
   } =
@@ -351,38 +358,48 @@ export function AppHomePage() {
   const activeMarketPosts = marketplacePosts.filter((post) => post.status === 'active').length
   const activeDirectoryEntries = directoryEntries.length
   const pendingAuditItems = auditLog.length
+  const taskCenter = buildUnitTaskCenter({
+    session,
+    qrPasses,
+    packages,
+    reservations,
+    unitAccountEntries,
+    parkingReports,
+    incidents,
+    financialMovements,
+  })
   const profileTitle = `${session?.fullName ?? tx('Usuario', 'User')} - ${session?.unitNumber ?? tx('Sin departamento', 'No unit')}`
   const groupedMenu: Record<
     'community' | 'notices' | 'ops' | 'reports',
-    Array<{ label: string; icon: string; action: () => void }>
+    Array<{ label: string; icon: string; action: () => void; moduleId?: string }>
   > = {
     community: [
-      { label: tx('Visitas', 'Visits'), icon: 'VI', action: () => navigate('/app/visits') },
-      { label: tx('Mascotas', 'Pets'), icon: 'MA', action: () => navigate('/app/pets') },
-      { label: 'Marketplace', icon: 'MK', action: () => navigate('/app/marketplace') },
-      { label: tx('Directorio', 'Directory'), icon: 'DI', action: () => navigate('/app/directory') },
-      { label: tx('Paquetes', 'Packages'), icon: 'PA', action: () => navigate('/app/packages') },
+      { label: tx('Visitas', 'Visits'), icon: 'VI', action: () => navigate('/app/visits'), moduleId: 'visits' },
+      { label: tx('Mascotas', 'Pets'), icon: 'MA', action: () => navigate('/app/pets'), moduleId: 'pets' },
+      { label: 'Marketplace', icon: 'MK', action: () => navigate('/app/marketplace'), moduleId: 'marketplace' },
+      { label: tx('Directorio', 'Directory'), icon: 'DI', action: () => navigate('/app/directory'), moduleId: 'directory' },
+      { label: tx('Paquetes', 'Packages'), icon: 'PA', action: () => navigate('/app/packages'), moduleId: 'packages' },
     ],
     notices: [
       { label: tx('Comunicados', 'Announcements'), icon: 'CO', action: () => navigate('/app/announcements') },
-      { label: tx('Votaciones', 'Polls'), icon: 'VO', action: () => navigate('/app/polls') },
-      { label: tx('Incidencias', 'Incidents'), icon: 'IN', action: () => navigate('/app/incidents') },
+      { label: tx('Votaciones', 'Polls'), icon: 'VO', action: () => navigate('/app/polls'), moduleId: 'polls' },
+      { label: tx('Incidencias', 'Incidents'), icon: 'IN', action: () => navigate('/app/incidents'), moduleId: 'incidents' },
     ],
     ops: [
       { label: tx('Reservaciones', 'Reservations'), icon: 'RE', action: () => navigate('/app/reservations') },
-      { label: tx('Estacionamiento', 'Parking'), icon: 'ES', action: () => navigate('/app/parking') },
+      { label: tx('Estacionamiento', 'Parking'), icon: 'ES', action: () => navigate('/app/parking'), moduleId: 'parking' },
       { label: tx('Rep. Manto', 'Maint. Report'), icon: 'RM', action: () => navigate('/app/maintenance') },
-      { label: tx('Estado de Cuenta', 'Account Statement'), icon: 'EC', action: () => navigate('/app/finance') },
+      { label: tx('Estado de Cuenta', 'Account Statement'), icon: 'EC', action: () => navigate('/app/finance'), moduleId: 'finance' },
       { label: tx('Perfil', 'Profile'), icon: 'PE', action: () => navigate('/app/profile') },
       ...(session?.role === 'resident'
         ? [{ label: tx('Agregar Inquilino', 'Add Tenant'), icon: 'TI', action: () => navigate('/app/add-tenant') }]
         : []),
     ],
     reports: [
-      { label: tx('Incidencias', 'Incidents'), icon: 'IN', action: () => navigate('/app/incidents') },
-      { label: tx('Estacionamiento', 'Parking'), icon: 'ES', action: () => navigate('/app/parking') },
+      { label: tx('Incidencias', 'Incidents'), icon: 'IN', action: () => navigate('/app/incidents'), moduleId: 'incidents' },
+      { label: tx('Estacionamiento', 'Parking'), icon: 'ES', action: () => navigate('/app/parking'), moduleId: 'parking' },
       { label: tx('Rep. Manto', 'Maint. Report'), icon: 'RM', action: () => navigate('/app/maintenance') },
-      { label: tx('Votaciones', 'Polls'), icon: 'VO', action: () => navigate('/app/polls') },
+      { label: tx('Votaciones', 'Polls'), icon: 'VO', action: () => navigate('/app/polls'), moduleId: 'polls' },
     ],
   }
   const menuItems = groupedMenu[activeGroup]
@@ -452,6 +469,36 @@ export function AppHomePage() {
         </button>
       </div>
       <AppCard className="rounded-xl border-zinc-800 bg-zinc-950 p-3">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm font-semibold text-white">
+            {tx('Centro de tareas por unidad', 'Unit task center')}
+          </p>
+          <span className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">
+            {session?.unitNumber ?? tx('Sin unidad', 'No unit')}
+          </span>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-zinc-300">
+          <div className="rounded-xl border border-zinc-800 bg-black/30 px-3 py-2">
+            QR activos: {taskCenter.activeQr}
+          </div>
+          <div className="rounded-xl border border-zinc-800 bg-black/30 px-3 py-2">
+            Reservaciones: {taskCenter.activeReservations}
+          </div>
+          <div className="rounded-xl border border-zinc-800 bg-black/30 px-3 py-2">
+            Parking abierto: {taskCenter.openParkingReports}
+          </div>
+          <div className="rounded-xl border border-zinc-800 bg-black/30 px-3 py-2">
+            Incidencias abiertas: {taskCenter.openIncidents}
+          </div>
+          <div className="rounded-xl border border-zinc-800 bg-black/30 px-3 py-2">
+            Adeudos vencidos: {taskCenter.overdueBalanceItems}
+          </div>
+          <div className="rounded-xl border border-zinc-800 bg-black/30 px-3 py-2">
+            Ultimo movimiento: {taskCenter.latestMovementAt ? new Date(taskCenter.latestMovementAt).toLocaleDateString() : tx('Sin datos', 'No data')}
+          </div>
+        </div>
+      </AppCard>
+      <AppCard className="rounded-xl border-zinc-800 bg-zinc-950 p-3">
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           <AppButton block onClick={() => setActiveGroup('community')} variant={activeGroup === 'community' ? 'primary' : 'secondary'}>
             {tx('Comunidad', 'Community')}
@@ -471,9 +518,16 @@ export function AppHomePage() {
         {menuItems.map((item) => (
           <button key={item.label} onClick={item.action} type="button">
             <AppCard className="flex min-h-28 flex-col items-center justify-center gap-3 rounded-xl border-zinc-800 bg-zinc-950 transition hover:-translate-y-0.5 hover:border-zinc-500">
-              <span className="inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-zinc-700 bg-[linear-gradient(180deg,_#2a2a2a,_#1a1a1a)] text-xs font-bold tracking-[0.14em] text-zinc-100">
-                {item.icon}
-              </span>
+              <div className="relative">
+                <span className="inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-zinc-700 bg-[linear-gradient(180deg,_#2a2a2a,_#1a1a1a)] text-xs font-bold tracking-[0.14em] text-zinc-100">
+                  {item.icon}
+                </span>
+                {getModuleStatusById(item.moduleId)?.lifecycle === 'beta' ? (
+                  <span className="absolute -right-3 -top-2 rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-amber-200">
+                    Beta
+                  </span>
+                ) : null}
+              </div>
               <span className="text-center text-sm font-medium tracking-[-0.01em] text-slate-100">
                 {item.label}
               </span>
@@ -1036,6 +1090,12 @@ export function AppParkingPage() {
       setPhotoName(file.name)
       setPhotoUploadProgress(100)
     } catch (error) {
+      trackOperationalMetric({
+        type: 'upload_error',
+        userId: session?.userId,
+        unitNumber: myUnit,
+        metadata: { flow: 'parking_report' },
+      })
       setPhotoUploadProgress(0)
       setMessage(error instanceof Error ? error.message : 'No se pudo cargar la foto.')
     } finally {

@@ -79,6 +79,7 @@ import {
   unitAccountEntryTypeSchema,
 } from '../domain/demoData'
 import { getItem, migrateIfNeeded, removeItem, setItem, storageKeys } from '../storage/storage'
+import { canManageFinance } from '../domain/capabilities'
 import {
   createReservationCheckoutSession,
   createFinancialMovementInSupabase,
@@ -152,6 +153,7 @@ import {
   markPackageReadyTransition,
   registerPackageTransition,
 } from '../../features/packages/logic'
+import { trackOperationalMetric } from '../ops/operational'
 
 type CreateQrInput = {
   label: string
@@ -520,7 +522,7 @@ function getLatestFinancialPeriod(
 }
 
 function isFinanceManager(role?: AppSession['role']) {
-  return role === 'admin' || role === 'board'
+  return canManageFinance(role)
 }
 
 export function DemoDataProvider({ children }: PropsWithChildren) {
@@ -1042,6 +1044,12 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       synced: false,
     }
     setOfflineQueue((previous) => enqueueOfflineEvent(previous, event))
+    trackOperationalMetric({
+      type: 'sync_failed',
+      userId: session.userId,
+      unitNumber: session.unitNumber,
+      metadata: { domainEventType: type },
+    })
   }
 
   function getSessionUnitNumbers(targetSession?: AppSession | null) {
@@ -1086,6 +1094,12 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       guardActions: [],
     }
     setIncidents((previous) => [nextIncident, ...previous])
+    trackOperationalMetric({
+      type: 'incident_created',
+      userId: session.userId,
+      unitNumber: session.unitNumber,
+      metadata: { priority: input.priority, category: input.category },
+    })
 
     if (isSupabaseConfigured) {
       if (!isOnline) {
@@ -1273,6 +1287,12 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     setIncidents((previous) =>
       previous.map((incident) => (incident.id === incidentId ? updatedIncident : incident))
     )
+    trackOperationalMetric({
+      type: 'incident_resolved',
+      userId: session?.userId,
+      unitNumber: updatedIncident.unitNumber,
+      metadata: { priority: updatedIncident.priority },
+    })
 
     if (isSupabaseConfigured) {
       if (!isOnline) {
@@ -1379,6 +1399,12 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     }
 
     setQrPasses((previous) => [pass, ...previous])
+    trackOperationalMetric({
+      type: 'qr_created',
+      userId: session.userId,
+      unitNumber: session.unitNumber,
+      metadata: { type: pass.type },
+    })
     return { ok: true }
   }
 
@@ -2528,6 +2554,12 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       createdByUserId: session.userId,
     }
     setParkingReports((previous) => [report, ...previous])
+    trackOperationalMetric({
+      type: 'parking_report_created',
+      userId: session.userId,
+      unitNumber: session.unitNumber,
+      metadata: { reportType: input.reportType },
+    })
     if (isSupabaseConfigured && isOnline) {
       void createParkingReportInSupabase(report)
     }
@@ -2562,9 +2594,16 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     if (!updatedReport) {
       return { ok: false, error: 'Reporte no encontrado.' }
     }
+    const resolvedReport = updatedReport as ParkingReport
     if (isSupabaseConfigured && isOnline) {
-      void updateParkingReportInSupabase(updatedReport)
+      void updateParkingReportInSupabase(resolvedReport)
     }
+    trackOperationalMetric({
+      type: 'parking_report_resolved',
+      userId: session.userId,
+      unitNumber: resolvedReport.unitNumber,
+      metadata: { status: resolvedReport.status },
+    })
     return { ok: true }
   }
 
@@ -2597,6 +2636,11 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       synced: false,
     }
     setOfflineQueue((previous) => enqueueOfflineEvent(previous, event))
+    trackOperationalMetric({
+      type: 'offline_queue_enqueued',
+      userId: session.userId,
+      metadata: { queueType: 'manual_qr_validation', result: payload.result },
+    })
   }
 
   function handleGuardScanDecision(input: {
@@ -2624,6 +2668,11 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     )
     const targetDisplayCode = `${normalizedDepartment}-${normalizedSequence}`
     if (matches.length === 0) {
+      trackOperationalMetric({
+        type: 'qr_scan_rejected',
+        userId: actor,
+        metadata: { reason: 'not_found' },
+      })
       logAudit({
         actorUserId: actor,
         action: 'qr_scan_manual',
@@ -2634,6 +2683,11 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       return { ok: false, message: 'Codigo no encontrado.' }
     }
     if (matches.length > 1) {
+      trackOperationalMetric({
+        type: 'qr_scan_rejected',
+        userId: actor,
+        metadata: { reason: 'collision' },
+      })
       logAudit({
         actorUserId: actor,
         action: 'qr_scan_manual',
@@ -2654,6 +2708,12 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
 
     const effectiveStatus = getEffectiveQrStatus(pass, new Date())
     if (effectiveStatus !== 'active') {
+      trackOperationalMetric({
+        type: 'qr_scan_rejected',
+        userId: actor,
+        unitNumber: pass.unitId,
+        metadata: { reason: effectiveStatus },
+      })
       logAudit({
         actorUserId: actor,
         action: 'qr_scan_manual',
@@ -2665,6 +2725,12 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     }
 
     if (input.result === 'allow') {
+      trackOperationalMetric({
+        type: 'qr_scan_allowed',
+        userId: actor,
+        unitNumber: pass.unitId,
+        metadata: { passType: pass.type },
+      })
       if (pass.type === 'single_use') {
         setQrPasses((previous) =>
           previous.map((entry) => (entry.id === pass.id ? { ...entry, status: 'used' } : entry))
@@ -2686,6 +2752,12 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       targetId: pass.id,
       result: 'reject',
       note: input.note ?? 'Rechazado por guardia',
+    })
+    trackOperationalMetric({
+      type: 'qr_scan_rejected',
+      userId: actor,
+      unitNumber: pass.unitId,
+      metadata: { reason: 'guard_reject' },
     })
     return { ok: true, message: 'Acceso rechazado y auditado.' }
   }
@@ -2752,6 +2824,11 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       return { ok: false, error: result.error }
     }
     setPackages(result.nextPackages)
+    trackOperationalMetric({
+      type: 'package_registered',
+      userId: session.userId,
+      unitNumber: result.created?.unitNumber ?? input.unitNumber,
+    })
     if (isSupabaseConfigured && result.created) {
       if (!isOnline) {
         enqueueDomainEvent('package_register', { package: result.created })
@@ -2794,6 +2871,11 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       return { ok: false, error: result.error }
     }
     setPackages(result.nextPackages)
+    trackOperationalMetric({
+      type: 'package_ready',
+      userId: session.userId,
+      unitNumber: target.unitNumber,
+    })
     if (isSupabaseConfigured) {
       if (!isOnline) {
         enqueueDomainEvent('package_mark_ready', { packageId })
@@ -2830,6 +2912,11 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       return { ok: false, error: result.error }
     }
     setPackages(result.nextPackages)
+    trackOperationalMetric({
+      type: 'package_delivered',
+      userId: session.userId,
+      unitNumber: target.unitNumber,
+    })
     if (isSupabaseConfigured) {
       if (!isOnline) {
         enqueueDomainEvent('package_deliver', { packageId })

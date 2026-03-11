@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AppButton, AppCard, ModulePlaceholder, PetPhoto } from '../../shared/ui'
 import { useDemoData } from '../../shared/state/DemoDataContext'
+import { buildGuardInboxSnapshot } from '../../shared/ops/dashboard'
+import { useOperationalMetrics } from '../../shared/ops/operational'
 import {
   canResolveIncident,
   formatCountdown,
@@ -22,7 +24,15 @@ function guardIncidentEmphasis(score: number) {
 }
 
 export function GuardScanPage() {
-  const { qrPasses, handleGuardScanDecision, handleGuardDeliveryDecision } = useDemoData()
+  const {
+    qrPasses,
+    handleGuardScanDecision,
+    handleGuardDeliveryDecision,
+    incidents,
+    offlineQueue,
+    parkingReports,
+  } = useDemoData()
+  const operationalMetrics = useOperationalMetrics(30)
   const [departmentCode, setDepartmentCode] = useState('')
   const [sequenceCode, setSequenceCode] = useState('')
   const [note, setNote] = useState('')
@@ -55,6 +65,17 @@ export function GuardScanPage() {
         return (Number.isNaN(right) ? 0 : right) - (Number.isNaN(left) ? 0 : left)
       })
   }, [qrPasses])
+  const inboxSnapshot = useMemo(
+    () =>
+      buildGuardInboxSnapshot({
+        qrPasses,
+        incidents,
+        parkingReports,
+        offlineQueue,
+        operationalEvents: operationalMetrics.events,
+      }),
+    [qrPasses, incidents, parkingReports, offlineQueue, operationalMetrics.events]
+  )
 
   function act(result: 'allow' | 'reject') {
     const response = handleGuardScanDecision({
@@ -98,6 +119,45 @@ export function GuardScanPage() {
         title="Escaneo de acceso"
         description='Usa "Scanear" o entrada manual por departamento y numero.'
       />
+      <AppCard className="space-y-2 border-zinc-700 bg-zinc-900 text-zinc-100">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm font-semibold">Pendientes operativos</p>
+          <span className="text-xs text-zinc-400">Inbox vivo</span>
+        </div>
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <div className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2">
+            Entregas activas: {inboxSnapshot.activeDeliveries}
+          </div>
+          <div className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2">
+            SLA vencido: {inboxSnapshot.overdueIncidents}
+          </div>
+          <div className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2">
+            Parking abierto: {inboxSnapshot.openParkingReports}
+          </div>
+          <div className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2">
+            Offline backlog: {inboxSnapshot.offlineBacklog}
+          </div>
+        </div>
+        {inboxSnapshot.inbox.length > 0 ? (
+          <div className="space-y-2">
+            {inboxSnapshot.inbox.map((item) => (
+              <div
+                className={`rounded-lg border px-3 py-2 ${
+                  item.severity === 'high'
+                    ? 'border-red-500/40 bg-red-500/10'
+                    : item.severity === 'medium'
+                      ? 'border-amber-500/40 bg-amber-500/10'
+                      : 'border-zinc-700 bg-zinc-950'
+                }`}
+                key={item.id}
+              >
+                <p className="text-xs font-semibold">{item.title}</p>
+                <p className="text-xs text-zinc-400">{item.detail}</p>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </AppCard>
       <AppCard className="space-y-2 border-zinc-700 bg-zinc-900">
         <AppButton
           block

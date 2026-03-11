@@ -8,9 +8,9 @@ describe('App', () => {
     unmount()
   })
 
-  it('renders login flow by default', () => {
+  it('renders login flow by default', async () => {
     render(<App />)
-    expect(screen.getByText('Acceso seguro')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Entrar' })).toBeInTheDocument()
+    expect(await screen.findByText('Acceso seguro')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Entrar' })).toBeInTheDocument()
   })
 })
