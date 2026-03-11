@@ -165,12 +165,12 @@ export function LoginPage() {
 
   if (needsPasswordSetup) {
     return (
-      <AppCard className="space-y-4">
+      <AppCard className="space-y-5 overflow-hidden">
         <header className="space-y-1">
-          <p className="text-xs font-medium uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
+          <p className="text-xs font-medium uppercase tracking-[0.14em] text-[var(--color-brand)]">
             {tx('Invitacion', 'Invitation')}
           </p>
-          <h1 className="text-xl font-semibold">{tx('Configura tu contrasena', 'Set your password')}</h1>
+          <h1 className="text-2xl font-semibold tracking-[-0.04em]">{tx('Configura tu contrasena', 'Set your password')}</h1>
           <p className="text-sm text-[var(--color-text-muted)]">
             {tx('Antes de entrar, define la contrasena para tu cuenta.', 'Before entering, set a password for your account.')}
           </p>
@@ -185,7 +185,7 @@ export function LoginPage() {
         <label className="block space-y-1">
           <span className="text-sm font-medium">{tx('Nueva contrasena', 'New password')}</span>
           <input
-            className="w-full rounded-xl border border-[var(--color-border)] bg-white px-3 py-3 text-sm text-slate-900 caret-slate-900 outline-none placeholder:text-slate-500 ring-offset-2 focus:ring-2 focus:ring-[var(--color-brand)]"
+            className="w-full rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-3 text-sm text-[var(--color-text)] outline-none placeholder:text-[var(--color-text-muted)] focus:ring-2 focus:ring-[var(--color-brand)]"
             type="password"
             value={newPassword}
             onChange={(event) => setNewPassword(event.target.value)}
@@ -196,7 +196,7 @@ export function LoginPage() {
         <label className="block space-y-1">
           <span className="text-sm font-medium">{tx('Confirmar contrasena', 'Confirm password')}</span>
           <input
-            className="w-full rounded-xl border border-[var(--color-border)] bg-white px-3 py-3 text-sm text-slate-900 caret-slate-900 outline-none placeholder:text-slate-500 ring-offset-2 focus:ring-2 focus:ring-[var(--color-brand)]"
+            className="w-full rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-3 text-sm text-[var(--color-text)] outline-none placeholder:text-[var(--color-text-muted)] focus:ring-2 focus:ring-[var(--color-brand)]"
             type="password"
             value={confirmPassword}
             onChange={(event) => setConfirmPassword(event.target.value)}
@@ -220,16 +220,30 @@ export function LoginPage() {
   }
 
   return (
-    <AppCard className="space-y-4">
-      <header className="space-y-1">
-        <p className="text-xs font-medium uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
+    <AppCard className="space-y-5 overflow-hidden">
+      <header className="space-y-2">
+        <p className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--color-brand)]">
           {tx('Acceso seguro', 'Secure access')}
         </p>
-        <h1 className="text-xl font-semibold">Privada Reforma</h1>
+        <h1 className="text-3xl font-semibold tracking-[-0.05em]">Privada Reforma</h1>
         <p className="text-sm text-[var(--color-text-muted)]">
-          {tx('Acceso con contrasena o magic link.', 'Access with password or magic link.')}
+          {tx('Acceso con contrasena o magic link para residentes, guardia y administracion.', 'Access with password or magic link for residents, guard and admin.')}
         </p>
       </header>
+      <div className="grid grid-cols-3 gap-2">
+        <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2">
+          <p className="text-[10px] uppercase tracking-[0.14em] text-[var(--color-text-muted)]">QR</p>
+          <p className="mt-1 text-sm font-semibold text-[var(--color-text)]">Access</p>
+        </div>
+        <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2">
+          <p className="text-[10px] uppercase tracking-[0.14em] text-[var(--color-text-muted)]">Ops</p>
+          <p className="mt-1 text-sm font-semibold text-[var(--color-text)]">Inbox</p>
+        </div>
+        <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2">
+          <p className="text-[10px] uppercase tracking-[0.14em] text-[var(--color-text-muted)]">PWA</p>
+          <p className="mt-1 text-sm font-semibold text-[var(--color-text)]">Mobile</p>
+        </div>
+      </div>
 
       <div className="grid grid-cols-2 gap-2">
         <AppButton
@@ -259,7 +273,7 @@ export function LoginPage() {
       <label className="block space-y-1">
         <span className="text-sm font-medium">{tx('Correo', 'Email')}</span>
         <input
-          className="w-full rounded-xl border border-[var(--color-border)] bg-white px-3 py-3 text-sm text-slate-900 caret-slate-900 outline-none placeholder:text-slate-500 ring-offset-2 focus:ring-2 focus:ring-[var(--color-brand)]"
+          className="w-full rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-3 text-sm text-[var(--color-text)] outline-none placeholder:text-[var(--color-text-muted)] focus:ring-2 focus:ring-[var(--color-brand)]"
           type="email"
           value={email}
           onChange={(event) => setEmail(event.target.value)}
@@ -272,14 +286,14 @@ export function LoginPage() {
           <span className="text-sm font-medium">{tx('Contrasena', 'Password')}</span>
           <div className="relative">
             <input
-              className="w-full rounded-xl border border-[var(--color-border)] bg-white px-3 py-3 pr-16 text-sm text-slate-900 caret-slate-900 outline-none placeholder:text-slate-500 ring-offset-2 focus:ring-2 focus:ring-[var(--color-brand)]"
+              className="w-full rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-3 pr-16 text-sm text-[var(--color-text)] outline-none placeholder:text-[var(--color-text-muted)] focus:ring-2 focus:ring-[var(--color-brand)]"
               type={showPassword ? 'text' : 'password'}
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               placeholder="********"
             />
             <button
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md border border-[var(--color-border)] bg-white px-2 py-1 text-xs font-medium text-slate-700"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-1 text-xs font-medium text-[var(--color-text-muted)]"
               onClick={() => setShowPassword((previous) => !previous)}
               type="button"
             >

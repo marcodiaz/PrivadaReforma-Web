@@ -162,8 +162,8 @@ export function AppLayout() {
   }
 
   return (
-    <div className="min-h-dvh bg-[var(--color-bg)] flex flex-col">
-      <header className="sticky top-0 z-20 border-b border-[var(--color-border)] bg-[var(--color-surface)]/95 px-4 pb-3 pt-3 shadow-lg backdrop-blur">
+    <div className="app-shell-gradient min-h-dvh bg-[var(--color-bg)] flex flex-col">
+      <header className="sticky top-0 z-20 border-b border-[var(--color-border)] bg-[rgba(8,12,19,0.72)] px-4 pb-3 pt-3 shadow-[0_20px_40px_rgba(0,0,0,0.2)] backdrop-blur-xl">
         <div className="mx-auto flex w-full max-w-md items-start justify-between gap-2">
           <div>
             <p className="text-xs uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
@@ -188,7 +188,7 @@ export function AppLayout() {
             ) : null}
           </div>
           <button
-            className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-1.5 text-xs font-semibold text-[var(--color-text)]"
+            className="rounded-full border border-[var(--color-border)] bg-[linear-gradient(135deg,_rgba(255,255,255,0.08),_rgba(255,255,255,0.02))] px-3.5 py-1.5 text-xs font-semibold text-[var(--color-text)] backdrop-blur"
             onClick={async () => {
               if (signingOut) {
                 return
@@ -209,11 +209,11 @@ export function AppLayout() {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-md flex-1 min-h-0 overflow-y-auto px-4 pb-4 pt-4">
+      <main className="mx-auto w-full max-w-md flex-1 min-h-0 overflow-y-auto px-4 pb-5 pt-5">
         <Outlet />
       </main>
 
-      <nav className="sticky bottom-0 z-20 border-t border-[var(--color-border)] bg-[var(--color-surface)]/95 px-2 pb-[calc(0.65rem+env(safe-area-inset-bottom))] pt-2 backdrop-blur">
+      <nav className="sticky bottom-0 z-20 border-t border-[var(--color-border)] bg-[rgba(8,12,19,0.72)] px-2 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-2 backdrop-blur-xl">
         {isAdmin ? (
           <ul className="mx-auto mb-2 grid w-full max-w-md grid-cols-3 gap-2">
             {adminSectionOrder.map((section) => (
@@ -221,7 +221,7 @@ export function AppLayout() {
                 <button
                   className={`block w-full rounded-lg border px-2 py-1.5 text-center text-[11px] font-semibold transition-colors ${
                     section === activeAdminSection
-                      ? 'border-[var(--color-border)] text-[var(--color-text)] shadow-[inset_0_0_0_1px_rgba(127,127,127,0.12)]'
+                      ? 'border-[var(--color-border)] text-[var(--color-text)] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06),0_10px_24px_rgba(0,0,0,0.16)]'
                       : 'border-[var(--color-border)] text-[var(--color-text-muted)]'
                   }`}
                   onClick={() => {
@@ -244,7 +244,7 @@ export function AppLayout() {
                 className={({ isActive }) =>
                   `relative block rounded-xl border px-2 py-2 text-center text-xs font-medium transition-colors ${
                     isActive
-                      ? 'border-[var(--color-border)] text-[var(--color-text)] shadow-[inset_0_0_0_1px_rgba(127,127,127,0.12)]'
+                      ? 'border-[var(--color-border)] bg-[linear-gradient(135deg,_rgba(210,182,134,0.1),_rgba(125,147,181,0.08))] text-[var(--color-text)] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06),0_10px_24px_rgba(0,0,0,0.16)]'
                       : 'border-transparent text-[var(--color-text-muted)]'
                   }`
                 }

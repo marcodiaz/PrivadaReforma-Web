@@ -52,8 +52,8 @@ export function OpsLayout() {
   const activeModule = getModuleStatusForPath(pathname)
 
   return (
-    <div className="min-h-dvh bg-zinc-950 text-white flex flex-col">
-      <header className="sticky top-0 z-20 border-b border-zinc-800 bg-zinc-950/95 px-4 pb-3 pt-3 backdrop-blur">
+    <div className="app-shell-gradient min-h-dvh bg-[var(--color-bg)] text-white flex flex-col">
+      <header className="sticky top-0 z-20 border-b border-zinc-800 bg-[rgba(8,12,19,0.72)] px-4 pb-3 pt-3 backdrop-blur-xl">
         <div className="mx-auto flex w-full max-w-md items-center justify-between gap-3">
           <div>
             <p className="text-xs uppercase tracking-[0.08em] text-zinc-400">
@@ -83,7 +83,7 @@ export function OpsLayout() {
               {isOnline ? 'En linea' : 'Offline'}
             </span>
             <button
-              className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-zinc-100"
+              className="rounded-full border border-zinc-700 bg-[linear-gradient(135deg,_rgba(255,255,255,0.08),_rgba(255,255,255,0.02))] px-3.5 py-1.5 text-xs font-semibold text-zinc-100 backdrop-blur"
               onClick={async () => {
                 if (signingOut) {
                   return
@@ -111,11 +111,11 @@ export function OpsLayout() {
         </div>
       ) : null}
 
-      <main className="mx-auto w-full max-w-md flex-1 min-h-0 overflow-y-auto px-4 pb-4 pt-4">
+      <main className="mx-auto w-full max-w-md flex-1 min-h-0 overflow-y-auto px-4 pb-5 pt-5">
         <Outlet />
       </main>
 
-      <nav className="sticky bottom-0 z-20 border-t border-zinc-800 bg-zinc-950 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3">
+      <nav className="sticky bottom-0 z-20 border-t border-zinc-800 bg-[rgba(8,12,19,0.72)] px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 backdrop-blur-xl">
         <ul className="mx-auto grid w-full max-w-md grid-cols-2 gap-2">
           {opsNav.map((item) => (
             <li key={item.to}>
