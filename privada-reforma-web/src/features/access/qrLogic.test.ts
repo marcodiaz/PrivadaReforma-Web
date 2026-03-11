@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest'
 import {
   buildQrImageUrl,
   buildQrPayload,
+  createQrPassRecord,
   buildDepartmentDisplayCode,
   findPassesByDepartmentSequence,
   findPassesByLast4,
   formatDepartmentCode,
+  getEffectiveQrStatus,
   getLast4Code,
   getNextDepartmentSequence,
   normalizeDepartmentCode,
@@ -90,5 +92,40 @@ describe('qr last4', () => {
     const url = buildQrImageUrl('abc', 9999)
     expect(url).toContain('size=820x820')
     expect(url).toContain('data=abc')
+  })
+
+  it('builds qr record from a pure helper', () => {
+    const result = createQrPassRecord({
+      id: 'qr-2',
+      createdByUserId: 'resident-1',
+      sessionUnitNumber: '1141',
+      label: 'Invitado',
+      unitId: '1141',
+      visitorName: 'Maria',
+      accessType: 'time_limit',
+      timeLimit: 'week',
+      qrValue: 'QR-2',
+      existingPasses: [{ ...basePass, displayCode: '1141-0001' }],
+      nowMs: Date.parse('2026-03-10T18:00:00.000Z'),
+    })
+
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.pass.displayCode).toBe('1141-0002')
+      expect(result.pass.type).toBe('time_window')
+    }
+  })
+
+  it('marks a time-window qr as expired when endAt is in the past', () => {
+    const status = getEffectiveQrStatus(
+      {
+        ...basePass,
+        type: 'time_window',
+        status: 'active',
+        endAt: '2026-03-01T00:00:00.000Z',
+      },
+      new Date('2026-03-10T00:00:00.000Z'),
+    )
+    expect(status).toBe('expired')
   })
 })

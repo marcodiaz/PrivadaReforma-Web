@@ -1,4 +1,4 @@
-import type { Incident } from '../../shared/domain/demoData'
+import type { AppSession, Incident } from '../../shared/domain/demoData'
 
 const SLA_MINUTES = 15
 
@@ -75,6 +75,96 @@ export function canResolveIncident(incident: Incident) {
   return incident.guardActions.some(
     (action) => Boolean(action.note?.trim()) || Boolean(action.photoUrl?.trim()),
   )
+}
+
+export function createIncidentRecord(input: {
+  id: string
+  session: AppSession
+  title: string
+  description: string
+  category: Incident['category']
+  priority: Incident['priority']
+  createdAt?: string
+}) {
+  const title = input.title.trim()
+  const description = input.description.trim()
+  if (!title || !description) {
+    return null
+  }
+
+  return {
+    id: input.id,
+    unitNumber: input.session.unitNumber,
+    title,
+    description,
+    category: input.category,
+    priority: input.priority,
+    createdAt: input.createdAt ?? new Date().toISOString(),
+    createdByUserId: input.session.userId,
+    status: 'open',
+    supportScore: 0,
+    votes: [],
+    guardActions: [],
+  } satisfies Incident
+}
+
+export function acknowledgeIncidentRecord(incident: Incident, acknowledgedAt = new Date().toISOString()) {
+  return {
+    ...incident,
+    status: 'acknowledged',
+    acknowledgedAt: incident.acknowledgedAt ?? acknowledgedAt,
+  } satisfies Incident
+}
+
+export function markIncidentInProgressRecord(incident: Incident) {
+  return {
+    ...incident,
+    status: 'in_progress',
+  } satisfies Incident
+}
+
+export function appendGuardAction(
+  incident: Incident,
+  input: { note?: string; photoUrl?: string },
+  at = new Date().toISOString(),
+) {
+  const note = input.note?.trim()
+  const photoUrl = input.photoUrl?.trim()
+  if (!note && !photoUrl) {
+    return null
+  }
+
+  return {
+    ...incident,
+    guardActions: [
+      ...incident.guardActions,
+      {
+        at,
+        note,
+        photoUrl,
+      },
+    ],
+  } satisfies Incident
+}
+
+export function resolveIncidentRecord(
+  incident: Incident,
+  input?: { note?: string; photoUrl?: string },
+  resolvedAt = new Date().toISOString(),
+) {
+  const withEvidence = input ? appendGuardAction(incident, input, resolvedAt) ?? incident : incident
+  if (!canResolveIncident(withEvidence)) {
+    return { ok: false, message: 'Para terminar necesitas comentario o evidencia.' } as const
+  }
+
+  return {
+    ok: true,
+    incident: {
+      ...withEvidence,
+      status: 'resolved',
+      resolvedAt,
+    } satisfies Incident,
+  } as const
 }
 
 export function sortIncidentsForGuard(incidents: Incident[], now = Date.now()) {

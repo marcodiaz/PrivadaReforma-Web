@@ -106,3 +106,104 @@ export function buildQrImageUrl(payload: string, size = 420) {
   const encoded = encodeURIComponent(payload)
   return `https://api.qrserver.com/v1/create-qr-code/?size=${safeSize}x${safeSize}&format=png&ecc=M&data=${encoded}`
 }
+
+type CreateQrPassRecordInput = {
+  id: string
+  createdByUserId: string
+  sessionUnitNumber?: string
+  label: string
+  unitId: string
+  visitorName?: string
+  maxUses?: number
+  maxPersons?: number
+  accessMessage?: string
+  accessType: 'temporal' | 'time_limit' | 'delivery'
+  timeLimit?: 'week' | 'month' | 'permanent'
+  deliveryProvider?: string
+  visitorPhotoUrl?: string
+  qrValue: string
+  existingPasses: QrPass[]
+  nowMs?: number
+}
+
+export function createQrPassRecord(input: CreateQrPassRecordInput) {
+  const type =
+    input.accessType === 'temporal'
+      ? 'single_use'
+      : input.accessType === 'time_limit'
+        ? 'time_window'
+        : 'delivery_open'
+  const normalizedDepartment = normalizeDepartmentCode(input.sessionUnitNumber ?? '')
+  if (!/^\d{4}$/.test(normalizedDepartment)) {
+    return { ok: false, error: 'Tu cuenta no tiene un departamento valido de 4 digitos.' } as const
+  }
+  if (!/[12]$/.test(normalizedDepartment)) {
+    return { ok: false, error: 'El ultimo digito del departamento debe ser 1 o 2.' } as const
+  }
+
+  const now = input.nowMs ?? Date.now()
+  let startAt: string | undefined
+  let endAt: string | undefined
+  if (type === 'time_window') {
+    startAt = new Date(now).toISOString()
+    if (input.timeLimit === 'week') {
+      endAt = new Date(now + 7 * 24 * 60 * 60 * 1000).toISOString()
+    } else if (input.timeLimit === 'month') {
+      endAt = new Date(now + 30 * 24 * 60 * 60 * 1000).toISOString()
+    } else if (input.timeLimit === 'permanent') {
+      endAt = undefined
+    } else {
+      return { ok: false, error: 'Selecciona una vigencia para time limit.' } as const
+    }
+  } else if (type === 'single_use') {
+    endAt = new Date(now + 3 * 60 * 60 * 1000).toISOString()
+  } else {
+    startAt = new Date(now).toISOString()
+    endAt = new Date(now + 6 * 60 * 60 * 1000).toISOString()
+  }
+
+  const isDelivery = type === 'delivery_open'
+  const normalizedDeliveryProvider = input.deliveryProvider?.trim()
+  const normalizedVisitorName = input.visitorName?.trim()
+  const normalizedLabel = input.label.trim()
+
+  return {
+    ok: true,
+    pass: {
+      id: input.id,
+      label:
+        normalizedLabel ||
+        (isDelivery
+          ? `Entrega${normalizedDeliveryProvider ? ` ${normalizedDeliveryProvider}` : ''}`
+          : 'Visita'),
+      unitId: input.unitId.trim(),
+      createdByUserId: input.createdByUserId,
+      visitorName: isDelivery ? 'REPARTIDOR' : normalizedVisitorName || 'VISITA',
+      maxUses: isDelivery ? 1 : input.maxUses && input.maxUses > 0 ? Math.floor(input.maxUses) : 1,
+      maxPersons:
+        isDelivery ? 1 : input.maxPersons && input.maxPersons > 0 ? Math.floor(input.maxPersons) : 1,
+      accessMessage: input.accessMessage?.trim(),
+      deliveryProvider: isDelivery ? normalizedDeliveryProvider || undefined : undefined,
+      type,
+      startAt,
+      endAt,
+      visitorPhotoUrl: input.visitorPhotoUrl?.trim(),
+      status: 'active',
+      qrValue: input.qrValue,
+      displayCode: buildDepartmentDisplayCode(
+        normalizedDepartment,
+        getNextDepartmentSequence(input.existingPasses, normalizedDepartment),
+      ),
+    } satisfies QrPass,
+  } as const
+}
+
+export function getEffectiveQrStatus(pass: QrPass, now = new Date()) {
+  if (pass.status !== 'active') {
+    return pass.status
+  }
+  if (pass.type === 'time_window' && pass.endAt && new Date(pass.endAt) < now) {
+    return 'expired'
+  }
+  return pass.status
+}

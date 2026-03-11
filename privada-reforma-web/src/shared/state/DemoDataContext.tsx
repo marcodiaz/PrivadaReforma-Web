@@ -70,7 +70,6 @@ import {
   type OfflineQueueEvent,
   qrPassSchema,
   type QrPass,
-  qrPassTypeSchema,
   reservationSchema,
   type Reservation,
   type UnitAccountEntry,
@@ -132,14 +131,18 @@ import {
 import { isPaymentsEnabled, isSupabaseConfigured } from '../supabase/client'
 import { useSupabaseAuth } from '../auth/SupabaseAuthProvider'
 import {
-  canResolveIncident,
+  createIncidentRecord,
+  acknowledgeIncidentRecord,
+  appendGuardAction,
+  markIncidentInProgressRecord,
+  resolveIncidentRecord,
   updateVote as updateIncidentVote,
 } from '../../features/incidents/logic'
 import { enqueueOfflineEvent, flushOfflineQueueWithApi } from '../../features/guard/offline'
 import {
-  buildDepartmentDisplayCode,
+  createQrPassRecord,
   findPassesByDepartmentSequence,
-  getNextDepartmentSequence,
+  getEffectiveQrStatus,
   normalizeDepartmentCode,
 } from '../../features/access/qrLogic'
 import { LOCAL_PACKAGES, packageSchema, type Package } from '../domain/packages'
@@ -153,6 +156,7 @@ import {
   markPackageReadyTransition,
   registerPackageTransition,
 } from '../../features/packages/logic'
+import { createParkingReportRecord, updateParkingReportRecord } from '../../features/parking/logic'
 import { trackOperationalMetric } from '../ops/operational'
 
 type CreateQrInput = {
@@ -441,16 +445,6 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): 
         reject(error)
       })
   })
-}
-
-function getEffectiveQrStatus(pass: QrPass, now = new Date()): QrPass['status'] {
-  if (pass.status !== 'active') {
-    return pass.status
-  }
-  if (pass.type === 'time_window' && pass.endAt && new Date(pass.endAt) < now) {
-    return 'expired'
-  }
-  return pass.status
 }
 
 function isFridayOrSaturday(dateValue: string) {
@@ -1079,19 +1073,16 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     if (!incidentCategorySchema.safeParse(input.category).success) {
       return false
     }
-    const nextIncident: Incident = {
+    const nextIncident = createIncidentRecord({
       id: randomId('inc'),
-      unitNumber: session.unitNumber,
-      title: input.title.trim(),
-      description: input.description.trim(),
+      session,
+      title: input.title,
+      description: input.description,
       category: input.category,
       priority: input.priority,
-      createdAt: new Date().toISOString(),
-      createdByUserId: session.userId,
-      status: 'open',
-      supportScore: 0,
-      votes: [],
-      guardActions: [],
+    })
+    if (!nextIncident) {
+      return false
     }
     setIncidents((previous) => [nextIncident, ...previous])
     trackOperationalMetric({
@@ -1145,11 +1136,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     if (!currentIncident) {
       return
     }
-    const updatedIncident: Incident = {
-      ...currentIncident,
-      status: 'acknowledged',
-      acknowledgedAt: currentIncident.acknowledgedAt ?? new Date().toISOString(),
-    }
+    const updatedIncident = acknowledgeIncidentRecord(currentIncident)
     setIncidents((previous) =>
       previous.map((incident) => (incident.id === incidentId ? updatedIncident : incident))
     )
@@ -1179,10 +1166,7 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     if (!currentIncident) {
       return
     }
-    const updatedIncident: Incident = {
-      ...currentIncident,
-      status: 'in_progress',
-    }
+    const updatedIncident = markIncidentInProgressRecord(currentIncident)
     setIncidents((previous) =>
       previous.map((incident) => (incident.id === incidentId ? updatedIncident : incident))
     )
@@ -1217,16 +1201,12 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
     if (!currentIncident) {
       return false
     }
-    const updatedIncident: Incident = {
-      ...currentIncident,
-      guardActions: [
-        ...currentIncident.guardActions,
-        {
-          at: new Date().toISOString(),
-          note: cleanNote,
-          photoUrl: cleanPhotoUrl,
-        },
-      ],
+    const updatedIncident = appendGuardAction(currentIncident, {
+      note: cleanNote,
+      photoUrl: cleanPhotoUrl,
+    })
+    if (!updatedIncident) {
+      return false
     }
     setIncidents((previous) =>
       previous.map((incident) => (incident.id === incidentId ? updatedIncident : incident))
@@ -1259,31 +1239,11 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       return { ok: false, message: 'No se pudo resolver.' }
     }
 
-    const cleanNote = input?.note?.trim()
-    const cleanPhotoUrl = input?.photoUrl?.trim()
-
-    const nextGuardActions =
-      cleanNote || cleanPhotoUrl
-        ? [
-            ...currentIncident.guardActions,
-            {
-              at: new Date().toISOString(),
-              note: cleanNote,
-              photoUrl: cleanPhotoUrl,
-            },
-          ]
-        : currentIncident.guardActions
-
-    const candidate: Incident = { ...currentIncident, guardActions: nextGuardActions }
-    if (!canResolveIncident(candidate)) {
-      return { ok: false, message: 'Para terminar necesitas comentario o evidencia.' }
+    const resolution = resolveIncidentRecord(currentIncident, input)
+    if (!resolution.ok) {
+      return { ok: false, message: resolution.message }
     }
-
-    const updatedIncident: Incident = {
-      ...candidate,
-      status: 'resolved',
-      resolvedAt: new Date().toISOString(),
-    }
+    const updatedIncident = resolution.incident
     setIncidents((previous) =>
       previous.map((incident) => (incident.id === incidentId ? updatedIncident : incident))
     )
@@ -1325,79 +1285,28 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       return { ok: false, error: 'No se puede crear QR: modo adeudo activo.' }
     }
 
-    const type =
-      input.accessType === 'temporal'
-        ? 'single_use'
-        : input.accessType === 'time_limit'
-          ? 'time_window'
-          : 'delivery_open'
-    const normalizedDepartment = normalizeDepartmentCode(session.unitNumber ?? '')
-    if (!/^\d{4}$/.test(normalizedDepartment)) {
-      return { ok: false, error: 'Tu cuenta no tiene un departamento valido de 4 digitos.' }
-    }
-    if (!/[12]$/.test(normalizedDepartment)) {
-      return {
-        ok: false,
-        error: 'El ultimo digito del departamento debe ser 1 o 2.',
-      }
-    }
-    if (!qrPassTypeSchema.safeParse(type).success) {
-      return { ok: false, error: 'Tipo de QR invalido.' }
-    }
-
-    const now = Date.now()
-    let startAt: string | undefined
-    let endAt: string | undefined
-    if (type === 'time_window') {
-      startAt = new Date(now).toISOString()
-      if (input.timeLimit === 'week') {
-        endAt = new Date(now + 7 * 24 * 60 * 60 * 1000).toISOString()
-      } else if (input.timeLimit === 'month') {
-        endAt = new Date(now + 30 * 24 * 60 * 60 * 1000).toISOString()
-      } else if (input.timeLimit === 'permanent') {
-        endAt = undefined
-      } else {
-        return { ok: false, error: 'Selecciona una vigencia para time limit.' }
-      }
-    } else if (type === 'single_use') {
-      endAt = new Date(now + 3 * 60 * 60 * 1000).toISOString()
-    } else {
-      startAt = new Date(now).toISOString()
-      endAt = new Date(now + 6 * 60 * 60 * 1000).toISOString()
-    }
-
-    const isDelivery = type === 'delivery_open'
-    const normalizedDeliveryProvider = input.deliveryProvider?.trim()
-    const normalizedVisitorName = input.visitorName?.trim()
-    const normalizedLabel = input.label.trim()
-
-    const pass: QrPass = {
+    const qrDraft = createQrPassRecord({
       id: randomId('qr'),
-      label:
-        normalizedLabel ||
-        (isDelivery
-          ? `Entrega${normalizedDeliveryProvider ? ` ${normalizedDeliveryProvider}` : ''}`
-          : 'Visita'),
-      unitId: input.unitId.trim(),
       createdByUserId: session.userId,
-      visitorName: isDelivery ? 'REPARTIDOR' : normalizedVisitorName || 'VISITA',
-      maxUses: isDelivery ? 1 : input.maxUses && input.maxUses > 0 ? Math.floor(input.maxUses) : 1,
-      maxPersons:
-        isDelivery ? 1 : input.maxPersons && input.maxPersons > 0 ? Math.floor(input.maxPersons) : 1,
-      accessMessage: input.accessMessage?.trim(),
-      deliveryProvider: isDelivery ? normalizedDeliveryProvider || undefined : undefined,
-      type,
-      startAt,
-      endAt,
-      visitorPhotoUrl: input.visitorPhotoUrl?.trim(),
-      status: 'active',
+      sessionUnitNumber: session.unitNumber,
+      label: input.label,
+      unitId: input.unitId,
+      visitorName: input.visitorName,
+      maxUses: input.maxUses,
+      maxPersons: input.maxPersons,
+      accessMessage: input.accessMessage,
+      accessType: input.accessType,
+      timeLimit: input.timeLimit,
+      deliveryProvider: input.deliveryProvider,
+      visitorPhotoUrl: input.visitorPhotoUrl,
       qrValue: `QR-${crypto.randomUUID()}`,
-      displayCode: buildDepartmentDisplayCode(
-        normalizedDepartment,
-        getNextDepartmentSequence(qrPasses, normalizedDepartment)
-      ),
+      existingPasses: qrPasses,
+    })
+    if (!qrDraft.ok) {
+      return { ok: false, error: qrDraft.error }
     }
 
+    const pass = qrDraft.pass
     setQrPasses((previous) => [pass, ...previous])
     trackOperationalMetric({
       type: 'qr_created',
@@ -2524,35 +2433,26 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
       return { ok: false, error: 'Tu cuenta no tiene departamento asignado.' }
     }
 
-    const description = input.description.trim()
-    if (!description) {
-      return { ok: false, error: 'Agrega una descripcion del reporte.' }
-    }
-    const photoUrl = input.photoUrl.trim()
-    if (!photoUrl) {
-      return { ok: false, error: 'Foto obligatoria para enviar el reporte.' }
-    }
     const visitorParkingSpot = input.visitorParkingSpot?.trim()
-    if (input.reportType === 'visitor_spot' && !visitorParkingSpot) {
-      return { ok: false, error: 'Indica el cajon de visitante reportado.' }
-    }
     const parkingSpot =
       input.reportType === 'visitor_spot'
         ? `Visitante ${visitorParkingSpot}`
         : getAssignedParkingForUnit(session.unitNumber)
 
-    const report: ParkingReport = {
+    const reportResult = createParkingReportRecord({
       id: randomId('park'),
       unitNumber: session.unitNumber,
-      parkingSpot,
-      reportType: input.reportType,
-      visitorParkingSpot: input.reportType === 'visitor_spot' ? visitorParkingSpot : undefined,
-      description,
-      photoUrl,
-      status: 'open',
-      createdAt: new Date().toISOString(),
       createdByUserId: session.userId,
+      description: input.description,
+      reportType: input.reportType,
+      visitorParkingSpot,
+      photoUrl: input.photoUrl,
+      parkingSpot,
+    })
+    if (!reportResult.ok) {
+      return { ok: false, error: reportResult.error }
     }
+    const report = reportResult.report
     setParkingReports((previous) => [report, ...previous])
     trackOperationalMetric({
       type: 'parking_report_created',
@@ -2581,13 +2481,11 @@ export function DemoDataProvider({ children }: PropsWithChildren) {
         if (report.id !== input.reportId) {
           return report
         }
-        updatedReport = {
-          ...report,
+        updatedReport = updateParkingReportRecord(report, {
           status: input.status,
-          guardNote: note || report.guardNote,
+          guardNote: note,
           handledByGuardUserId: session.userId,
-          updatedAt: new Date().toISOString(),
-        }
+        })
         return updatedReport
       })
     )

@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { type Incident } from '../../shared/domain/demoData'
 import {
+  acknowledgeIncidentRecord,
+  appendGuardAction,
   canResolveIncident,
+  createIncidentRecord,
   formatCountdown,
   getSlaRemainingMs,
   isSlaOverdue,
+  resolveIncidentRecord,
   updateVote,
 } from './logic'
 
@@ -96,5 +100,36 @@ describe('sla and resolve', () => {
     })
     expect(canResolveIncident(noEvidence)).toBe(false)
     expect(canResolveIncident(withEvidence)).toBe(true)
+  })
+
+  it('creates and transitions incident records through pure helpers', () => {
+    const created = createIncidentRecord({
+      id: 'inc-2',
+      session: {
+        userId: 'user-1',
+        email: 'resident@example.com',
+        fullName: 'Resident',
+        role: 'resident',
+        unitNumber: '1141',
+      },
+      title: ' Porton abierto ',
+      description: ' Revisar porton principal ',
+      category: 'rules',
+      priority: 'high',
+      createdAt: '2026-02-13T10:00:00.000Z',
+    })
+    expect(created?.title).toBe('Porton abierto')
+
+    const acknowledged = acknowledgeIncidentRecord(created!)
+    expect(acknowledged.status).toBe('acknowledged')
+
+    const withGuardAction = appendGuardAction(acknowledged, { note: 'Guardia en camino' })
+    expect(withGuardAction?.guardActions).toHaveLength(1)
+
+    const resolved = resolveIncidentRecord(withGuardAction!, { note: 'Atendido' })
+    expect(resolved.ok).toBe(true)
+    if (resolved.ok) {
+      expect(resolved.incident.status).toBe('resolved')
+    }
   })
 })
